@@ -201,3 +201,113 @@ export function prefillQa(rec, uidFn = () => Math.random().toString(36).slice(2,
   rec.qa = [...(rec.qa || []), ...add];
   return add.length;
 }
+
+/* ---------------- Dán văn bản ghi chép → hỏi – đáp theo mẫu biên bản ---------------- */
+const Q_MARK = /^\s*(?:\d{1,3}\s*[.)]\s*)?(?:câu\s*hỏi|hỏi|h|q)\s*(?:\d{1,3}\s*)?[:.\-–—]\s*/i;
+const A_MARK = /^\s*(?:trả\s*lời|tl|đáp|đ|a)\s*[:.\-–—]\s*/i;
+const keyText = (t) =>
+  String(t || '')
+    .toLowerCase()
+    .normalize('NFC')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+
+/**
+ * Tách văn bản dán vào thành các cặp hỏi – đáp.
+ * Nhận diện dòng bắt đầu bằng "Hỏi:", "H:", "Câu hỏi 1:", "Trả lời:", "TL:", "Đáp:", "Đ:".
+ * Không có dấu hiệu nào → trả về các đoạn văn (paragraphs) để ghép với câu hỏi chưa trả lời.
+ */
+export function parsePastedQa(text) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  const pairs = [];
+  const pre = []; // đoạn văn đứng trước dấu hiệu "Hỏi:" đầu tiên
+  let cur = null;
+  let mode = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!cur && !Q_MARK.test(line) && !A_MARK.test(line)) {
+      pre.push(raw);
+      continue;
+    }
+    if (Q_MARK.test(line)) {
+      cur = { q: line.replace(Q_MARK, '').trim(), a: '' };
+      pairs.push(cur);
+      mode = 'q';
+    } else if (A_MARK.test(line)) {
+      if (!cur) {
+        cur = { q: '', a: '' };
+        pairs.push(cur);
+      }
+      cur.a = [cur.a, line.replace(A_MARK, '').trim()].filter(Boolean).join('\n');
+      mode = 'a';
+    } else if (cur && line) {
+      cur[mode] = [cur[mode], line].filter(Boolean).join(mode === 'a' ? '\n' : ' ');
+    }
+  }
+  const paras = (t) =>
+    t
+      .split(/\n\s*\n|\n(?=\s*[-•–]\s)/)
+      .map((p) => p.replace(/^\s*[-•–]\s*/, '').replace(/\s*\n\s*/g, ' ').trim())
+      .filter(Boolean);
+  if (pairs.length) return { pairs: pairs.filter((p) => p.q || p.a), paragraphs: paras(pre.join('\n')) };
+  const paragraphs = String(text || '')
+    .replace(/\r/g, '')
+    .split(/\n\s*\n|\n(?=\s*[-•–]\s)/)
+    .map((p) => p.replace(/^\s*[-•–]\s*/, '').replace(/\s*\n\s*/g, ' ').trim())
+    .filter(Boolean);
+  return { pairs: [], paragraphs: paragraphs.length > 1 ? paragraphs : String(text || '').trim() ? [String(text).trim()] : [] };
+}
+
+/**
+ * Lập kế hoạch đưa nội dung dán vào biên bản (chưa sửa rec):
+ * - cặp hỏi – đáp trùng câu hỏi đã có mà chưa trả lời → điền câu trả lời vào đúng lượt đó;
+ * - còn lại → thêm lượt mới;
+ * - chỉ có đoạn văn → ghép lần lượt với các câu hỏi chưa trả lời (nếu có).
+ * Trả về [{ index (lượt sẽ điền, -1 = thêm mới), q, a }].
+ */
+export function planPastedQa(rec, parsed) {
+  const qa = rec.qa || [];
+  const pendingIdx = qa.map((x, i) => (String(x.a || '').trim() ? -1 : i)).filter((i) => i >= 0);
+  const used = new Set();
+  const fromParas = (list) =>
+    list.map((a) => {
+      const i = pendingIdx.find((j) => !used.has(j));
+      if (i !== undefined) {
+        used.add(i);
+        return { index: i, q: qa[i].q, a };
+      }
+      return { index: -1, q: '[Câu hỏi]', a };
+    });
+  if (parsed.pairs.length) {
+    // Khớp câu hỏi trùng trước, rồi mới ghép các đoạn trả lời rời với câu hỏi chưa trả lời còn lại.
+    const matched = parsed.pairs.map((p) => {
+      const k = keyText(p.q);
+      const i = k ? pendingIdx.find((j) => !used.has(j) && keyText(qa[j].q) === k) : undefined;
+      if (i !== undefined) {
+        used.add(i);
+        return { index: i, q: qa[i].q, a: p.a };
+      }
+      return { index: -1, q: p.q || '[Câu hỏi]', a: p.a };
+    });
+    return [...fromParas(parsed.paragraphs || []), ...matched];
+  }
+  return fromParas(parsed.paragraphs);
+}
+
+/** Áp dụng kế hoạch vào biên bản. Trả về { filled, added }. */
+export function applyPastedQa(rec, items, uidFn = () => Math.random().toString(36).slice(2, 10)) {
+  let filled = 0;
+  let added = 0;
+  rec.qa = [...(rec.qa || [])];
+  for (const it of items) {
+    if (!String(it.a || '').trim() && !String(it.q || '').trim()) continue;
+    if (it.index >= 0 && rec.qa[it.index]) {
+      rec.qa[it.index] = { ...rec.qa[it.index], a: it.a, at: rec.qa[it.index].at || Date.now() };
+      filled++;
+    } else {
+      rec.qa.push({ id: uidFn(), q: it.q, a: it.a, issueId: null, planQ: null, at: Date.now() });
+      added++;
+    }
+  }
+  return { filled, added };
+}

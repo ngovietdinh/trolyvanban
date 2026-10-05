@@ -63,6 +63,7 @@ export async function freshApp(page, hash = '', { login = true } = {}) {
   await page.goto('/app.html' + hash);
   if (!login) return;
   await page.fill('#g-name', SUPER.name);
+  await page.fill('#g-email', SUPER.email);
   await page.fill('#g-pass', SUPER.password);
   await page.click('[data-gate-form] button[type="submit"]');
   await page.waitForSelector('.shell:not([hidden])');
@@ -88,7 +89,10 @@ export async function setApiKey(page, provider, key, model) {
   await page.goto('/app.html#settings');
   await page.click(`[data-prov="${provider}"]`);
   await page.fill('[data-key]', key);
-  if (model) await page.fill('[data-model]', model);
+  if (model) {
+    await page.selectOption('[data-model-sel]', '__custom');
+    await page.fill('[data-model]', model);
+  }
   await page.click('[data-save-key]');
   await page.locator('.toast', { hasText: 'Đã lưu API key' }).last().waitFor();
   await page.selectOption('[data-default-prov]', provider);

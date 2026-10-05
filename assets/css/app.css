@@ -2461,3 +2461,59 @@ mark.err-mark.t-style {
     min-height: 0;
   }
 }
+
+/* ---------- Cài đặt AI: mô hình, bộ nhớ, nhật ký ---------- */
+.model-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.model-row .select {
+  flex: 1;
+  min-width: 0;
+}
+.model-row + .input {
+  margin-top: 8px;
+}
+.mem-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.mem-stats div {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  display: grid;
+}
+.mem-stats strong {
+  font-size: 22px;
+  line-height: 1.1;
+}
+.mem-stats span {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.ai-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow: auto;
+}
+.ai-log li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: start;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.ai-log small {
+  color: var(--text-3);
+  white-space: nowrap;
+}

@@ -24,7 +24,7 @@ ${qaToText(rec) || '(chưa có)'}`;
 }
 
 async function askJson({ provider, apiKey, model, prompt, signal }) {
-  const out = await streamClaude({ provider, apiKey, model, system: INVESTIGATOR_SYSTEM, signal, messages: [{ role: 'user', content: prompt }] });
+  const out = await streamClaude({ provider, apiKey, model, system: INVESTIGATOR_SYSTEM, signal, cache: true, messages: [{ role: 'user', content: prompt }] });
   const json = extractJson(out);
   if (!json) throw new Error('Không đọc được kết quả phân tích từ AI');
   return json;
@@ -82,6 +82,7 @@ export async function aiNormalize({ provider, apiKey, model, question, answer, s
     model,
     system: INVESTIGATOR_SYSTEM,
     signal,
+    cache: true,
     messages: [{ role: 'user', content: `Chuẩn hóa câu trả lời dưới đây thành lời văn biên bản: ngôi thứ nhất (“Tôi…”), câu đầy đủ, đúng chính tả, dấu câu. Giữ nguyên tuyệt đối ý, số liệu, tên riêng, mức độ chắc chắn của người khai; không thêm thông tin. Chỉ trả về đoạn văn đã chuẩn hóa.\n\nCâu hỏi: ${question}\nCâu trả lời ghi nhanh: ${answer}` }],
   });
   return out.trim();

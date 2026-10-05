@@ -49,11 +49,123 @@ export function friendlyError(err, Anthropic) {
  * Gọi Claude ở chế độ streaming. onText nhận từng đoạn chữ.
  * Trả về toàn bộ văn bản. Ném lỗi với thông điệp tiếng Việt thân thiện.
  */
-export async function streamClaude(opts) {
+function streamOnce(opts) {
   const provider = opts.provider || 'anthropic';
   if (provider === 'openai' || provider === 'grok') return streamOpenAICompatible({ ...opts, provider });
   if (provider === 'gemini') return streamGemini(opts);
   return streamAnthropic(opts);
+}
+
+/* ---------------- Độ tin cậy: chuyển nhà cung cấp, hết thời gian chờ, ghi nhớ kết quả ---------------- */
+
+/**
+ * Móc nối do ứng dụng đăng ký:
+ * - chain(): danh sách nhà cung cấp khác của tài khoản [{ provider, apiKey, model, label }] để dự phòng;
+ * - options(): { fallback: bool, cache: bool };
+ * - event({ type: 'switch' | 'error' | 'cache', ... }): thông báo / ghi nhật ký;
+ * - cacheGet(key) / cacheSet(key, value): kho ghi nhớ cục bộ.
+ */
+let hooks = {};
+export function setAIHooks(h) {
+  hooks = { ...hooks, ...h };
+}
+
+export const AI_TIMEOUT = { first: 90000, idle: 60000 };
+
+/** Băm ngắn (FNV-1a 53 bit) để làm khóa ghi nhớ. */
+export function hashText(str) {
+  let h1 = 0xdeadbeef ^ str.length;
+  let h2 = 0x41c6ce57 ^ str.length;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+/** Một lần gọi có giới hạn thời gian chờ (chưa có chữ đầu tiên / ngừng giữa chừng). */
+async function streamWithTimeout(opts, timeout = AI_TIMEOUT) {
+  const ctl = new AbortController();
+  let timedOut = false;
+  let timer;
+  const arm = (ms) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timedOut = true;
+      ctl.abort();
+    }, ms);
+  };
+  const onUserAbort = () => ctl.abort();
+  opts.signal?.addEventListener('abort', onUserAbort, { once: true });
+  arm(timeout.first);
+  try {
+    return await streamOnce({
+      ...opts,
+      signal: ctl.signal,
+      onText: (d, all) => {
+        arm(timeout.idle);
+        opts.onText?.(d, all);
+      },
+    });
+  } catch (err) {
+    if (timedOut) throw new Error(`${PROVIDERS[opts.provider || 'anthropic']?.label || 'AI'} không phản hồi sau ${Math.round(timeout.first / 1000)} giây.`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    opts.signal?.removeEventListener('abort', onUserAbort);
+  }
+}
+
+/**
+ * Gọi AI: nếu nhà cung cấp đang chọn lỗi (mạng, key, hạn mức, mô hình, hết thời gian chờ)
+ * thì tự chuyển sang nhà cung cấp khác đã cấu hình. opts.cache = true để dùng lại kết quả
+ * đã ghi nhớ cho đúng yêu cầu này (không gửi lại). opts.meta (nếu có) nhận { provider, cached, switched }.
+ */
+export async function streamClaude(opts) {
+  const meta = opts.meta || {};
+  const o = hooks.options?.() || { fallback: true, cache: true };
+  let cacheKey = null;
+  if (opts.cache && o.cache !== false) {
+    cacheKey = hashText(JSON.stringify([opts.system || SYSTEM_PROMPT, opts.messages, opts.maxTokens || 0]));
+    const hit = opts.fresh ? null : hooks.cacheGet?.(cacheKey);
+    if (hit?.text) {
+      Object.assign(meta, { provider: hit.provider, cached: true, switched: false });
+      opts.onText?.(hit.text, hit.text);
+      hooks.event?.({ type: 'cache', provider: hit.provider });
+      return hit.text;
+    }
+  }
+  const first = { provider: opts.provider || 'anthropic', apiKey: opts.apiKey, model: opts.model };
+  const others = opts.noFallback || o.fallback === false ? [] : (hooks.chain?.() || []).filter((c) => c.provider !== first.provider && c.apiKey);
+  const chain = [first, ...others];
+  const errors = [];
+  for (let i = 0; i < chain.length; i++) {
+    const c = chain[i];
+    try {
+      const text = await streamWithTimeout({ ...opts, provider: c.provider, apiKey: c.apiKey, model: c.model });
+      Object.assign(meta, { provider: c.provider, cached: false, switched: i > 0 });
+      if (cacheKey && text && text.trim()) hooks.cacheSet?.(cacheKey, { text, provider: c.provider, at: Date.now() });
+      return text;
+    } catch (err) {
+      const msg = err?.message || String(err);
+      const userAbort = opts.signal?.aborted || /^Đã dừng/.test(msg);
+      const refusal = /không thể xử lý/.test(msg);
+      hooks.event?.({ type: 'error', provider: c.provider, message: msg });
+      if (userAbort) throw new Error('Đã dừng tạo nội dung.');
+      errors.push(`${PROVIDERS[c.provider]?.label || c.provider}: ${msg}`);
+      const next = chain[i + 1];
+      if (refusal || !next) break;
+      hooks.event?.({ type: 'switch', from: c.provider, to: next.provider, message: msg });
+      opts.onSwitch?.(c.provider, next.provider, msg);
+      opts.onText?.('', ''); // xóa phần đã hiện của lần gọi lỗi
+    }
+  }
+  const e = new Error(errors.length > 1 ? `Tất cả nhà cung cấp AI đều lỗi — ${errors.join(' | ')}` : errors[0] || 'AI không phản hồi.');
+  e.aiErrors = errors;
+  throw e;
 }
 /** Tên trung tính cho mọi nhà cung cấp. */
 export const streamAI = streamClaude;
@@ -190,7 +302,7 @@ async function streamGemini({ apiKey, model, system = SYSTEM_PROMPT, messages, o
 /** Kiểm tra nhanh API key bằng một yêu cầu rất ngắn. */
 export async function testApiKey(apiKey, model, provider = 'anthropic') {
   if (provider !== 'anthropic') {
-    await streamClaude({ provider, apiKey, model, system: 'Trả lời ngắn.', messages: [{ role: 'user', content: 'Chào' }], maxTokens: 16 });
+    await streamOnce({ provider, apiKey, model, system: 'Trả lời ngắn.', messages: [{ role: 'user', content: 'Chào' }], maxTokens: 16 });
     return true;
   }
   model = model || DEFAULT_MODEL;
@@ -202,6 +314,26 @@ export async function testApiKey(apiKey, model, provider = 'anthropic') {
   } catch (err) {
     throw new Error(friendlyError(err, Anthropic));
   }
+}
+
+/** Lấy danh sách mô hình khả dụng của tài khoản từ nhà cung cấp (dùng API key). */
+export async function listModels(provider, apiKey) {
+  const cfg = PROVIDERS[provider];
+  let res;
+  try {
+    if (provider === 'anthropic') res = await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } });
+    else if (provider === 'gemini') res = await fetch(`${cfg.base}/models?pageSize=200`, { headers: { 'x-goog-api-key': apiKey } });
+    else res = await fetch(`${cfg.base}/models`, { headers: { authorization: `Bearer ${apiKey}` } });
+  } catch {
+    throw new Error(`Không kết nối được tới ${cfg.label} để lấy danh sách mô hình.`);
+  }
+  if (!res.ok) throw new Error(httpError(res.status, provider, await res.text().catch(() => '')));
+  const j = await res.json();
+  let ids;
+  if (provider === 'gemini') ids = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m) => String(m.name).replace(/^models\//, ''));
+  else ids = (j.data || []).map((m) => m.id);
+  if (provider === 'openai') ids = ids.filter((id) => /^(gpt|o\d|chatgpt)/.test(id) && !/(audio|realtime|transcribe|tts|image|search|embedding)/.test(id));
+  return [...new Set(ids.filter(Boolean))].sort((a, b) => b.localeCompare(a));
 }
 
 /** Tìm khối JSON đầu tiên trong câu trả lời của mô hình. */

@@ -81,3 +81,41 @@ export const customActs = {
   },
 };
 registerCustomActs(() => customActs.all());
+
+/**
+ * Câu hỏi hệ thống tự học trên máy: câu hỏi đã thực sự hỏi khi ghi lời khai và gợi ý (AI/ngoại tuyến)
+ * đã được chọn dùng. Khóa `${dieu}|${issueKey}` → [{ text, n (số lần dùng), at }].
+ */
+const LEARN_KEY = 'legal-learned';
+const normQ = (t) => String(t || '').trim().replace(/\s+/g, ' ');
+export const learnedBank = {
+  all: () => store.get(LEARN_KEY, {}),
+  of(dieu, issueKey) {
+    return [...(this.all()[`${dieu}|${issueKey}`] || [])].sort((a, b) => b.n - a.n || b.at - a.at);
+  },
+  learn(dieu, issueKey, text) {
+    const t = normQ(text);
+    if (!dieu || t.length < 6) return;
+    const all = this.all();
+    const k = `${dieu}|${issueKey || '_chung'}`;
+    const list = all[k] || [];
+    const hit = list.find((x) => x.text.toLowerCase() === t.toLowerCase());
+    if (hit) {
+      hit.n += 1;
+      hit.at = Date.now();
+    } else list.push({ text: t, n: 1, at: Date.now() });
+    // Giữ tối đa 40 câu mỗi vấn đề — bỏ câu ít dùng, cũ nhất.
+    all[k] = list.sort((a, b) => b.n - a.n || b.at - a.at).slice(0, 40);
+    store.set(LEARN_KEY, all);
+  },
+  forget(dieu, issueKey, text) {
+    const all = this.all();
+    const k = `${dieu}|${issueKey}`;
+    all[k] = (all[k] || []).filter((x) => x.text !== normQ(text));
+    store.set(LEARN_KEY, all);
+  },
+  count() {
+    return Object.values(this.all()).reduce((s, l) => s + l.length, 0);
+  },
+  clear: () => store.remove(LEARN_KEY),
+};

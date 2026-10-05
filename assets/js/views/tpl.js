@@ -370,7 +370,7 @@ export function render(ctx, params = []) {
     try {
       const { provider, apiKey, model } = ctx.ai();
       usage.track('ai');
-      const out = await streamClaude({ provider, apiKey, model, messages: [{ role: 'user', content: `${TEMPLATE_AI_PROMPT}\n\n---\n${numberedText(state.paragraphs)}` }] });
+      const out = await streamClaude({ provider, apiKey, model, cache: true, messages: [{ role: 'user', content: `${TEMPLATE_AI_PROMPT}\n\n---\n${numberedText(state.paragraphs)}` }] });
       const j = extractJson(out);
       if (!j) throw new Error('AI không trả về kết quả đúng định dạng. Thử lại.');
       const { fields, added } = fieldsFromAi(state.paragraphs, j, state.fields);

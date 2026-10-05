@@ -3,10 +3,10 @@ import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, debounce } from
 import { DOMAINS, findCrime, searchCrimes, generatePlan, planToText, SOURCE_LABELS, LEGAL_DISCLAIMER, ALL_CRIMES, crimeWithCustomActs, localFollowUps } from '../legal/engine.js';
 import { ROLES, ROLE_GROUPS, getRole } from '../legal/roles.js';
 import { buildPlanDocument, buildRecordDocument, newRecord, prefillQa } from '../legal/record.js';
-import { casesRepo, plansRepo, recordsRepo, customBank, customActs } from '../legal/repo.js';
+import { casesRepo, plansRepo, recordsRepo, customBank, customActs, learnedBank } from '../legal/repo.js';
 import { renderDocumentHtml } from '../lib/render-html.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
-import { streamClaude, extractJson } from '../lib/ai.js';
+import { streamClaude, extractJson, PROVIDERS } from '../lib/ai.js';
 import { INVESTIGATOR_SYSTEM } from '../legal/assist.js';
 import { store, uid } from '../lib/store.js';
 
@@ -113,13 +113,20 @@ export function render(ctx, params = []) {
 
   /* ---------------- Kế hoạch + lớp chỉnh sửa ---------------- */
   function computePlan() {
-    const p = generatePlan({ ...sel, custom: customBank.all() });
+    const p = generatePlan({ ...sel, custom: customBank.all(), learned: learnedBank.all() });
     for (const is of p.issues) {
       is.cauHoi = is.cauHoi
         .filter((c) => !overlay.removed.includes(c.text))
         .map((c) => (overlay.edited[c.text] ? { ...c, text: overlay.edited[c.text], src: c.src, editedFrom: c.text } : c));
-      (overlay.ai[is.key] || []).forEach((t) => is.cauHoi.push({ id: uid(), text: t, src: 'ai', priority: 'normal' }));
-      (overlay.added[is.key] || []).forEach((t) => is.cauHoi.push({ id: uid(), text: t, src: 'tuy-chinh', priority: 'high', local: true }));
+      // Câu đã có (vd: vừa được học) thì không thêm trùng — nhưng vẫn giữ để sửa/xóa theo lớp chỉnh sửa.
+      const dup = (t) => is.cauHoi.findIndex((c) => c.text.toLowerCase() === t.toLowerCase());
+      const put = (t, item) => {
+        const i = dup(t);
+        if (i >= 0 && is.cauHoi[i].src === 'hoc') is.cauHoi[i] = item;
+        else if (i < 0) is.cauHoi.push(item);
+      };
+      (overlay.ai[is.key] || []).forEach((t) => put(t, { id: uid(), text: t, src: 'ai', priority: 'normal' }));
+      (overlay.added[is.key] || []).forEach((t) => put(t, { id: uid(), text: t, src: 'tuy-chinh', priority: 'high', local: true }));
     }
     p.stats.questions = p.issues.reduce((s, i) => s + i.cauHoi.length, 0);
     return p;
@@ -284,18 +291,23 @@ export function render(ctx, params = []) {
     const head = `<div class="lg-sugg-head">${icon('sparkles', 'ic-sm')}<strong>${sugg.q ? 'Câu hỏi truy tiếp' : 'Gợi ý thêm cho vấn đề'}</strong>${sugg.offline ? '<span class="badge" title="Tạo trên máy, không gửi dữ liệu ra ngoài">Gợi ý ngoại tuyến</span>' : sugg.loading ? '' : `<span class="badge badge-success">${escapeHtml(sugg.label || 'AI')}</span>`}<span class="spacer"></span>${sugg.items?.some((x) => !x.added) ? '<button type="button" class="btn btn-ghost btn-sm" data-sugg-all>Thêm tất cả</button>' : ''}<button type="button" class="btn btn-ghost btn-sm btn-icon" data-sugg-close aria-label="Đóng gợi ý">${icon('x', 'ic-sm')}</button></div>`;
     let bodyHtml;
     if (sugg.loading) bodyHtml = `<p class="lg-sugg-wait">${icon('refresh', 'ic-sm spin')}Đang phân tích…</p>`;
-    else if (sugg.error) bodyHtml = `<p class="lg-sugg-err">${escapeHtml(sugg.error)}</p>`;
-    else bodyHtml = `<ul>${sugg.items.map((x, i) => `<li><span>${escapeHtml(x.text)}</span>${x.added ? `<em>${icon('check', 'ic-sm')}Đã thêm</em>` : `<button type="button" class="btn btn-sm" data-sugg-add="${i}">${icon('plus', 'ic-sm')}Thêm</button>`}</li>`).join('')}</ul>`;
+    else bodyHtml = `${sugg.error ? `<p class="lg-sugg-err" role="alert">${icon('alert', 'ic-sm')}${escapeHtml(sugg.error)}</p>` : ''}${sugg.cached ? `<p class="lg-sugg-note">${icon('clock', 'ic-sm')}Kết quả đã ghi nhớ trên máy, không gửi lại AI. <button type="button" class="link-btn" data-sugg-fresh>Hỏi lại AI</button></p>` : ''}${sugg.switched ? `<p class="lg-sugg-note">${icon('refresh', 'ic-sm')}Nhà cung cấp mặc định lỗi — đã tự chuyển sang ${escapeHtml(sugg.label)}.</p>` : ''}<ul>${sugg.items.map((x, i) => `<li><span>${escapeHtml(x.text)}</span>${x.added ? `<em>${icon('check', 'ic-sm')}Đã thêm</em>` : `<button type="button" class="btn btn-sm" data-sugg-add="${i}">${icon('plus', 'ic-sm')}Thêm</button>`}</li>`).join('')}</ul>`;
     return `<${tag} class="lg-sugg" data-sugg aria-live="polite">${head}${bodyHtml}${sugg.offline && !ctx.hasAI('legal') ? `<p class="lg-sugg-note">${ctx.can('legal.ai') ? 'Thêm API key trong Cài đặt để dùng gợi ý AI.' : 'Phân hệ Tố tụng đang ngoại tuyến — cần quản trị cấp quyền để dùng AI trực tuyến.'}</p>` : ''}</${tag}>`;
   }
 
   /** Gợi ý câu hỏi cho một câu hỏi (truy tiếp) hoặc cho cả vấn đề. */
-  async function suggest(key, qText = null) {
+  /** Gợi ý ngoại tuyến: ưu tiên câu hỏi đã học từ các lần ghi lời khai trước, sau đó là mẫu truy tiếp. */
+  function offlineItems(is, qText) {
+    const have = new Set(is.cauHoi.map((c) => c.text));
+    const learned = learnedBank.of(plan.crime.dieu, is.key).map((x) => x.text);
+    return [...new Set([...learned, ...localFollowUps(qText || is.tieuDe, sel.roleId)])].filter((t) => !have.has(t)).slice(0, 8);
+  }
+
+  async function suggest(key, qText = null, fresh = false) {
     const is = plan.issues.find((i) => i.key === key);
     if (!is) return;
     if (!ctx.hasAI('legal')) {
-      const items = localFollowUps(qText || is.tieuDe, sel.roleId).filter((t) => !is.cauHoi.some((c) => c.text === t));
-      sugg = { key, q: qText, items: items.map((text) => ({ text })), offline: true };
+      sugg = { key, q: qText, items: offlineItems(is, qText).map((text) => ({ text })), offline: true };
       return renderPanel();
     }
     const { provider, apiKey, model, label } = ctx.ai('legal');
@@ -303,11 +315,15 @@ export function render(ctx, params = []) {
     sugg = { key, q: qText, loading: true, token, label };
     renderPanel();
     try {
+      const meta = {};
       const out = await streamClaude({
         provider,
         apiKey,
         model,
         system: INVESTIGATOR_SYSTEM,
+        cache: true,
+        fresh,
+        meta,
         messages: [
           {
             role: 'user',
@@ -318,11 +334,14 @@ export function render(ctx, params = []) {
       if (sugg?.token !== token) return;
       const j = extractJson(out);
       const list = (j?.cauHoi || []).map((x) => (typeof x === 'string' ? x : x?.text)).filter((t) => t && t.trim());
-      sugg = { key, q: qText, label, items: list.map((text) => ({ text: text.trim() })) };
-      if (!list.length) sugg.error = 'AI không trả về gợi ý phù hợp. Thử lại sau.';
+      const used = PROVIDERS[meta.provider]?.label || label;
+      sugg = { key, q: qText, label: used, cached: meta.cached, switched: meta.switched, items: list.map((text) => ({ text: text.trim() })) };
+      if (!list.length) sugg = { key, q: qText, offline: true, error: 'AI không trả về gợi ý đúng định dạng — đang dùng gợi ý ngoại tuyến.', items: offlineItems(is, qText).map((text) => ({ text })) };
     } catch (err) {
       if (sugg?.token !== token) return;
-      sugg = { key, q: qText, error: err.message, items: [] };
+      // Không để trống: báo lỗi rõ ràng và chuyển sang gợi ý ngoại tuyến.
+      sugg = { key, q: qText, offline: true, error: `${err.message} — đang dùng gợi ý ngoại tuyến.`, items: offlineItems(is, qText).map((text) => ({ text })) };
+      toast(err.message, { type: 'error', timeout: 6000 });
     }
     renderPanel();
   }
@@ -332,6 +351,7 @@ export function render(ctx, params = []) {
     if (!x || x.added) return;
     const bucket = sugg.offline ? overlay.added : overlay.ai;
     bucket[sugg.key] = [...(bucket[sugg.key] || []), x.text];
+    learnedBank.learn(plan.crime.dieu, sugg.key, x.text);
     x.added = true;
   }
 
@@ -491,6 +511,7 @@ export function render(ctx, params = []) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
       }
+      if (e.target.closest('[data-sugg-fresh]')) return suggest(sugg.key, sugg.q, true);
       if (e.target.closest('[data-sugg-close]')) {
         sugg = null;
         return renderPanel();
@@ -549,6 +570,7 @@ export function render(ctx, params = []) {
       if (!v) return;
       const key = f.dataset.add;
       overlay.added[key] = [...(overlay.added[key] || []), v];
+      learnedBank.learn(plan.crime.dieu, key, v);
       refresh();
       const input = $(`[data-add="${key}"] input`, main);
       input?.focus();
@@ -591,6 +613,7 @@ export function render(ctx, params = []) {
     if (q.local) overlay.added[key] = (overlay.added[key] || []).filter((t) => t !== q.text);
     else if (q.src === 'ai') overlay.ai[key] = (overlay.ai[key] || []).filter((t) => t !== q.text);
     else if (q.src === 'tuy-chinh' && !silent) customBank.remove(plan.crime.dieu, key, q.text);
+    else if (q.src === 'hoc' && !silent) learnedBank.forget(plan.crime.dieu, key, q.text);
     else if (!silent) overlay.removed.push(q.editedFrom || q.text);
   }
 
@@ -610,6 +633,7 @@ export function render(ctx, params = []) {
         apiKey,
         model,
         system: INVESTIGATOR_SYSTEM,
+        cache: true,
         messages: [{ role: 'user', content: `Tội danh: Điều ${plan.crime.dieu} BLHS — ${plan.crime.ten}\nHành vi: ${plan.hanhVi.map((h) => h.ten).join('; ')}\nĐối tượng lấy lời khai: ${plan.role.ten}\nCác vấn đề hiện có:\n${issues}\n\nĐề xuất bổ sung 6–10 câu hỏi chuyên sâu, sắc bén (đặc biệt về thủ đoạn che giấu, dòng tiền, chứng cứ điện tử, kiến thức chuyên ngành) chưa có trong bộ câu hỏi. Chỉ trả về JSON: {"cauHoi":[{"issueKey":"key vấn đề phù hợp nhất","text":"câu hỏi"}]}` }],
       });
       const j = extractJson(out);
@@ -664,6 +688,7 @@ export function render(ctx, params = []) {
                   apiKey,
                   model,
                   system: INVESTIGATOR_SYSTEM,
+                  cache: true,
                   messages: [{ role: 'user', content: `Tội danh: Điều ${crime.dieu} BLHS — ${crime.ten}\nHành vi vi phạm cần làm rõ: ${ten}\nĐối tượng lấy lời khai: ${getRole(sel.roleId).ten}\nĐề xuất 6–10 câu hỏi đặc thù bám sát hành vi này và 3–5 tài liệu cần thu thập. Chỉ trả về JSON: {"cauHoi":["..."],"taiLieu":["..."]}` }],
                 });
                 const j = extractJson(out) || {};

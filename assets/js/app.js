@@ -1,8 +1,8 @@
 // Ứng dụng chính: khung giao diện, điều hướng theo hash, tài khoản, bảng lệnh.
 import { $, $$, icon, toast, bindThemeToggles, escapeHtml } from './ui.js';
 import { store, docsRepo } from './lib/store.js';
-import { PROVIDERS } from './lib/ai.js';
-import { accounts, vault, SUPER_EMAIL, systemConfig } from './lib/accounts.js';
+import { PROVIDERS, setAIHooks } from './lib/ai.js';
+import { accounts, vault, systemConfig } from './lib/accounts.js';
 import { initUpdates } from './update.js';
 import { DOC_TYPES } from './lib/doc-types.js';
 import { ALL_CRIMES } from './legal/engine.js';
@@ -45,6 +45,40 @@ let view = $('#view');
 let cleanup = null;
 let currentRoute = null;
 let aiCache = { providers: {} }; // Kho API key đã giải mã của tài khoản hiện tại (chỉ trong bộ nhớ).
+
+/* ---------- Độ tin cậy AI: dự phòng nhà cung cấp, ghi nhớ kết quả, nhật ký ---------- */
+const AI_CACHE_MAX = 300;
+function aiLog(entry) {
+  store.set('ai-log', [{ at: Date.now(), ...entry }, ...store.get('ai-log', [])].slice(0, 60));
+}
+setAIHooks({
+  chain() {
+    const order = Object.keys(PROVIDERS);
+    return order.filter((p) => aiCache.providers?.[p]?.key).map((p) => ({ provider: p, apiKey: aiCache.providers[p].key, model: aiCache.providers[p].model || PROVIDERS[p].defaultModel, label: PROVIDERS[p].label }));
+  },
+  options() {
+    const st = ctx.settings();
+    return { fallback: st.aiFallback !== false, cache: st.aiCache !== false };
+  },
+  cacheGet(key) {
+    return store.get('ai-cache', {})[key] || null;
+  },
+  cacheSet(key, value) {
+    const all = store.get('ai-cache', {});
+    all[key] = value;
+    const keys = Object.keys(all);
+    if (keys.length > AI_CACHE_MAX) keys.sort((a, b) => all[a].at - all[b].at).slice(0, keys.length - AI_CACHE_MAX).forEach((k) => delete all[k]);
+    store.set('ai-cache', all);
+  },
+  event(e) {
+    const name = (p) => PROVIDERS[p]?.label || p;
+    if (e.type === 'error') aiLog({ type: 'error', provider: e.provider, message: e.message });
+    if (e.type === 'switch') {
+      aiLog({ type: 'switch', provider: e.to, message: `${name(e.from)} lỗi → chuyển sang ${name(e.to)}` });
+      toast(`${name(e.from)} lỗi (${e.message}) — tự chuyển sang ${name(e.to)}`, { type: 'info', timeout: 6000 });
+    }
+  },
+});
 
 /* ---------- Context chia sẻ cho các màn hình ---------- */
 export const ctx = {
@@ -324,15 +358,12 @@ function gateHtml(mode) {
   const first = !accounts.hasUsers();
   const signup = systemConfig().allowSignup || !accounts.superExists();
   if (mode === 'register' && !signup) mode = 'login';
-  if (first && mode === 'login') mode = 'setup';
-  const isSetup = mode === 'setup';
+  if (first) mode = 'register';
   const isLogin = mode === 'login';
-  const title = isSetup ? 'Thiết lập hệ thống' : isLogin ? 'Đăng nhập' : 'Tạo tài khoản';
-  const sub = isSetup
-    ? `Tạo tài khoản <strong>quản trị tối cao</strong> (${SUPER_EMAIL}). Tài khoản này toàn quyền, cấp quyền cho các tài khoản khác.`
-    : isLogin
-      ? 'Dữ liệu và API key của mỗi tài khoản được lưu, mã hóa riêng trên máy này.'
-      : 'Tài khoản mới có quyền Người dùng; quản trị viên sẽ cấp thêm quyền khi cần.';
+  const title = isLogin ? 'Đăng nhập' : first ? 'Tạo tài khoản đầu tiên' : 'Tạo tài khoản';
+  const sub = isLogin
+    ? 'Dữ liệu và API key của mỗi tài khoản được lưu, mã hóa riêng trên máy này.'
+    : 'Tài khoản mới có quyền Người dùng. Quản trị viên đăng nhập trên máy này để cấp thêm quyền (Tố tụng, AI…).';
   return `
     <div class="gate-card">
       <div class="auth-head">
@@ -342,16 +373,15 @@ function gateHtml(mode) {
       </div>
       <form class="auth-form" data-gate-form="${mode}" novalidate>
         ${isLogin ? '' : `<div class="field"><label for="g-name">Họ và tên</label><input class="input" id="g-name" name="name" autocomplete="name" /></div>`}
-        <div class="field"><label for="g-email">Email</label><input class="input" id="g-email" name="email" type="email" autocomplete="email" ${isSetup ? `value="${SUPER_EMAIL}" readonly` : ''} /></div>
+        <div class="field"><label for="g-email">Email</label><input class="input" id="g-email" name="email" type="email" autocomplete="email" /></div>
         <div class="field"><label for="g-pass">Mật khẩu</label><input class="input" id="g-pass" name="password" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" />${isLogin ? '' : '<span class="hint">Tối thiểu 8 ký tự. Không có cách khôi phục mật khẩu — hãy ghi nhớ cẩn thận.</span>'}</div>
         <div class="auth-err" role="alert" hidden></div>
-        <button class="btn btn-primary btn-lg" type="submit">${isSetup ? 'Tạo tài khoản quản trị' : isLogin ? 'Đăng nhập' : 'Tạo tài khoản'}</button>
+        <button class="btn btn-primary btn-lg" type="submit">${isLogin ? 'Đăng nhập' : 'Tạo tài khoản'}</button>
       </form>
       <p class="auth-switch">
-        ${isSetup ? `Không phải quản trị? <button type="button" data-gate-mode="register">Đăng ký tài khoản thường</button>` : ''}
         ${isLogin && signup ? `Chưa có tài khoản? <button type="button" data-gate-mode="register">Đăng ký</button>` : ''}
         ${isLogin && !signup ? 'Liên hệ quản trị viên để được cấp tài khoản.' : ''}
-        ${mode === 'register' ? `Đã có tài khoản? <button type="button" data-gate-mode="${first ? 'setup' : 'login'}">${first ? 'Thiết lập quản trị' : 'Đăng nhập'}</button>` : ''}
+        ${!isLogin && !first ? `Đã có tài khoản? <button type="button" data-gate-mode="login">Đăng nhập</button>` : ''}
       </p>
       <p class="gate-foot">${icon('lock', 'ic-sm')}Chạy cục bộ trên máy · <a href="index.html">Về trang giới thiệu</a></p>
     </div>`;
@@ -383,6 +413,8 @@ function showGate(mode = 'login') {
       const user = form.dataset.gateForm === 'login' ? await accounts.login(data) : await accounts.register(data);
       await enterApp();
       toast(`Xin chào, ${user.name}!`);
+      const pending = accounts.can('users') ? accounts.pendingCount() : 0;
+      if (pending) toast(`Có ${pending} tài khoản mới đang chờ cấp quyền — vào Quản trị tài khoản để phân quyền`, { type: 'info', timeout: 6000 });
     } catch (ex) {
       err.textContent = ex.message;
       err.hidden = false;

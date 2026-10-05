@@ -49,7 +49,7 @@ export function render(ctx) {
                 <td><span class="badge ${u.role === 'superadmin' ? 'badge-accent' : ''}">${escapeHtml(u.roleLabel)}</span></td>
                 <td><div class="perm-chips">${perms.map((p) => `<span class="pchip ${p.id === 'legal.ai' ? 'warn' : ''}" title="${escapeHtml(p.desc)}">${escapeHtml(p.label)}</span>`).join('')}</div></td>
                 <td>${u.lastLogin ? relativeTime(u.lastLogin) : '<span class="muted">Chưa đăng nhập</span>'}</td>
-                <td>${u.locked ? '<span class="badge badge-warning">Đã khóa</span>' : '<span class="badge badge-success">Hoạt động</span>'}</td>
+                <td>${u.locked ? '<span class="badge badge-warning">Đã khóa</span>' : u.pending ? '<span class="badge badge-accent" data-pending>Chờ cấp quyền</span>' : '<span class="badge badge-success">Hoạt động</span>'}</td>
                 <td class="u-actions">${u.role === 'superadmin' && !isSuper ? '' : `<button class="btn btn-sm" type="button" data-edit>${icon('wand', 'ic-sm')}Phân quyền</button>`}</td>
               </tr>`;
             })

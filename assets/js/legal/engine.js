@@ -232,7 +232,7 @@ export function localFollowUps(question, role = 'bi-can') {
  * @param {object} opts { dieu, hanhViIds: string[], dinhKhung: string[], roleId, custom: {[key]: string[]} }
  * @returns { crime, role, hanhVi, issues, taiLieu, giamDinh, stats }
  */
-export function generatePlan({ dieu, hanhViIds = [], dinhKhung = [], roleId = 'bi-can', custom = {}, customActs } = {}) {
+export function generatePlan({ dieu, hanhViIds = [], dinhKhung = [], roleId = 'bi-can', custom = {}, customActs, learned = {} } = {}) {
   const crime = crimeWithCustomActs(dieu, customActs);
   if (!crime) throw new Error(`Không tìm thấy Điều ${dieu}`);
   const role = getRole(roleId);
@@ -257,6 +257,14 @@ export function generatePlan({ dieu, hanhViIds = [], dinhKhung = [], roleId = 'b
   for (const is of issues) {
     const saved = custom[`${crime.dieu}|${is.key}`] || [];
     saved.forEach((t) => is.cauHoi.push(q(t, 'tuy-chinh', 'high')));
+    // Câu hỏi đã học từ các lần làm trước (tối đa 10 câu mỗi vấn đề, không trùng).
+    const have = new Set(is.cauHoi.map((c) => c.text.toLowerCase()));
+    (learned[`${crime.dieu}|${is.key}`] || [])
+      .slice()
+      .sort((a, b) => b.n - a.n || b.at - a.at)
+      .filter((x) => !have.has(x.text.toLowerCase()))
+      .slice(0, 10)
+      .forEach((x) => is.cauHoi.push({ ...q(x.text, 'hoc', x.n > 1 ? 'high' : 'normal'), uses: x.n }));
   }
 
   const taiLieu = [...new Set([...hanhViList.flatMap((h) => h.taiLieu || []), ...experts.flatMap((e) => e.taiLieu)])];
@@ -279,5 +287,5 @@ export function planToText(plan) {
   return out.join('\n').trim();
 }
 
-export const SOURCE_LABELS = { luat: 'Luật', 'tu-tung': 'Tố tụng', 'nghiep-vu': 'Nghiệp vụ', 'chuyen-mon': 'Chuyên môn', 'tuy-chinh': 'Của tôi', ai: 'AI gợi ý' };
+export const SOURCE_LABELS = { luat: 'Luật', 'tu-tung': 'Tố tụng', 'nghiep-vu': 'Nghiệp vụ', 'chuyen-mon': 'Chuyên môn', 'tuy-chinh': 'Của tôi', ai: 'AI gợi ý', hoc: 'Đã học' };
 export const LEGAL_DISCLAIMER = 'Dữ liệu điều luật được biên soạn theo Bộ luật Hình sự 2015 (sửa đổi, bổ sung 2017, 2025) và Bộ luật Tố tụng hình sự 2015 nhằm hỗ trợ nghiệp vụ. Người sử dụng cần đối chiếu nguyên văn văn bản pháp luật hiện hành và hướng dẫn áp dụng trước khi sử dụng chính thức.';

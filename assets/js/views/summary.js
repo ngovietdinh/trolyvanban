@@ -108,6 +108,7 @@ export function render(ctx) {
         apiKey,
         model,
         signal: controller.signal,
+        cache: true,
         messages: [{ role: 'user', content: `Tóm tắt văn bản sau thành khoảng ${Math.max(3, Math.round(+ratio.value / 8))} ý chính (gạch đầu dòng), sau đó nêu "Kết luận/kiến nghị" (nếu có) và "Từ khóa". Viết tiếng Việt chuẩn mực, không thêm thông tin ngoài văn bản.\n\n---\n${text}` }],
         onText: (_, s) => (target.innerHTML = renderMarkdown(s)),
       });

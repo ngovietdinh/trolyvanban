@@ -114,6 +114,7 @@ test.describe('Trang giới thiệu', () => {
     await expect(page).toHaveURL(/app\.html#compose\/to-trinh/);
     await expect(page.locator('.gate')).toBeVisible();
     await page.fill('#g-name', 'Quản trị');
+    await page.fill('#g-email', 'gsnvbu@gmail.com');
     await page.fill('#g-pass', 'matkhau-toi-cao');
     await page.click('[data-gate-form] button[type="submit"]');
     await expect(page.locator('[data-type="to-trinh"]')).toHaveAttribute('aria-selected', 'true');

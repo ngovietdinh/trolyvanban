@@ -1,7 +1,9 @@
 // Cài đặt: AI (API key mã hóa theo tài khoản, đa nhà cung cấp), thông tin đơn vị, giao diện, cập nhật, dữ liệu.
 import { $, $$, icon, toast, escapeHtml, setTheme, downloadBlob } from '../ui.js';
 import { store, docsRepo, WIPE_KEYS } from '../lib/store.js';
-import { PROVIDERS, MODELS, testApiKey } from '../lib/ai.js';
+import { PROVIDERS, MODELS, testApiKey, listModels } from '../lib/ai.js';
+import { learnedBank } from '../legal/repo.js';
+import { relativeTime } from '../lib/vn-date.js';
 import { audit } from '../lib/accounts.js';
 import { APP_VERSION } from '../version.js';
 import { checkForUpdate, applyUpdate } from '../update.js';
@@ -50,6 +52,8 @@ export function render(ctx) {
             <div class="seg prov-tabs" role="tablist" aria-label="Nhà cung cấp AI">${Object.entries(PROVIDERS).map(([id, p]) => `<button type="button" role="tab" data-prov="${id}" aria-pressed="${id === activeTab}">${p.label}${providers[id]?.key ? ' <span class="dot" style="color:var(--success)"></span>' : ''}</button>`).join('')}</div>
             <div data-prov-form></div>
             <div class="field"><label for="ai-default">Nhà cung cấp mặc định</label><select class="select" id="ai-default" data-default-prov>${Object.entries(PROVIDERS).map(([id, p]) => `<option value="${id}" ${id === (s.aiProvider || 'anthropic') ? 'selected' : ''}>${p.label} (${p.vendor})</option>`).join('')}</select></div>
+            <label class="check"><input type="checkbox" data-ai-fallback ${s.aiFallback !== false ? 'checked' : ''} />Tự chuyển sang nhà cung cấp khác (đã nhập key) khi AI lỗi, quá tải hoặc không phản hồi</label>
+            <label class="check"><input type="checkbox" data-ai-cache ${s.aiCache !== false ? 'checked' : ''} />Ghi nhớ kết quả AI trên máy — yêu cầu giống hệt lần trước dùng lại kết quả, không gửi lại</label>
             <div class="note">${icon('info', 'ic-sm')}<span>Yêu cầu AI được gửi trực tiếp từ trình duyệt tới nhà cung cấp qua HTTPS. ${ctx.can('legal') ? (ctx.can('legal.ai') ? 'Bạn được phép dùng AI trực tuyến trong phân hệ Tố tụng.' : '<strong>Phân hệ Tố tụng luôn chạy ngoại tuyến</strong> — không gửi lời khai, hồ sơ ra ngoài (chưa được cấp quyền AI trực tuyến).') : ''}</span></div>
           </div>
         </div>`
@@ -82,6 +86,18 @@ export function render(ctx) {
           </form>
         </div>
       </section>${ctx.can('legal') ? '' : '-->'}
+
+      <section class="panel">
+        <div class="panel-head"><h2>${icon('layers', 'ic-sm')}Bộ nhớ cục bộ &amp; nhật ký AI</h2></div>
+        <div class="setting-row">
+          <div><h3>Tự học, ghi nhớ trên máy</h3><p>Câu hỏi đã hỏi khi ghi lời khai, gợi ý đã chọn được tự động học và xuất hiện lại trong cây hỏi đáp (nhãn “Đã học”); kết quả AI được ghi nhớ để không phải gọi lại. Dữ liệu chỉ nằm trên máy, theo tài khoản.</p></div>
+          <div class="setting-ctl" data-memory></div>
+        </div>
+        <div class="setting-row">
+          <div><h3>Nhật ký AI</h3><p>Các lỗi và lần tự chuyển nhà cung cấp gần đây — giúp kiểm tra khi AI không phản hồi.</p></div>
+          <div class="setting-ctl" data-ai-log></div>
+        </div>
+      </section>
 
       <section class="panel">
         <div class="panel-head"><h2>${icon('sun', 'ic-sm')}Giao diện</h2></div>
@@ -140,12 +156,22 @@ export function render(ctx) {
     if (!host) return;
     const p = PROVIDERS[activeTab];
     const cur = providers[activeTab] || {};
-    const models = activeTab === 'anthropic' ? MODELS.map((m) => [m.id, m.label]) : p.models.map((m) => [m, m]);
+    const base = activeTab === 'anthropic' ? MODELS.map((m) => [m.id, m.label]) : p.models.map((m) => [m, m]);
+    const fetched = (cur.models || []).filter((m) => !base.some(([v]) => v === m)).map((m) => [m, m]);
+    const models = [...base, ...fetched];
+    const curModel = cur.model || p.defaultModel;
+    const custom = !models.some(([v]) => v === curModel);
     host.innerHTML = `
       <div class="field"><label for="ai-key">API key ${p.label} (${p.vendor})</label>
         <div class="input-pw"><input class="input" type="password" id="ai-key" placeholder="${p.keyHint}" value="${escapeHtml(cur.key ? '••••••••' + cur.key.slice(-4) : '')}" data-masked="${cur.key ? '1' : ''}" autocomplete="off" spellcheck="false" data-key /><button class="btn btn-ghost btn-sm btn-icon" type="button" aria-label="Hiện/ẩn khóa" data-reveal>${icon('eye', 'ic-sm')}</button></div>
         <span class="hint">Tạo khóa tại ${p.console}.${cur.key ? ' Đã lưu khóa kết thúc bằng …' + escapeHtml(cur.key.slice(-4)) + '.' : ''}</span></div>
-      <div class="field"><label for="ai-model">Mô hình</label><input class="input" id="ai-model" list="ai-models" value="${escapeHtml(cur.model || p.defaultModel)}" data-model autocomplete="off" /><datalist id="ai-models">${models.map(([v, l]) => `<option value="${v}">${escapeHtml(l)}</option>`).join('')}</datalist><span class="hint">Có thể nhập tên mô hình khác do ${p.vendor} cung cấp.</span></div>
+      <div class="field"><label for="ai-model-sel">Mô hình</label>
+        <div class="model-row">
+          <select class="select" id="ai-model-sel" data-model-sel>${models.map(([v, l]) => `<option value="${escapeHtml(v)}" ${v === curModel ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}<option value="__custom" ${custom ? 'selected' : ''}>Khác — tự nhập tên mô hình…</option></select>
+          <button class="btn btn-sm" type="button" data-list-models title="Lấy danh sách mô hình mà API key của bạn được dùng">${icon('refresh', 'ic-sm')}Tải danh sách</button>
+        </div>
+        <input class="input" id="ai-model" data-model value="${escapeHtml(curModel)}" placeholder="Tên mô hình, vd: ${escapeHtml(p.defaultModel)}" autocomplete="off" spellcheck="false" ${custom ? '' : 'hidden'} aria-label="Tên mô hình tự nhập" />
+        <span class="hint" data-model-hint>${cur.models?.length ? `${cur.models.length} mô hình lấy từ tài khoản ${p.vendor}.` : `Bấm “Tải danh sách” để lấy đúng các mô hình tài khoản ${p.vendor} của bạn được dùng.`}${cur.key ? ' Đổi mô hình được lưu ngay.' : ''}</span></div>
       <div class="inline">
         <button class="btn btn-primary btn-sm" type="button" data-save-key>${icon('save', 'ic-sm')}Lưu</button>
         <button class="btn btn-sm" type="button" data-test-key>${icon('zap', 'ic-sm')}Kiểm tra kết nối</button>
@@ -160,8 +186,53 @@ export function render(ctx) {
     });
     $('[data-reveal]', host).addEventListener('click', () => (keyInput.type = keyInput.type === 'password' ? 'text' : 'password'));
     const readKey = () => (keyInput.dataset.masked ? cur.key : keyInput.value.trim());
+    const modelSel = $('[data-model-sel]', host);
+    const modelInput = $('[data-model]', host);
+    const saveModelIfKey = async () => {
+      const m = modelInput.value.trim();
+      if (!cur.key || !m || m === cur.model) return;
+      providers[activeTab] = { ...cur, model: m };
+      await ctx.saveAiProviders(providers);
+      Object.assign(cur, providers[activeTab]);
+      syncState();
+      toast(`Đã chọn mô hình ${m} cho ${p.label}`);
+    };
+    modelSel.addEventListener('change', () => {
+      const custom = modelSel.value === '__custom';
+      modelInput.hidden = !custom;
+      if (custom) {
+        modelInput.focus();
+        modelInput.select();
+      } else {
+        modelInput.value = modelSel.value;
+        saveModelIfKey();
+      }
+    });
+    modelInput.addEventListener('change', saveModelIfKey);
+    $('[data-list-models]', host).addEventListener('click', async (e) => {
+      const k = readKey();
+      if (!k) return toast(`Nhập API key ${p.label} trước để tải danh sách mô hình`, { type: 'error' });
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.innerHTML = `${icon('refresh', 'ic-sm spin')}Đang tải…`;
+      try {
+        const list = await listModels(activeTab, k);
+        if (!list.length) throw new Error('Không có mô hình nào khả dụng cho API key này.');
+        if (cur.key) {
+          providers[activeTab] = { ...cur, models: list };
+          await ctx.saveAiProviders(providers);
+        } else cur.models = list;
+        Object.assign(cur, providers[activeTab] || {});
+        renderProvForm();
+        toast(`Đã tải ${list.length} mô hình của ${p.label}`);
+      } catch (err) {
+        toast(err.message, { type: 'error', timeout: 6000 });
+        btn.disabled = false;
+        btn.innerHTML = `${icon('refresh', 'ic-sm')}Tải danh sách`;
+      }
+    });
     const save = async (k) => {
-      providers[activeTab] = { key: k, model: $('[data-model]', host).value.trim() || p.defaultModel };
+      providers[activeTab] = { ...cur, key: k, model: modelInput.value.trim() || p.defaultModel };
       await ctx.saveAiProviders(providers);
       if (!ctx.settings().aiProvider || !providers[ctx.settings().aiProvider]?.key) {
         ctx.saveSettings({ aiProvider: activeTab });
@@ -189,7 +260,7 @@ export function render(ctx) {
       btn.disabled = true;
       btn.innerHTML = `${icon('refresh', 'ic-sm spin')}Đang kiểm tra…`;
       try {
-        await testApiKey(k, $('[data-model]', host).value.trim(), activeTab);
+        await testApiKey(k, modelInput.value.trim(), activeTab);
         await save(k);
         renderProvForm();
         syncState();
@@ -223,6 +294,43 @@ export function render(ctx) {
     toast(`Nhà cung cấp mặc định: ${PROVIDERS[e.target.value].label}`);
   });
   renderProvForm();
+  $('[data-ai-fallback]', root)?.addEventListener('change', (e) => {
+    ctx.saveSettings({ aiFallback: e.target.checked });
+    toast(e.target.checked ? 'Đã bật tự chuyển nhà cung cấp khi AI lỗi' : 'Đã tắt tự chuyển nhà cung cấp');
+  });
+  $('[data-ai-cache]', root)?.addEventListener('change', (e) => {
+    ctx.saveSettings({ aiCache: e.target.checked });
+    toast(e.target.checked ? 'Đã bật ghi nhớ kết quả AI' : 'Đã tắt ghi nhớ kết quả AI');
+  });
+
+  function renderMemory() {
+    const host = $('[data-memory]', root);
+    const nCache = Object.keys(store.get('ai-cache', {})).length;
+    const nLearn = learnedBank.count();
+    host.innerHTML = `<div class="mem-stats"><div><strong data-mem-learn>${nLearn}</strong><span>câu hỏi đã học</span></div><div><strong data-mem-cache>${nCache}</strong><span>kết quả AI đã ghi nhớ</span></div></div>
+      <div class="inline"><button class="btn btn-sm btn-ghost" type="button" data-clear-learn ${nLearn ? '' : 'disabled'}>${icon('trash', 'ic-sm')}Xóa câu hỏi đã học</button><button class="btn btn-sm btn-ghost" type="button" data-clear-cache ${nCache ? '' : 'disabled'}>${icon('trash', 'ic-sm')}Xóa kết quả AI đã ghi nhớ</button></div>`;
+    $('[data-clear-learn]', host).addEventListener('click', async () => {
+      if (!(await ctx.confirm('Xóa toàn bộ câu hỏi hệ thống đã tự học?', { title: 'Xóa bộ nhớ', okText: 'Xóa', danger: true }))) return;
+      learnedBank.clear();
+      renderMemory();
+      toast('Đã xóa câu hỏi đã học');
+    });
+    $('[data-clear-cache]', host).addEventListener('click', () => {
+      store.remove('ai-cache');
+      renderMemory();
+      toast('Đã xóa kết quả AI đã ghi nhớ');
+    });
+    const logHost = $('[data-ai-log]', root);
+    const log = store.get('ai-log', []).slice(0, 12);
+    logHost.innerHTML = log.length
+      ? `<ul class="ai-log">${log.map((l) => `<li class="${l.type}"><span class="badge ${l.type === 'error' ? 'badge-warning' : ''}">${l.type === 'error' ? 'Lỗi' : 'Chuyển'}</span><span><strong>${escapeHtml(PROVIDERS[l.provider]?.label || l.provider || '')}</strong> — ${escapeHtml(l.message || '')}</span><small>${relativeTime(l.at)}</small></li>`).join('')}</ul><button class="btn btn-sm btn-ghost" type="button" data-clear-log>${icon('trash', 'ic-sm')}Xóa nhật ký</button>`
+      : `<p class="hint">Chưa ghi nhận lỗi AI nào.</p>`;
+    $('[data-clear-log]', logHost)?.addEventListener('click', () => {
+      store.remove('ai-log');
+      renderMemory();
+    });
+  }
+  renderMemory();
 
   $('[data-check-update]', root).addEventListener('click', async (e) => {
     const out = $('[data-update-out]', root);

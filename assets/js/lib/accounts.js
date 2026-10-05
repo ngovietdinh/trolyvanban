@@ -137,6 +137,8 @@ export const accounts = {
   hasUsers: () => users().length > 0,
   superExists: () => users().some((u) => u.role === 'superadmin'),
   list: () => users().map(publicUser),
+  /** Số tài khoản tự đăng ký đang chờ quản trị cấp quyền. */
+  pendingCount: () => users().filter((u) => u.pending).length,
 
   current() {
     const s = sessionStore.get('session');
@@ -165,7 +167,7 @@ export const accounts = {
     const superAcc = isSuperEmail(email);
     if (!superAcc && !systemConfig().allowSignup) throw new Error('Đăng ký đang tắt. Liên hệ quản trị viên để được cấp tài khoản.');
     const cred = await buildCredentials(password);
-    const user = { id: uid(), name: name.trim(), email, pwHash: cred.pwHash, pwSalt: cred.pwSalt, iter: cred.iter, vault: null, role: superAcc ? 'superadmin' : 'user', perms: {}, locked: false, createdAt: Date.now(), lastLogin: Date.now() };
+    const user = { id: uid(), name: name.trim(), email, pwHash: cred.pwHash, pwSalt: cred.pwSalt, iter: cred.iter, vault: null, role: superAcc ? 'superadmin' : 'user', perms: {}, locked: false, pending: !superAcc, createdAt: Date.now(), lastLogin: Date.now() };
     saveUsers([...all, user]);
     startSession(user, cred.vaultKey);
     if (superAcc) await migrateLegacy(user, cred.vaultKey);
@@ -277,6 +279,7 @@ export const accounts = {
       u.locked = !!locked;
       changes.push(locked ? 'khóa tài khoản' : 'mở khóa tài khoản');
     }
+    u.pending = false;
     saveUsers(all);
     if (changes.length) audit('Cập nhật tài khoản', `${u.email}: ${changes.join(', ')}`);
     return publicUser(u);

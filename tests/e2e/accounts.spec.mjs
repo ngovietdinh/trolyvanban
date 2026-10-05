@@ -19,13 +19,15 @@ async function logout(page) {
 }
 
 test.describe('Tài khoản và phân quyền', () => {
-  test('lần đầu: thiết lập quản trị tối cao gsnvbu@gmail.com, có toàn quyền', async ({ page }) => {
+  test('lần đầu: màn hình đăng ký không gắn sẵn email; đăng ký bằng email quản trị tối cao → toàn quyền', async ({ page }) => {
     const t = trackErrors(page);
     await freshApp(page, '', { login: false });
-    await expect(page.locator('.gate h2')).toHaveText('Thiết lập hệ thống');
-    await expect(page.locator('#g-email')).toHaveValue('gsnvbu@gmail.com');
-    await expect(page.locator('#g-email')).toHaveAttribute('readonly', '');
+    await expect(page.locator('.gate h2')).toHaveText('Tạo tài khoản đầu tiên');
+    await expect(page.locator('#g-email')).toHaveValue('');
+    await expect(page.locator('#g-email')).not.toHaveAttribute('readonly', '');
+    await expect(page.locator('.gate')).not.toContainText('gsnvbu');
     await page.fill('#g-name', SUPER.name);
+    await page.fill('#g-email', SUPER.email);
     await page.fill('#g-pass', '123');
     await page.click('[data-gate-form] button[type="submit"]');
     await expect(page.locator('.gate .auth-err')).toContainText('tối thiểu 8');
@@ -38,6 +40,33 @@ test.describe('Tài khoản và phân quyền', () => {
     expect(raw).not.toContain(SUPER.password);
     expect(JSON.parse(raw)[0].role).toBe('superadmin');
     t.assertClean();
+  });
+
+  test('người khác đăng ký email khác trước → tài khoản thường; quản trị tối cao đăng ký sau, thấy “chờ cấp quyền” và phân quyền ngay trên máy', async ({ page }) => {
+    await freshApp(page, '', { login: false });
+    await page.fill('#g-name', 'Phạm Văn Nam');
+    await page.fill('#g-email', 'nam@donvi.vn');
+    await page.fill('#g-pass', 'matkhau123');
+    await page.click('[data-gate-form] button[type="submit"]');
+    await expect(page.locator('.shell')).toBeVisible();
+    await expect(page.locator('[data-nav="admin"]')).toBeHidden();
+    await expect(page.locator('[data-nav="legal"]')).toBeHidden();
+    await logout(page);
+    await page.click('[data-gate-mode="register"]');
+    await page.fill('#g-name', SUPER.name);
+    await page.fill('#g-email', SUPER.email);
+    await page.fill('#g-pass', SUPER.password);
+    await page.click('[data-gate-form] button[type="submit"]');
+    await expect(page.locator('.toast', { hasText: '1 tài khoản mới đang chờ cấp quyền' })).toBeVisible();
+    await page.goto('/app.html#admin');
+    const row = page.locator('tr', { hasText: 'nam@donvi.vn' });
+    await expect(row.locator('[data-pending]')).toHaveText('Chờ cấp quyền');
+    await row.locator('[data-edit]').click();
+    await page.locator('.modal [name="role"]').selectOption('investigator');
+    await page.locator('.modal button[type="submit"]').click();
+    await expect(row.locator('[data-pending]')).toHaveCount(0);
+    await loginAs(page, 'nam@donvi.vn', 'matkhau123');
+    await expect(page.locator('[data-nav="legal"]')).toBeVisible();
   });
 
   test('tài khoản tự đăng ký chỉ có quyền Người dùng: không thấy Tố tụng, không vào được bằng đường dẫn', async ({ page }) => {
@@ -212,6 +241,7 @@ test.describe('Tài khoản và phân quyền', () => {
     });
     await page.reload();
     await page.fill('#g-name', SUPER.name);
+    await page.fill('#g-email', SUPER.email);
     await page.fill('#g-pass', SUPER.password);
     await page.click('[data-gate-form] button[type="submit"]');
     await expect(page.locator('[data-docs-count]')).toHaveText('1');

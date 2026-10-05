@@ -1,10 +1,11 @@
 // Ghi lời khai / hỏi cung trực tiếp theo kế hoạch, có trợ lý phân tích (AI hoặc cục bộ) và xuất biên bản.
 import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, debounce } from '../ui.js';
-import { recordsRepo, casesRepo } from '../legal/repo.js';
-import { buildRecordDocument, PERSON_FIELDS, newRecord, prefillQa } from '../legal/record.js';
+import { recordsRepo, casesRepo, learnedBank } from '../legal/repo.js';
+import { buildRecordDocument, PERSON_FIELDS, newRecord, prefillQa, parsePastedQa, planPastedQa, applyPastedQa } from '../legal/record.js';
+import { streamClaude, extractJson } from '../lib/ai.js';
 import { ROLES, getRole, canCuText } from '../legal/roles.js';
 import { findCrime, generatePlan } from '../legal/engine.js';
-import { aiSuggest, aiContradictions, aiCoverage, aiNormalize, localSuggest, localContradictions, localCoverage, localNormalize } from '../legal/assist.js';
+import { aiSuggest, aiContradictions, aiCoverage, aiNormalize, localSuggest, localContradictions, localCoverage, localNormalize, INVESTIGATOR_SYSTEM } from '../legal/assist.js';
 import { renderDocumentHtml } from '../lib/render-html.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { relativeTime } from '../lib/vn-date.js';
@@ -81,6 +82,7 @@ export function render(ctx, params = []) {
         </div>
         <div class="inline">
           <button class="btn btn-sm btn-ghost" type="button" data-info title="Thông tin biên bản" aria-label="Thông tin biên bản">${icon('clipboard', 'ic-sm')}<span class="btn-label">Thông tin biên bản</span></button>
+          <button class="btn btn-sm btn-ghost" type="button" data-paste title="Dán văn bản ghi chép và chuyển thành hỏi – đáp theo mẫu biên bản" aria-label="Dán và chuyển đổi">${icon('quote', 'ic-sm')}<span class="btn-label">Dán &amp; chuyển đổi</span></button>
           <button class="btn btn-sm btn-ghost" type="button" data-preview title="Xem biên bản" aria-label="Xem biên bản">${icon('eye', 'ic-sm')}<span class="btn-label">Xem biên bản</span></button>
           <button class="btn btn-sm" type="button" data-export title="Xuất Word" aria-label="Xuất biên bản Word">${icon('download', 'ic-sm')}<span class="btn-label">Xuất Word</span></button>
           <button class="btn btn-sm btn-dark" type="button" data-finish title="Kết thúc biên bản" aria-label="Kết thúc biên bản">${icon('check', 'ic-sm')}<span class="btn-label" data-finish-label>Kết thúc</span></button>
@@ -312,6 +314,8 @@ export function render(ctx, params = []) {
       if (current.issueId && !(rec.coverage || {})[current.issueId]) rec.coverage = { ...(rec.coverage || {}), [current.issueId]: 'mot-phan' };
     }
     if (rec.status === 'hoan-thanh') rec.status = 'dang-ghi';
+    // Tự học: câu hỏi đã hỏi và có trả lời được ghi nhớ cho tội danh/vấn đề này.
+    if (a && rec.plan?.dieu) learnedBank.learn(rec.plan.dieu, current.issueId, q);
     save();
     const editedIndex = current.editIndex;
     cancelEdit();
@@ -445,7 +449,12 @@ export function render(ctx, params = []) {
       const args = { ...ctx.ai('legal'), rec, crime, signal: controller.signal };
       aiResults[kind] = kind === 'suggest' ? await aiSuggest(args) : kind === 'contra' ? await aiContradictions({ ...args, others }) : await aiCoverage(args);
     } catch (err) {
-      aiResults[kind] = { error: err.message };
+      if (/^Đã dừng/.test(err.message)) aiResults[kind] = { error: err.message };
+      else {
+        // AI lỗi → báo rõ và dùng phân tích ngoại tuyến để không bị gián đoạn.
+        aiResults[kind] = kind === 'suggest' ? localSuggest(rec) : kind === 'contra' ? localContradictions(rec, others) : localCoverage(rec);
+        toast(`${err.message} — đã chuyển sang phân tích ngoại tuyến.`, { type: 'error', timeout: 7000 });
+      }
     } finally {
       controller = null;
       renderAi();
@@ -539,6 +548,91 @@ export function render(ctx, params = []) {
     );
   }
 
+  /* ----- Dán văn bản ghi chép → hỏi – đáp theo mẫu biên bản ----- */
+  function pasteDialog() {
+    const pendingN = (rec.qa || []).filter((x) => !String(x.a || '').trim()).length;
+    let items = [];
+    ctx.modal(
+      `<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button>
+      <h2 class="modal-title">Dán &amp; chuyển đổi thành biên bản</h2>
+      <p class="hint" style="margin-bottom:12px">Dán nội dung ghi chép (có dạng “Hỏi: … / Trả lời: …” hoặc chỉ các đoạn trả lời). ${pendingN ? `Đoạn trả lời không kèm câu hỏi sẽ được ghép lần lượt với <strong>${pendingN} câu hỏi chưa trả lời</strong>.` : 'Văn bản không có câu hỏi sẽ được thêm thành lượt mới.'}</p>
+      <div class="paste-grid">
+        <div class="field"><label for="ps-text">Nội dung dán vào</label><textarea class="textarea" rows="12" id="ps-text" data-ps-text placeholder="Hỏi: Anh cho biết…&#10;Trả lời: Tôi…"></textarea>
+          <label class="check" style="margin-top:8px"><input type="checkbox" data-ps-norm checked />Chuẩn hóa văn phong biên bản (ngôi thứ nhất, chính tả, dấu câu)</label>
+          <div class="inline" style="margin-top:10px">
+            <button class="btn btn-primary btn-sm" type="button" data-ps-run>${icon('refresh', 'ic-sm')}Chuyển đổi</button>
+            <button class="btn btn-sm" type="button" data-ps-ai title="${ctx.hasAI('legal') ? 'AI tách câu hỏi – câu trả lời và chuẩn hóa văn phong' : 'Cần được cấp quyền AI trực tuyến trong Tố tụng và có API key'}">${icon('sparkles', 'ic-sm')}Chuyển đổi bằng AI</button>
+          </div>
+        </div>
+        <div class="field"><label>Xem trước theo mẫu biên bản</label><div class="ps-out" data-ps-out><p class="hint">Bấm “Chuyển đổi” để xem trước.</p></div></div>
+      </div>
+      <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-ps-apply disabled>${icon('check', 'ic-sm')}Đưa vào biên bản</button></div>`,
+      {
+        className: 'modal-wide modal-xl',
+        label: 'Dán và chuyển đổi',
+        onMount(box, close) {
+          const ta = box.querySelector('[data-ps-text]');
+          const out = box.querySelector('[data-ps-out]');
+          const applyBtn = box.querySelector('[data-ps-apply]');
+          const norm = () => box.querySelector('[data-ps-norm]').checked;
+          ta.focus();
+          const show = () => {
+            applyBtn.disabled = !items.length;
+            out.innerHTML = items.length
+              ? `<ol class="ps-list">${items
+                  .map((it) => `<li><p><strong>Hỏi:</strong> ${escapeHtml(it.q)}</p><p><strong>Trả lời:</strong> ${escapeHtml(it.a || '…')}</p><small class="${it.index >= 0 ? 'ok' : ''}">${it.index >= 0 ? `Điền vào lượt ${it.index + 1} (câu hỏi đã có)` : 'Thêm lượt mới'}</small></li>`)
+                  .join('')}</ol>`
+              : '<p class="hint">Không tìm thấy nội dung để chuyển đổi.</p>';
+          };
+          box.querySelector('[data-ps-run]').addEventListener('click', () => {
+            const parsed = parsePastedQa(ta.value);
+            items = planPastedQa(rec, parsed).map((it) => ({ ...it, a: norm() ? localNormalize(it.a) : it.a }));
+            show();
+          });
+          box.querySelector('[data-ps-ai]').addEventListener('click', async (e) => {
+            if (!ctx.hasAI('legal')) {
+              toast(ctx.can('legal.ai') ? 'Thêm API key trong Cài đặt để dùng AI' : 'Phân hệ Tố tụng đang ngoại tuyến — dùng “Chuyển đổi” (chạy trên máy)', { type: 'info', timeout: 4500 });
+              return;
+            }
+            if (!ta.value.trim()) return ta.focus();
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            btn.innerHTML = `${icon('refresh', 'ic-sm spin')}AI đang chuyển đổi…`;
+            try {
+              const pend = (rec.qa || []).filter((x) => !String(x.a || '').trim()).map((x) => x.q);
+              const out2 = await streamClaude({
+                ...ctx.ai('legal'),
+                system: INVESTIGATOR_SYSTEM,
+                cache: true,
+                messages: [{ role: 'user', content: `Chuyển nội dung ghi chép dưới đây thành các cặp hỏi – đáp theo mẫu biên bản ghi lời khai. Câu trả lời viết ở ngôi thứ nhất (“Tôi…”), câu đầy đủ, đúng chính tả; giữ nguyên tuyệt đối ý, số liệu, tên riêng; không thêm thông tin.${pend.length ? `\nNếu đoạn nào chỉ là câu trả lời, ghép lần lượt với các câu hỏi chưa trả lời sau (chép NGUYÊN VĂN câu hỏi):\n${pend.map((q, i) => `${i + 1}. ${q}`).join('\n')}` : ''}\nChỉ trả về JSON: {"qa":[{"q":"câu hỏi","a":"câu trả lời"}]}\n\n---\n${ta.value}` }],
+              });
+              const j = extractJson(out2);
+              const pairs = (j?.qa || []).filter((x) => x && (x.q || x.a)).map((x) => ({ q: String(x.q || ''), a: String(x.a || '') }));
+              if (!pairs.length) throw new Error('AI không trả về nội dung đúng định dạng — hãy dùng “Chuyển đổi” (chạy trên máy).');
+              items = planPastedQa(rec, { pairs, paragraphs: [] });
+              show();
+            } catch (err) {
+              toast(err.message, { type: 'error', timeout: 6000 });
+            } finally {
+              btn.disabled = false;
+              btn.innerHTML = `${icon('sparkles', 'ic-sm')}Chuyển đổi bằng AI`;
+            }
+          });
+          applyBtn.addEventListener('click', () => {
+            const r = applyPastedQa(rec, items, uid);
+            if (rec.plan?.dieu) items.forEach((it) => it.a && it.q && !/^\[/.test(it.q) && learnedBank.learn(rec.plan.dieu, rec.qa.find((x) => x.q === it.q)?.issueId, it.q));
+            if (rec.status === 'hoan-thanh') rec.status = 'dang-ghi';
+            rec = recordsRepo.save(rec);
+            close();
+            renderTranscript();
+            renderPlan();
+            toast(`Đã đưa vào biên bản: ${r.filled} câu trả lời cho câu hỏi có sẵn, ${r.added} lượt mới`);
+          });
+        },
+      },
+    );
+  }
+
   function rightsDialog() {
     const r = role();
     ctx.modal(
@@ -613,6 +707,7 @@ export function render(ctx, params = []) {
   }
 
   $('[data-info]', root).addEventListener('click', infoDialog);
+  $('[data-paste]', root).addEventListener('click', pasteDialog);
   $('[data-preview]', root).addEventListener('click', previewDialog);
   $('[data-export]', root).addEventListener('click', exportDocx);
   $('[data-finish]', root).addEventListener('click', async () => {

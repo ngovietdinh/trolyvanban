@@ -17,6 +17,14 @@ Nền tảng soạn thảo văn bản hành chính tiếng Việt, trình bày �
 | **Kho tài liệu** | Lưu, tìm kiếm không dấu, gắn sao, nhân bản, xuất Word, sao lưu / khôi phục JSON. |
 | **Khác** | Tài khoản cục bộ, bảng lệnh `Ctrl + K`, phím tắt `Ctrl + S`, giao diện sáng/tối, tối ưu di động. |
 
+## Độ tin cậy AI & bộ nhớ cục bộ
+
+- **Chọn mô hình** bằng danh sách cho từng nhà cung cấp; nút “Tải danh sách” lấy đúng các mô hình mà API key được dùng; có thể tự nhập tên mô hình. Đổi mô hình được lưu ngay.
+- **Tự chuyển nhà cung cấp**: khi AI lỗi (sai key, hết hạn mức, máy chủ lỗi, không phản hồi sau 90 giây) hệ thống tự chuyển sang nhà cung cấp khác đã nhập key và báo cho người dùng; nếu tất cả đều lỗi, thông báo gộp nêu rõ lỗi của từng nhà cung cấp. Trong phân hệ Tố tụng, AI lỗi thì tự dùng phân tích/gợi ý ngoại tuyến.
+- **Nhật ký AI** trong Cài đặt: các lỗi và lần tự chuyển gần đây.
+- **Ghi nhớ kết quả AI** trên máy: yêu cầu giống hệt lần trước dùng lại kết quả, không gửi lại (có nút “Hỏi lại AI”).
+- **Tự học câu hỏi**: câu hỏi đã hỏi khi ghi lời khai, gợi ý đã chọn được ghi nhớ theo tội danh/vấn đề và tự xuất hiện lại trong cây hỏi đáp với nhãn “Đã học”.
+
 ## Tài khoản, phân quyền & bảo mật
 
 Ứng dụng **bắt buộc đăng nhập** và chạy hoàn toàn cục bộ: tài khoản, dữ liệu, API key đều lưu trên máy người dùng.
@@ -28,6 +36,7 @@ Nền tảng soạn thảo văn bản hành chính tiếng Việt, trình bày �
 | **Điều tra viên** | Văn bản, công cụ, AI, Tố tụng |
 | **Người dùng** | Văn bản, công cụ, AI |
 
+- **Đăng ký**: màn hình đăng ký không gắn sẵn email. Ai đăng ký bằng email quản trị tối cao sẽ tự động có toàn quyền; email khác là tài khoản **Người dùng**, hiện nhãn “Chờ cấp quyền” — quản trị đăng nhập ngay trên máy đó để phân quyền (được nhắc khi đăng nhập).
 - Mỗi quyền có thể bật/tắt riêng cho từng tài khoản (màn hình **Quản trị tài khoản**). Có nhật ký hoạt động, khóa tài khoản, đặt lại mật khẩu, bật/tắt tự đăng ký.
 - **Phân hệ Tố tụng** chỉ hiện với tài khoản được cấp quyền và được ẩn khỏi trang giới thiệu công khai. Quyền **“AI trực tuyến trong Tố tụng”** mặc định tắt với mọi vai trò — khi chưa được cấp, mọi phân tích lời khai chạy ngoại tuyến, không gửi dữ liệu ra ngoài.
 - Dữ liệu (văn bản, hồ sơ, biên bản, lịch sử) **tách riêng theo tài khoản**.
@@ -50,6 +59,7 @@ Nền tảng soạn thảo văn bản hành chính tiếng Việt, trình bày �
 | **Cây hỏi đáp pháp luật** (`#legal`) | Lĩnh vực → nhóm → tội danh → hành vi vi phạm. Phủ 4 lĩnh vực: **Kinh tế** (Chương XVIII, Điều 174, 175), **Chức vụ – tham nhũng** (Chương XXIII), **Môi trường** (Chương XIX, Điều 232–234), **Y tế – an toàn công cộng** (Điều 129, 139, 295, 298, 313, 315, 317). Mỗi điều luật có khách thể, chủ thể, lỗi, dấu hiệu định tội, các hành vi, tình tiết định khung và lĩnh vực chuyên môn liên quan. |
 | **Bộ máy sinh câu hỏi** (`assets/js/legal/engine.js`) | Kết hợp 4 lớp: luật hình sự (cấu thành, định khung, Điều 51, 52), luật tố tụng (Điều 85 BLTTHS, quyền của người tham gia tố tụng), nghiệp vụ điều tra (5W1H, đồng phạm, dòng tiền, vật chứng) và chuyên môn ngành (tài chính, đấu thầu, xây dựng, ngân hàng, thuế, hải quan, đất đai, môi trường, y dược, ATTP, PCCC…). Câu hỏi thay đổi theo đối tượng: bị can, người bị tạm giữ, người bị tố giác, người làm chứng, người tố giác, người có quyền lợi liên quan, bị hại. |
 | **Tinh chỉnh** | Thêm, sửa, xóa câu hỏi; lưu câu hỏi vào “bộ câu hỏi của tôi” để tự xuất hiện lần sau; **gợi ý AI cho từng câu hỏi** (câu hỏi truy tiếp) và cho từng vấn đề — khi chưa được cấp AI thì dùng gợi ý ngoại tuyến; **thêm hành vi vi phạm thủ công** (tên, câu hỏi đặc thù, tài liệu cần thu thập); sơ đồ cây trực quan; xuất kế hoạch hỏi ra Word. |
+| **Dán & chuyển đổi** | Trong màn hình ghi lời khai: dán nội dung ghi chép (dạng “Hỏi:/Trả lời:” hoặc chỉ các đoạn trả lời) → “Chuyển đổi” (chạy trên máy, chuẩn hóa văn phong) hoặc “Chuyển đổi bằng AI” → xem trước → đưa vào biên bản; đoạn trả lời rời được ghép lần lượt với các câu hỏi chưa trả lời. |
 | **Phiếu hỏi** | “Phiếu hỏi Word”: xuất biên bản có sẵn toàn bộ câu hỏi của cây, phần trả lời để dòng chấm điền tay; hoặc đưa sẵn toàn bộ câu hỏi vào biên bản khi bắt đầu ghi / bằng nút “Thêm tất cả câu hỏi vào biên bản”. |
 | **Ghi lời khai** (`#interview`) | Biên bản hỏi cung bị can / biên bản ghi lời khai: kế hoạch hỏi bên trái (đánh dấu đã hỏi, mức độ làm rõ từng vấn đề), ghi hỏi – đáp ở giữa, trợ lý phân tích bên phải (gợi ý câu hỏi truy tiếp, phát hiện mâu thuẫn trong và giữa các lời khai, đánh giá mức độ làm rõ, chuẩn hóa văn phong). Thông báo quyền – nghĩa vụ, xuất biên bản Word đúng thể thức với đủ chữ ký. Mẫu biên bản theo BLTTHS 2015 sửa đổi, bổ sung năm 2021, 2025 (Luật 99/2025/QH15): căn cứ theo tư cách người khai (bị can Điều 178, 183, 184; người làm chứng Điều 185–187; bị hại, người liên quan Điều 187, 188; người bị giữ/bắt/tạm giữ Điều 58, 59; giai đoạn giải quyết nguồn tin Điều 145, 147), ghi âm/ghi hình hỏi cung tại trụ sở (khoản 6 Điều 183), số trang, ký từng trang; “Mẫu số / Ban hành kèm theo Thông tư …” cấu hình trong Cài đặt. |
 | **Hồ sơ vụ án** (`#cases`) | Thông tin vụ án, người tham gia tố tụng, kế hoạch hỏi, danh sách biên bản, đối chiếu mâu thuẫn giữa các lời khai. |
