@@ -8,7 +8,7 @@ export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 export { escapeHtml };
 
-export function toast(message, { type = 'success', timeout = 2800 } = {}) {
+export function toast(message, { type = 'success', timeout = 2800, action = null } = {}) {
   let host = $('.toasts');
   if (!host) {
     host = document.createElement('div');
@@ -19,7 +19,13 @@ export function toast(message, { type = 'success', timeout = 2800 } = {}) {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.setAttribute('role', type === 'error' ? 'alert' : 'status');
-  el.innerHTML = `${icon(type === 'error' ? 'alert' : type === 'info' ? 'info' : 'check-circle')}<span>${escapeHtml(message)}</span>`;
+  el.innerHTML = `${icon(type === 'error' ? 'alert' : type === 'info' ? 'info' : 'check-circle')}<span>${escapeHtml(message)}</span>${action ? `<button type="button" class="toast-action">${escapeHtml(action.label)}</button>` : ''}`;
+  if (action) {
+    el.querySelector('.toast-action').addEventListener('click', () => {
+      action.onClick();
+      el.remove();
+    });
+  }
   host.append(el);
   setTimeout(() => {
     el.classList.add('leaving');
@@ -132,8 +138,10 @@ export function renderMarkdown(md) {
 
 export function debounce(fn, ms = 200) {
   let t;
-  return (...args) => {
+  const d = (...args) => {
     clearTimeout(t);
     t = setTimeout(() => fn(...args), ms);
   };
+  d.cancel = () => clearTimeout(t);
+  return d;
 }

@@ -1,8 +1,9 @@
 {
-  "version": "2.3.0",
+  "version": "2.4.0",
   "date": "2026-10-05",
   "notes": [
-    "Biên bản ghi lời khai, hỏi cung theo Mẫu số 140 (TT 128/2025/TT-BCA)",
-    "Thêm nhà cung cấp AI Groq"
+    "Toàn bộ Phần các tội phạm Bộ luật Hình sự (Chương XIII–XXVI) trong cây hỏi đáp, chia 17 lĩnh vực",
+    "Cập nhật Bộ luật từ văn bản chính thức (Word / dán toàn văn): nguyên văn điều, định khung theo khoản",
+    "Xóa biên bản lời khai: từng biên bản, chọn nhiều, có hoàn tác"
   ]
 }

@@ -1,6 +1,7 @@
 // Hồ sơ vụ án: thông tin vụ án, người tham gia tố tụng, kế hoạch hỏi, biên bản, đối chiếu lời khai.
 import { $, $$, icon, toast, escapeHtml } from '../ui.js';
 import { casesRepo, recordsRepo, plansRepo, deleteCase } from '../legal/repo.js';
+import { confirmDeleteRecords } from './interview.js';
 import { PERSON_FIELDS, newRecord } from '../legal/record.js';
 import { ROLES, getRole } from '../legal/roles.js';
 import { findCrime, generatePlan } from '../legal/engine.js';
@@ -192,7 +193,7 @@ export function render(ctx, params = []) {
       body.innerHTML = `<div class="panel-head"><h2>${icon('message', 'ic-sm')}Biên bản lời khai</h2></div>${
         recs.length
           ? `<ul class="doc-list">${recs
-              .map((r) => `<li class="doc-item"><span class="doc-icon">${r.roleId === 'bi-can' ? 'HC' : 'LK'}</span><div class="doc-meta"><a href="#interview/${r.id}">${escapeHtml(r.nguoiKhai?.hoTen || 'Chưa ghi tên')} — lần ${r.lan || 1}</a><small>${escapeHtml(getRole(r.roleId).ten.split('/')[0])} · ${r.ngay ? r.ngay.split('-').reverse().join('/') : ''} · ${(r.qa || []).length} lượt hỏi – đáp</small></div><span class="badge ${r.status === 'hoan-thanh' ? 'badge-success' : 'badge-warning'}">${r.status === 'hoan-thanh' ? 'Hoàn thành' : 'Đang ghi'}</span></li>`)
+              .map((r) => `<li class="doc-item"><span class="doc-icon">${r.roleId === 'bi-can' ? 'HC' : 'LK'}</span><div class="doc-meta"><a href="#interview/${r.id}">${escapeHtml(r.nguoiKhai?.hoTen || 'Chưa ghi tên')} — lần ${r.lan || 1}</a><small>${escapeHtml(getRole(r.roleId).ten.split('/')[0])} · ${r.ngay ? r.ngay.split('-').reverse().join('/') : ''} · ${(r.qa || []).length} lượt hỏi – đáp</small></div><span class="badge ${r.status === 'hoan-thanh' ? 'badge-success' : 'badge-warning'}">${r.status === 'hoan-thanh' ? 'Hoàn thành' : 'Đang ghi'}</span><button class="btn btn-ghost btn-sm btn-icon" type="button" data-del-rec="${r.id}" aria-label="Xóa biên bản ${escapeHtml(r.nguoiKhai?.hoTen || '')}" title="Xóa biên bản">${icon('trash', 'ic-sm')}</button></li>`)
               .join('')}</ul>`
           : `<div class="empty"><p>Chưa có biên bản. Chọn “Ghi lời khai” ở tab Người tham gia.</p></div>`
       }`;
@@ -213,6 +214,7 @@ export function render(ctx, params = []) {
       }),
     );
     $('[data-edit]', v).addEventListener('click', () => caseForm(ctx, c, () => draw()));
+    $$('[data-del-rec]', v).forEach((b) => b.addEventListener('click', () => confirmDeleteRecords(ctx, [b.dataset.delRec], () => draw())));
     $('[data-del]', v).addEventListener('click', async () => {
       if (!(await ctx.confirm(`Xóa hồ sơ “${c.ten}” cùng toàn bộ biên bản và kế hoạch hỏi?`, { title: 'Xóa hồ sơ', okText: 'Xóa vĩnh viễn', danger: true }))) return;
       deleteCase(c.id);

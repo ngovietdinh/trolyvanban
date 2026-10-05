@@ -6,23 +6,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DOMAINS, ALL_CRIMES, findCrime, searchCrimes, buildTree, generatePlan, planToText } from '../../assets/js/legal/engine.js';
 import { EXPERTISE } from '../../assets/js/legal/expertise.js';
+import { chapterOf } from '../../assets/js/legal/blhs-catalog.js';
 import { ROLES } from '../../assets/js/legal/roles.js';
 import { newRecord, buildRecordDocument, buildPlanDocument, formatMoment, qaToText } from '../../assets/js/legal/record.js';
 import { localSuggest, localContradictions, localCoverage, localNormalize, extractFacts } from '../../assets/js/legal/assist.js';
 import { renderDocumentHtml } from '../../assets/js/lib/render-html.js';
 import { buildDocumentXml, buildDocx, docxToText } from '../../assets/js/lib/docx.js';
 
-test('dữ liệu điều luật: đủ 4 lĩnh vực, số điều không trùng, đúng phạm vi chương', () => {
-  assert.equal(DOMAINS.length, 4);
+test('dữ liệu điều luật: toàn bộ Phần các tội phạm, 17 lĩnh vực, số điều không trùng, đúng chương', () => {
+  assert.equal(DOMAINS.length, 17);
   const ids = ALL_CRIMES.map((c) => c.dieu);
   assert.equal(new Set(ids).size, ids.length, 'trùng số điều');
-  assert.ok(ALL_CRIMES.length >= 80, `chỉ có ${ALL_CRIMES.length} tội`);
+  assert.ok(ALL_CRIMES.length >= 300, `chỉ có ${ALL_CRIMES.length} tội`);
   for (const c of ALL_CRIMES) {
-    const n = parseInt(c.dieu, 10);
-    if (/XVIII/.test(c.chuong)) assert.ok(n >= 188 && n <= 234, `Điều ${c.dieu} không thuộc Chương XVIII`);
-    if (/XIX —/.test(c.chuong)) assert.ok(n >= 235 && n <= 246, `Điều ${c.dieu} không thuộc Chương XIX`);
-    if (/XXIII/.test(c.chuong)) assert.ok(n >= 352 && n <= 366, `Điều ${c.dieu} không thuộc Chương XXIII`);
-    if (/XXI —/.test(c.chuong)) assert.ok(n >= 295 && n <= 329, `Điều ${c.dieu} không thuộc Chương XXI`);
+    const roman = chapterOf(c.dieu).split('-')[0];
+    assert.ok(c.chuong.startsWith(`Chương ${roman} `), `Điều ${c.dieu} ghi sai chương: ${c.chuong}`);
     assert.ok(c.ten.startsWith('Tội '), c.dieu);
     assert.ok(c.hanhVi.length >= 1 && c.dauHieu.length >= 1 && c.dinhKhung.length >= 1, `Điều ${c.dieu} thiếu dữ liệu`);
     assert.equal(new Set(c.hanhVi.map((h) => h.id)).size, c.hanhVi.length, `Điều ${c.dieu} trùng id hành vi`);

@@ -11,16 +11,80 @@ import { CRIMES_CHUC_VU, GROUPS_CHUC_VU } from './crimes-chuc-vu.js';
 import { CRIMES_MOI_TRUONG, GROUPS_MOI_TRUONG, CRIMES_Y_TE, GROUPS_Y_TE } from './crimes-moi-truong-y-te.js';
 import { EXPERTISE, DOMAIN_QUESTIONS } from './expertise.js';
 import { getRole } from './roles.js';
+import { CATALOG, CHAPTERS, chapterOf } from './blhs-catalog.js';
+import { NEW_DOMAINS, EXTRA_GROUPS, EXTRA_EXPERTISE, EXTRA_DOMAIN_QUESTIONS, generateCrime } from './crimes-generated.js';
 
-export const DOMAINS = [
+Object.assign(EXPERTISE, EXTRA_EXPERTISE);
+Object.assign(DOMAIN_QUESTIONS, EXTRA_DOMAIN_QUESTIONS);
+
+/** Lĩnh vực có dữ liệu chuyên sâu (biên soạn chi tiết từng hành vi). */
+const CURATED_DOMAINS = [
   { id: 'kinh-te', ten: 'Kinh tế', icon: 'chart', moTa: 'Trật tự quản lý kinh tế, sở hữu, thuế, ngân hàng, đấu thầu, đất đai', groups: GROUPS_KINH_TE, crimes: CRIMES_KINH_TE },
   { id: 'chuc-vu', ten: 'Chức vụ – Tham nhũng', icon: 'gavel', moTa: 'Tham ô, hối lộ, lạm dụng, lợi dụng chức vụ, thiếu trách nhiệm', groups: GROUPS_CHUC_VU, crimes: CRIMES_CHUC_VU },
   { id: 'moi-truong', ten: 'Môi trường', icon: 'layers', moTa: 'Ô nhiễm, chất thải, rừng, động vật hoang dã, dịch bệnh, thiên tai', groups: GROUPS_MOI_TRUONG, crimes: CRIMES_MOI_TRUONG },
-  { id: 'y-te-an-toan', ten: 'Y tế – An toàn công cộng', icon: 'shield', moTa: 'Khám chữa bệnh, an toàn thực phẩm, an toàn lao động, xây dựng, PCCC', groups: GROUPS_Y_TE, crimes: CRIMES_Y_TE },
+  { id: 'y-te-an-toan', ten: 'Y tế – An toàn công cộng', icon: 'shield', moTa: 'Khám chữa bệnh, thực phẩm, lao động, xây dựng, PCCC, vũ khí, vật liệu nổ, khủng bố', groups: [...GROUPS_Y_TE, ...EXTRA_GROUPS['y-te-an-toan']], crimes: CRIMES_Y_TE },
 ];
+const CURATED_CRIMES = Object.fromEntries(CURATED_DOMAINS.map((d) => [d.id, d.crimes]));
 
-const ALL = DOMAINS.flatMap((d) => d.crimes.map((c) => ({ ...c, linhVuc: d.id })));
+/** Thứ tự lĩnh vực theo các chương của Phần thứ hai Bộ luật Hình sự. */
+const ORDER = ['an-ninh', 'tinh-mang', 'tu-do', 'so-huu', 'hon-nhan', 'kinh-te', 'moi-truong', 'ma-tuy', 'giao-thong', 'cong-nghe', 'y-te-an-toan', 'trat-tu', 'hanh-chinh', 'chuc-vu', 'tu-phap', 'quan-nhan', 'chien-tranh'];
+const byId = Object.fromEntries([...CURATED_DOMAINS, ...NEW_DOMAINS].map((d) => [d.id, { ...d, crimes: [] }]));
+export const DOMAINS = ORDER.map((id) => byId[id]);
+
+const ALL = [];
 export const ALL_CRIMES = ALL;
+/** Điều luật có trong danh mục nhưng chưa có tên (chờ nạp văn bản luật) và điều đã bãi bỏ. */
+export const CATALOG_STATUS = { hidden: [], repealed: [], official: null };
+
+/**
+ * Dựng (lại) toàn bộ cây: dữ liệu chuyên sâu + danh mục Bộ luật (+ nguyên văn chính thức nếu đã nạp).
+ * Mảng DOMAINS[*].crimes và ALL_CRIMES được cập nhật tại chỗ để các màn hình dùng chung tham chiếu.
+ */
+export function rebuildCatalog(official = null) {
+  const arts = official?.articles || {};
+  const curatedIds = new Set(Object.values(CURATED_CRIMES).flatMap((l) => l.map((c) => c.dieu)));
+  for (const d of DOMAINS) d.crimes.length = 0;
+  CATALOG_STATUS.hidden = [];
+  CATALOG_STATUS.repealed = [];
+  CATALOG_STATUS.official = official ? { importedAt: official.importedAt, source: official.source, count: Object.keys(arts).length } : null;
+  // 1. Dữ liệu chuyên sâu — gắn nguyên văn điều luật nếu có.
+  for (const [domainId, list] of Object.entries(CURATED_CRIMES)) {
+    for (const c of list) byId[domainId].crimes.push(arts[c.dieu] ? { ...c, nguyenVan: arts[c.dieu].text, tenChinhThuc: arts[c.dieu].ten } : c);
+  }
+  // 2. Danh mục Bộ luật + điều chỉ có trong văn bản chính thức (vd: điều mới bổ sung).
+  const entries = new Map(CATALOG.map((e) => [e[0], e]));
+  for (const dieu of Object.keys(arts)) {
+    if (!entries.has(dieu) && chapterOf(dieu)) {
+      const dom = byId[CHAPTERS[chapterOf(dieu)].linhVuc];
+      entries.set(dieu, [dieu, arts[dieu].ten, dom.groups[0].id, '']);
+    }
+  }
+  for (const e of entries.values()) {
+    const [dieu, ten, , flags = ''] = e;
+    if (curatedIds.has(dieu)) continue;
+    const off = arts[dieu];
+    if (off?.baiBo || (!off && flags.includes('b'))) {
+      CATALOG_STATUS.repealed.push(dieu);
+      continue;
+    }
+    if (!ten && !off?.ten) {
+      CATALOG_STATUS.hidden.push(dieu);
+      continue;
+    }
+    const domainId = CHAPTERS[chapterOf(dieu)]?.linhVuc;
+    if (!byId[domainId]) continue;
+    const crime = generateCrime(e, off || null);
+    if (off) crime.nguyenVan = off.text;
+    if (!byId[domainId].groups.some((g) => g.id === crime.nhom)) crime.nhom = byId[domainId].groups[0].id;
+    byId[domainId].crimes.push(crime);
+  }
+  const num = (d) => parseInt(d, 10) + (/[a-z]$/.test(d) ? 0.5 : 0);
+  for (const d of DOMAINS) d.crimes.sort((a, b) => num(a.dieu) - num(b.dieu));
+  ALL.length = 0;
+  for (const d of DOMAINS) for (const c of d.crimes) ALL.push({ ...c, linhVuc: d.id });
+  return ALL.length;
+}
+rebuildCatalog();
 
 export const findCrime = (dieu) => ALL.find((c) => c.dieu === String(dieu)) || null;
 export const getDomain = (id) => DOMAINS.find((d) => d.id === id) || null;

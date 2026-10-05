@@ -1731,3 +1731,89 @@ a.kw:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Danh sách biên bản: chọn nhiều để xóa ---------- */
+.rec-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.rec-bar .spacer {
+  flex: 1;
+}
+.rec-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  flex: none;
+}
+
+/* ---------- Dữ liệu Bộ luật ---------- */
+.lg-leaf.unverified .lg-art::after {
+  content: '?';
+  display: inline-grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  margin-left: 3px;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+  background: var(--warning-soft, #fdecc8);
+  color: var(--warning, #9a6700);
+  vertical-align: 1px;
+}
+.lg-blhs {
+  margin-top: 18px;
+}
+.lg-blhs-body {
+  padding: 4px 18px 18px;
+  display: grid;
+  gap: 12px;
+}
+.lg-blhs-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.lg-blhs-body .hint {
+  margin: 0;
+}
+.lg-blhs-out {
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+.lg-blhs-out summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+.lg-blhs-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  max-height: 220px;
+  overflow: auto;
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+.lg-blhs-list small {
+  color: var(--text-3);
+}
+.lg-nguyen-van > div {
+  max-height: 360px;
+  overflow: auto;
+  padding: 6px 4px 2px;
+  font-family: var(--font-doc);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.lg-nguyen-van p {
+  margin: 0 0 6px;
+}
+@media (max-width: 700px) {
+  .lg-blhs-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

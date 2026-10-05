@@ -1,9 +1,13 @@
 // Cây hỏi đáp pháp luật: lĩnh vực → nhóm → tội danh → hành vi → vấn đề cần làm rõ → bộ câu hỏi (chỉnh sửa được).
 import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, debounce } from '../ui.js';
-import { DOMAINS, findCrime, searchCrimes, generatePlan, planToText, SOURCE_LABELS, LEGAL_DISCLAIMER, ALL_CRIMES, crimeWithCustomActs, localFollowUps } from '../legal/engine.js';
+import { DOMAINS, findCrime, searchCrimes, generatePlan, planToText, SOURCE_LABELS, LEGAL_DISCLAIMER, ALL_CRIMES, crimeWithCustomActs, localFollowUps, CATALOG_STATUS } from '../legal/engine.js';
+import { CATALOG } from '../legal/blhs-catalog.js';
+import { parseBlhsText, compareWithCatalog } from '../legal/blhs-import.js';
+import { docxToText } from '../lib/docx.js';
+import { audit } from '../lib/accounts.js';
 import { ROLES, ROLE_GROUPS, getRole } from '../legal/roles.js';
 import { buildPlanDocument, buildRecordDocument, newRecord, prefillQa } from '../legal/record.js';
-import { casesRepo, plansRepo, recordsRepo, customBank, customActs, learnedBank } from '../legal/repo.js';
+import { casesRepo, plansRepo, recordsRepo, customBank, customActs, learnedBank, officialBlhs } from '../legal/repo.js';
 import { renderDocumentHtml } from '../lib/render-html.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { streamClaude, extractJson, PROVIDERS } from '../lib/ai.js';
@@ -72,7 +76,7 @@ export function render(ctx, params = []) {
                   const gOpen = openTree.has(key) || crimes.some((c) => c.dieu === sel.dieu);
                   return `<div class="lg-node lg-group ${gOpen ? 'open' : ''}">
                     <button class="lg-toggle" type="button" data-toggle="${key}" aria-expanded="${gOpen}" title="${escapeHtml(g.moTa)}">${icon('chevron-down', 'ic-sm lg-chev')}<span>${escapeHtml(g.ten)}</span><small>${crimes.length}</small></button>
-                    ${gOpen ? `<div class="lg-children">${crimes.map((c) => `<button class="lg-leaf ${c.dieu === sel.dieu ? 'active' : ''}" type="button" data-crime="${c.dieu}" ${c.dieu === sel.dieu ? 'aria-current="true"' : ''}><span class="lg-art">Đ.${c.dieu}</span><span>${escapeHtml(c.ten.replace(/^Tội /, ''))}</span></button>`).join('')}</div>` : ''}
+                    ${gOpen ? `<div class="lg-children">${crimes.map((c) => `<button class="lg-leaf ${c.dieu === sel.dieu ? 'active' : ''} ${c.kiemTra ? 'unverified' : ''}" type="button" data-crime="${c.dieu}" ${c.dieu === sel.dieu ? 'aria-current="true"' : ''} ${c.kiemTra ? 'title="Tên/số điều cần đối chiếu nguyên văn"' : ''}><span class="lg-art">Đ.${c.dieu}</span><span>${escapeHtml(c.ten.replace(/^Tội /, ''))}</span></button>`).join('')}</div>` : ''}
                   </div>`;
                 })
                 .join('')}</div>`
@@ -141,7 +145,7 @@ export function render(ctx, params = []) {
           <p class="page-sub">Chọn lĩnh vực → nhóm → tội danh → hành vi vi phạm. Hệ thống tự liệt kê các vấn đề cần làm rõ và bộ câu hỏi bám sát cấu thành tội phạm.</p>
         </div></div>
         <div class="lg-domains">
-          ${DOMAINS.map((d) => `<button class="lg-domain-card" type="button" data-open-domain="${d.id}"><span class="quick-icon">${icon(d.icon)}</span><strong>${d.ten}</strong><span>${escapeHtml(d.moTa)}</span><em>${d.groups.length} nhóm · ${d.crimes.length} tội danh</em></button>`).join('')}
+          ${DOMAINS.filter((d) => d.crimes.length).map((d) => `<button class="lg-domain-card" type="button" data-open-domain="${d.id}"><span class="quick-icon">${icon(d.icon)}</span><strong>${d.ten}</strong><span>${escapeHtml(d.moTa)}</span><em>${d.groups.length} nhóm · ${d.crimes.length} tội danh</em></button>`).join('')}
         </div>
         <section class="panel lg-model">
           <div class="panel-head"><h2>${icon('layers', 'ic-sm')}Mô hình kết hợp 4 lớp tri thức</h2></div>
@@ -152,8 +156,18 @@ export function render(ctx, params = []) {
             <div><span>4</span><strong>Chuyên môn ngành</strong><p>Câu hỏi của chuyên gia tài chính, đấu thầu, xây dựng, ngân hàng, thuế, môi trường, y dược, PCCC…</p></div>
           </div>
         </section>
+        <section class="panel lg-blhs" data-blhs>${blhsPanelHtml()}</section>
         <p class="lg-disclaimer">${icon('info', 'ic-sm')}${escapeHtml(LEGAL_DISCLAIMER)}</p>
       </div>`;
+    $('[data-blhs-update]', main).addEventListener('click', blhsDialog);
+    $('[data-blhs-clear]', main)?.addEventListener('click', async () => {
+      if (!(await ctx.confirm('Gỡ nguyên văn Bộ luật đã nạp và quay về dữ liệu tích hợp?', { title: 'Gỡ dữ liệu Bộ luật', okText: 'Gỡ', danger: true }))) return;
+      officialBlhs.clear();
+      audit('Gỡ nguyên văn Bộ luật Hình sự', '');
+      renderTree($('[data-q]', root).value);
+      renderOverview();
+      toast('Đã quay về dữ liệu tích hợp');
+    });
     $$('[data-open-domain]', main).forEach((b) =>
       b.addEventListener('click', () => {
         openTree.add(b.dataset.openDomain);
@@ -161,6 +175,95 @@ export function render(ctx, params = []) {
         renderTree();
         tree.querySelector(`[data-toggle="${b.dataset.openDomain}"]`)?.focus();
       }),
+    );
+  }
+
+  function blhsPanelHtml() {
+    const off = CATALOG_STATUS.official;
+    const verified = ALL_CRIMES.filter((c) => c.nguyenVan).length;
+    const unverified = ALL_CRIMES.filter((c) => c.kiemTra).length;
+    return `<div class="panel-head"><h2>${icon('book', 'ic-sm')}Dữ liệu Bộ luật Hình sự</h2><span class="badge ${off ? 'badge-success' : ''}">${off ? 'Đã nạp nguyên văn' : 'Dữ liệu tích hợp'}</span></div>
+      <div class="lg-blhs-body">
+        <div class="mem-stats lg-blhs-stats"><div><strong>${ALL_CRIMES.length}</strong><span>tội danh trong cây</span></div><div><strong>${DOMAINS.filter((d) => d.crimes.length).length}</strong><span>lĩnh vực</span></div><div><strong>${off ? verified : unverified}</strong><span>${off ? 'điều có nguyên văn' : 'điều cần đối chiếu tên'}</span></div><div><strong>${CATALOG_STATUS.hidden.length}</strong><span>điều chờ cập nhật tên</span></div></div>
+        <p class="hint">${
+          off
+            ? `Nguồn: ${escapeHtml(off.source || 'văn bản đã nạp')} · ${off.count} điều · nạp ${new Date(off.importedAt).toLocaleDateString('vi-VN')}. Tên điều, khoản, tình tiết định khung theo văn bản đã nạp.`
+            : `Phần các tội phạm (Chương XIII – XXVI) Bộ luật Hình sự 2015, sửa đổi, bổ sung 2017, 2025, tự phân chia theo lĩnh vực. Nạp nguyên văn Văn bản hợp nhất (tệp Word hoặc dán nội dung) để xác thực tên điều, hiển thị nguyên văn từng điều và lấy tình tiết định khung theo đúng khoản, điểm.${CATALOG_STATUS.repealed.length ? ` Điều đã bãi bỏ: ${CATALOG_STATUS.repealed.join(', ')}.` : ''}`
+        }</p>
+        <div class="inline"><button class="btn btn-sm btn-primary" type="button" data-blhs-update>${icon('upload', 'ic-sm')}Cập nhật Bộ luật từ văn bản chính thức</button>${off ? `<button class="btn btn-sm btn-ghost" type="button" data-blhs-clear>${icon('trash', 'ic-sm')}Gỡ dữ liệu đã nạp</button>` : ''}</div>
+      </div>`;
+  }
+
+  function blhsDialog() {
+    let parsed = null;
+    let source = '';
+    ctx.modal(
+      `<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button>
+      <h2 class="modal-title">Cập nhật Bộ luật Hình sự</h2>
+      <p class="hint" style="margin-bottom:12px">Chọn tệp Word (.docx) hoặc .txt của Văn bản hợp nhất Bộ luật Hình sự (vd: 135/VBHN-VPQH năm 2025), hoặc sao chép toàn văn từ cổng văn bản pháp luật rồi dán vào ô dưới. Dữ liệu được xử lý và lưu trên máy này.</p>
+      <div class="field"><label class="btn btn-sm" style="position:relative;overflow:hidden;width:max-content">${icon('upload', 'ic-sm')}Chọn tệp .docx / .txt<input type="file" accept=".docx,.txt" data-blhs-file style="position:absolute;inset:0;opacity:0;cursor:pointer" aria-label="Chọn tệp Bộ luật" /></label></div>
+      <div class="field"><label for="blhs-text">Hoặc dán toàn văn</label><textarea class="textarea" rows="8" id="blhs-text" data-blhs-text placeholder="Điều 123. Tội giết người&#10;1. Người nào giết người thuộc một trong các trường hợp sau đây…"></textarea></div>
+      <div class="inline"><button class="btn btn-sm" type="button" data-blhs-parse>${icon('refresh', 'ic-sm')}Phân tích</button></div>
+      <div class="lg-blhs-out" data-blhs-out></div>
+      <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-blhs-apply disabled>${icon('check', 'ic-sm')}Áp dụng vào cây hỏi đáp</button></div>`,
+      {
+        className: 'modal-wide',
+        label: 'Cập nhật Bộ luật',
+        onMount(box, close) {
+          const out = box.querySelector('[data-blhs-out]');
+          const apply = box.querySelector('[data-blhs-apply]');
+          const analyse = (text) => {
+            parsed = parseBlhsText(text);
+            const n = Object.keys(parsed.articles).length;
+            if (n < 20) {
+              parsed = null;
+              apply.disabled = true;
+              out.innerHTML = `<p class="note warn">${icon('alert', 'ic-sm')}<span>Chỉ nhận diện được ${n} điều thuộc Phần các tội phạm. Hãy dùng toàn văn Bộ luật (mỗi điều bắt đầu bằng “Điều N. Tên điều”).</span></p>`;
+              return;
+            }
+            const curated = Object.fromEntries(ALL_CRIMES.filter((c) => !c.generic).map((c) => [c.dieu, c.ten]));
+            const cmp = compareWithCatalog(parsed, CATALOG, curated);
+            const li = (x) => `<li><strong>Điều ${escapeHtml(x.dieu)}</strong> ${escapeHtml(x.moi || x.ten || '')}${x.cu ? `<br><small>Dữ liệu tích hợp: ${escapeHtml(x.cu)}</small>` : ''}</li>`;
+            out.innerHTML = `<div class="mem-stats lg-blhs-stats"><div><strong>${cmp.total}</strong><span>điều nhận diện</span></div><div><strong>${Object.keys(parsed.chapters).length}</strong><span>chương</span></div><div><strong>${cmp.renamed.length}</strong><span>điều khác tên</span></div><div><strong>${cmp.added.length}</strong><span>điều bổ sung</span></div></div>
+              ${cmp.renamed.length ? `<details open><summary>Điều có tên khác dữ liệu tích hợp (${cmp.renamed.length}) — sẽ dùng tên theo văn bản</summary><ul class="lg-blhs-list">${cmp.renamed.slice(0, 80).map(li).join('')}</ul></details>` : ''}
+              ${cmp.added.length ? `<details><summary>Điều bổ sung vào cây (${cmp.added.length})</summary><ul class="lg-blhs-list">${cmp.added.slice(0, 80).map(li).join('')}</ul></details>` : ''}
+              ${cmp.repealed.length ? `<p class="hint">Điều đã bãi bỏ (không đưa vào cây): ${cmp.repealed.join(', ')}.</p>` : ''}`;
+            apply.disabled = false;
+          };
+          box.querySelector('[data-blhs-file]').addEventListener('change', async (e) => {
+            const f = e.target.files[0];
+            if (!f) return;
+            try {
+              const buf = await f.arrayBuffer();
+              const text = /\.docx$/i.test(f.name) ? await docxToText(buf) : new TextDecoder().decode(buf);
+              source = f.name;
+              analyse(text);
+            } catch (err) {
+              toast(err.message || 'Không đọc được tệp', { type: 'error' });
+            }
+          });
+          box.querySelector('[data-blhs-parse]').addEventListener('click', () => {
+            const t = box.querySelector('[data-blhs-text]').value;
+            if (!t.trim()) return toast('Dán toàn văn Bộ luật hoặc chọn tệp', { type: 'error' });
+            source = 'Văn bản dán vào';
+            analyse(t);
+          });
+          apply.addEventListener('click', () => {
+            if (!parsed) return;
+            try {
+              officialBlhs.save(parsed, source);
+            } catch (err) {
+              return toast(err.message, { type: 'error' });
+            }
+            audit('Nạp nguyên văn Bộ luật Hình sự', `${source} — ${Object.keys(parsed.articles).length} điều`);
+            close();
+            renderTree($('[data-q]', root).value);
+            if (sel.dieu && findCrime(sel.dieu)) renderMain();
+            else renderOverview();
+            toast(`Đã cập nhật cây hỏi đáp theo ${Object.keys(parsed.articles).length} điều của văn bản`);
+          });
+        },
+      },
     );
   }
 
@@ -177,7 +280,8 @@ export function render(ctx, params = []) {
         <div class="lg-crime-art">Điều<strong>${crime.dieu}</strong></div>
         <div class="lg-crime-body">
           <h1>${escapeHtml(crime.ten)}</h1>
-          <p class="lg-crime-ch">${escapeHtml(crime.chuong)}${crime.phapNhan ? ' · <span class="badge">Pháp nhân thương mại chịu TNHS</span>' : ''}</p>
+          <p class="lg-crime-ch">${escapeHtml(crime.chuong)}${crime.phapNhan ? ' · <span class="badge">Pháp nhân thương mại chịu TNHS</span>' : ''}${crime.generic ? ' · <span class="badge" title="Cấu thành và câu hỏi sinh theo mẫu của chương">Theo mẫu chương</span>' : ' · <span class="badge badge-success">Dữ liệu chuyên sâu</span>'}${crime.kiemTra ? ' · <span class="badge badge-warning">Cần đối chiếu tên điều</span>' : ''}${crime.nguyenVan ? ' · <span class="badge badge-success">Có nguyên văn</span>' : ''}</p>
+          ${crime.tenChinhThuc && crime.tenChinhThuc.toLowerCase() !== crime.ten.toLowerCase() ? `<p class="note warn">${icon('info', 'ic-sm')}<span>Tên điều theo văn bản đã nạp: <strong>${escapeHtml(crime.tenChinhThuc)}</strong></span></p>` : ''}
           <dl class="lg-elements">
             <div><dt>Khách thể</dt><dd>${escapeHtml(crime.khachThe)}</dd></div>
             <div><dt>Chủ thể</dt><dd>${escapeHtml(crime.chuThe)}</dd></div>
@@ -185,6 +289,7 @@ export function render(ctx, params = []) {
           </dl>
           <details class="lg-signs" open><summary>Dấu hiệu định tội cần chứng minh (${crime.dauHieu.length})</summary><ul>${crime.dauHieu.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ul></details>
           ${crime.ghiChu ? `<p class="note warn">${icon('alert', 'ic-sm')}<span>${escapeHtml(crime.ghiChu)}</span></p>` : ''}
+          ${crime.nguyenVan ? `<details class="lg-signs lg-nguyen-van"><summary>Nguyên văn Điều ${crime.dieu}</summary><div>${crime.nguyenVan.split('\n').map((l) => `<p>${escapeHtml(l)}</p>`).join('')}</div></details>` : ''}
         </div>
       </header>
 

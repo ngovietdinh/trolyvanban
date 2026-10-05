@@ -1,6 +1,7 @@
 // Ghi lời khai / hỏi cung trực tiếp theo kế hoạch, có trợ lý phân tích (AI hoặc cục bộ) và xuất biên bản.
 import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, debounce } from '../ui.js';
-import { recordsRepo, casesRepo, learnedBank } from '../legal/repo.js';
+import { recordsRepo, casesRepo, learnedBank, deleteRecords, restoreRecords } from '../legal/repo.js';
+import { audit } from '../lib/accounts.js';
 import { buildRecordDocument, PERSON_FIELDS, newRecord, prefillQa, parsePastedQa, planPastedQa, applyPastedQa } from '../legal/record.js';
 import { streamClaude, extractJson } from '../lib/ai.js';
 import { ROLES, getRole, canCuText } from '../legal/roles.js';
@@ -15,9 +16,37 @@ const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingm
 const COV = { ro: ['Đã rõ', 'ok'], 'mot-phan': ['Một phần', 'part'], chua: ['Chưa rõ', 'no'] };
 
 /* ---------------- Danh sách biên bản ---------------- */
+/** Xóa biên bản (có hoàn tác) — dùng chung cho danh sách, màn hình ghi lời khai, hồ sơ vụ án. */
+export async function confirmDeleteRecords(ctx, ids, after) {
+  const recs = ids.map((id) => recordsRepo.get(id)).filter(Boolean);
+  if (!recs.length) return false;
+  const qaN = recs.reduce((n, r) => n + (r.qa || []).length, 0);
+  const label = recs.length === 1 ? `biên bản lời khai của “${recs[0].nguoiKhai?.hoTen || 'chưa ghi tên'}”` : `${recs.length} biên bản lời khai`;
+  if (!(await ctx.confirm(`Xóa ${label} (${qaN} lượt hỏi – đáp)? Có thể hoàn tác ngay sau khi xóa.`, { title: 'Xóa lời khai', okText: 'Xóa', danger: true }))) return false;
+  const removed = deleteRecords(ids);
+  audit('Xóa biên bản lời khai', removed.map((r) => r.nguoiKhai?.hoTen || r.id).join(', '));
+  after?.();
+  toast(`Đã xóa ${removed.length} biên bản`, {
+    timeout: 8000,
+    action: {
+      label: 'Hoàn tác',
+      onClick: () => {
+        restoreRecords(removed);
+        audit('Hoàn tác xóa biên bản', removed.map((r) => r.nguoiKhai?.hoTen || r.id).join(', '));
+        after?.(true);
+        toast('Đã khôi phục biên bản');
+      },
+    },
+  });
+  return true;
+}
+
 function renderList(ctx) {
-  const recs = recordsRepo.list();
-  ctx.view.innerHTML = `
+  const selected = new Set();
+  const draw = () => {
+    const recs = recordsRepo.list();
+    for (const id of [...selected]) if (!recs.some((r) => r.id === id)) selected.delete(id);
+    ctx.view.innerHTML = `
   <div class="page">
     <div class="page-head">
       <div><h1 class="page-title">Biên bản <em>ghi lời khai</em></h1><p class="page-sub">Biên bản hỏi cung bị can, ghi lời khai người làm chứng, bị hại, người liên quan.</p></div>
@@ -25,23 +54,45 @@ function renderList(ctx) {
     </div>
     <section class="panel">${
       recs.length
-        ? `<ul class="doc-list">${recs
+        ? `<div class="rec-bar"><label class="check"><input type="checkbox" data-sel-all ${selected.size && selected.size === recs.length ? 'checked' : ''} />Chọn tất cả</label><span class="spacer"></span><span class="hint" data-sel-n>${selected.size ? `Đã chọn ${selected.size}` : ''}</span><button class="btn btn-sm" type="button" data-del-sel ${selected.size ? '' : 'disabled'}>${icon('trash', 'ic-sm')}Xóa đã chọn</button></div>
+          <ul class="doc-list">${recs
             .map((r) => {
               const c = r.caseId ? casesRepo.get(r.caseId) : null;
               const crime = r.plan?.dieu ? findCrime(r.plan.dieu) : null;
-              return `<li class="doc-item"><span class="doc-icon">${r.roleId === 'bi-can' ? 'HC' : 'LK'}</span>
+              return `<li class="doc-item" data-rid="${r.id}"><input type="checkbox" class="rec-check" data-sel="${r.id}" ${selected.has(r.id) ? 'checked' : ''} aria-label="Chọn biên bản ${escapeHtml(r.nguoiKhai?.hoTen || '')}" /><span class="doc-icon">${r.roleId === 'bi-can' ? 'HC' : 'LK'}</span>
                 <div class="doc-meta"><a href="#interview/${r.id}">${escapeHtml(r.nguoiKhai?.hoTen || 'Chưa ghi tên')} — ${escapeHtml(getRole(r.roleId).ten.split('/')[0])}</a>
                 <small>${c ? escapeHtml(c.ten) + ' · ' : ''}${crime ? `Điều ${crime.dieu} · ` : ''}${(r.qa || []).length} lượt hỏi – đáp · ${r.status === 'hoan-thanh' ? 'Đã hoàn thành' : 'Đang ghi'} · ${relativeTime(r.updatedAt)}</small></div>
-                <span class="badge ${r.status === 'hoan-thanh' ? 'badge-success' : 'badge-warning'}">${r.status === 'hoan-thanh' ? 'Hoàn thành' : 'Đang ghi'}</span></li>`;
+                <span class="badge ${r.status === 'hoan-thanh' ? 'badge-success' : 'badge-warning'}">${r.status === 'hoan-thanh' ? 'Hoàn thành' : 'Đang ghi'}</span>
+                <button class="btn btn-ghost btn-sm btn-icon" type="button" data-del-rec="${r.id}" aria-label="Xóa biên bản ${escapeHtml(r.nguoiKhai?.hoTen || '')}" title="Xóa biên bản">${icon('trash', 'ic-sm')}</button></li>`;
             })
             .join('')}</ul>`
         : `<div class="empty"><div class="empty-icon">${icon('message', 'ic-lg')}</div><h3>Chưa có biên bản</h3><p>Lập kế hoạch hỏi từ Cây hỏi đáp pháp luật rồi bắt đầu ghi lời khai.</p><a class="btn btn-primary" href="#legal">${icon('layers')}Mở cây hỏi đáp</a></div>`
     }</section>
   </div>`;
-  $('[data-new]', ctx.view).addEventListener('click', () => {
-    const rec = recordsRepo.save(newRecord({ settings: ctx.settings() }));
-    ctx.navigate(`#interview/${rec.id}`);
-  });
+    const v = ctx.view;
+    $('[data-new]', v).addEventListener('click', () => {
+      const rec = recordsRepo.save(newRecord({ settings: ctx.settings() }));
+      ctx.navigate(`#interview/${rec.id}`);
+    });
+    $$('[data-del-rec]', v).forEach((b) => b.addEventListener('click', () => confirmDeleteRecords(ctx, [b.dataset.delRec], draw)));
+    $$('[data-sel]', v).forEach((cb) =>
+      cb.addEventListener('change', () => {
+        cb.checked ? selected.add(cb.dataset.sel) : selected.delete(cb.dataset.sel);
+        draw();
+      }),
+    );
+    $('[data-sel-all]', v)?.addEventListener('change', (e) => {
+      recs.forEach((r) => (e.target.checked ? selected.add(r.id) : selected.delete(r.id)));
+      draw();
+    });
+    $('[data-del-sel]', v)?.addEventListener('click', () =>
+      confirmDeleteRecords(ctx, [...selected], (undo) => {
+        if (!undo) selected.clear();
+        draw();
+      }),
+    );
+  };
+  draw();
 }
 
 /* ---------------- Ghi lời khai ---------------- */
@@ -60,8 +111,9 @@ export function render(ctx, params = []) {
   const role = () => getRole(rec.roleId);
   const openIssues = new Map();
 
+  let deleted = false;
   const save = debounce(() => {
-    rec = recordsRepo.save(rec);
+    if (!deleted) rec = recordsRepo.save(rec);
   }, 250);
 
   ctx.view.innerHTML = `
@@ -85,6 +137,7 @@ export function render(ctx, params = []) {
           <button class="btn btn-sm btn-ghost" type="button" data-paste title="Dán văn bản ghi chép và chuyển thành hỏi – đáp theo mẫu biên bản" aria-label="Dán và chuyển đổi">${icon('quote', 'ic-sm')}<span class="btn-label">Dán &amp; chuyển đổi</span></button>
           <button class="btn btn-sm btn-ghost" type="button" data-preview title="Xem biên bản" aria-label="Xem biên bản">${icon('eye', 'ic-sm')}<span class="btn-label">Xem biên bản</span></button>
           <button class="btn btn-sm" type="button" data-export title="Xuất Word" aria-label="Xuất biên bản Word">${icon('download', 'ic-sm')}<span class="btn-label">Xuất Word</span></button>
+          <button class="btn btn-sm btn-ghost" type="button" data-del-this title="Xóa biên bản này" aria-label="Xóa biên bản này">${icon('trash', 'ic-sm')}</button>
           <button class="btn btn-sm btn-dark" type="button" data-finish title="Kết thúc biên bản" aria-label="Kết thúc biên bản">${icon('check', 'ic-sm')}<span class="btn-label" data-finish-label>Kết thúc</span></button>
         </div>
       </header>
@@ -706,6 +759,15 @@ export function render(ctx, params = []) {
 
   $('[data-info]', root).addEventListener('click', infoDialog);
   $('[data-paste]', root).addEventListener('click', pasteDialog);
+  $('[data-del-this]', root).addEventListener('click', async () => {
+    save.cancel();
+    rec = recordsRepo.save(rec); // lưu thay đổi chưa ghi để hoàn tác khôi phục đủ
+    const id = rec.id;
+    deleted = await confirmDeleteRecords(ctx, [id], (undo) => {
+      deleted = !undo;
+      ctx.navigate(undo ? `#interview/${id}` : '#interview');
+    });
+  });
   $('[data-preview]', root).addEventListener('click', previewDialog);
   $('[data-export]', root).addEventListener('click', exportDocx);
   $('[data-finish]', root).addEventListener('click', async () => {

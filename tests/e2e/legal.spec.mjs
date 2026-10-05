@@ -7,7 +7,7 @@ test.describe('Cây hỏi đáp pháp luật', () => {
   test('điều hướng Kinh tế → Đấu thầu → Điều 222, chọn hành vi, sinh vấn đề và câu hỏi', async ({ page }) => {
     const t = trackErrors(page);
     await freshApp(page, '#legal');
-    await expect(page.locator('.lg-domain-card')).toHaveCount(4);
+    await expect(page.locator('.lg-domain-card')).toHaveCount(17);
     // Nhóm Đấu thầu mở sẵn: thu gọn rồi mở lại
     await page.locator('[data-toggle="kinh-te/dau-thau"]').click();
     await expect(page.locator('.lg-leaf[data-crime="222"]')).toHaveCount(0);

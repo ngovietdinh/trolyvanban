@@ -604,3 +604,17 @@ p {
     scroll-behavior: auto !important;
   }
 }
+.toast-action {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: #9cc3ff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 4px;
+  white-space: nowrap;
+}
+:root[data-theme='dark'] .toast-action {
+  color: #1d4ed8;
+}
