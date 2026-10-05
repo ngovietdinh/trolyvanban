@@ -21,7 +21,7 @@ const ls = typeof window !== 'undefined' ? backend() : null;
 export const SCOPED_KEYS = [
   'docs', 'chat', 'settings', 'compose-draft', 'usage', 'spell-text', 'summary-text', 'summary-ratio',
   'number-history', 'number-last', 'number-opts', 'cases', 'records', 'plans', 'legal-custom',
-  'legal-selection', 'legal-open', 'zoom',
+  'legal-selection', 'legal-open', 'zoom', 'legal-custom-acts', 'tpl-custom',
 ];
 /** Dữ liệu bị xóa khi “Xóa toàn bộ dữ liệu” (giữ lại tài khoản, API key, cài đặt). */
 export const WIPE_KEYS = SCOPED_KEYS.filter((k) => k !== 'settings' && k !== 'zoom');

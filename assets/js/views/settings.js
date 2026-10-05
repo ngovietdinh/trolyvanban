@@ -24,6 +24,8 @@ const LEGAL_FIELDS = [
   ['dieuTraVien', 'Họ tên điều tra viên', 'Trần Minh Đức'],
   ['chucDanh', 'Chức danh', 'Điều tra viên'],
   ['diaDiem', 'Địa điểm làm việc thường xuyên', 'Trụ sở Cơ quan Cảnh sát điều tra'],
+  ['mauSo', 'Mẫu số in góc biên bản (để trống nếu không dùng)', 'VD: 140'],
+  ['thongTu', 'Ban hành kèm theo (thông tư biểu mẫu hiện hành)', 'VD: Thông tư số …/2025/TT-BCA'],
 ];
 
 export function render(ctx) {
@@ -261,7 +263,11 @@ export function render(ctx) {
 
   $('[data-backup]', root).addEventListener('click', () => {
     const data = { app: 'tro-ly-van-ban', version: 2, exportedAt: new Date().toISOString(), docs: docsRepo.list() };
-    if (ctx.can('legal')) for (const k of ['cases', 'records', 'plans']) data[k] = store.get(BACKUP_KEYS[k], []);
+    data.templates = store.get('tpl-custom', []);
+    if (ctx.can('legal')) {
+      for (const k of ['cases', 'records', 'plans']) data[k] = store.get(BACKUP_KEYS[k], []);
+      data.customActs = store.get('legal-custom-acts', {});
+    }
     downloadBlob(JSON.stringify(data, null, 2), `tro-ly-van-ban-sao-luu-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
     toast(`Đã xuất ${data.docs.length} tài liệu${data.cases ? `, ${data.cases.length} hồ sơ, ${data.records.length} biên bản` : ''}`);
   });
@@ -277,11 +283,22 @@ export function render(ctx) {
         store.set(key, [...existing.values()]);
       };
       merge('docs', data.docs, (d) => d.typeId);
+      if (Array.isArray(data.templates)) merge('tpl-custom', data.templates, (t) => t.docx && Array.isArray(t.fields));
       let extra = '';
       if (ctx.can('legal') && Array.isArray(data.cases)) {
         merge('cases', data.cases, () => true);
         merge('records', data.records || [], () => true);
         merge('plans', data.plans || [], () => true);
+        if (data.customActs && typeof data.customActs === 'object') {
+          const acts = store.get('legal-custom-acts', {});
+          for (const [dieu, list] of Object.entries(data.customActs)) {
+            if (!Array.isArray(list)) continue;
+            const byId = new Map((acts[dieu] || []).map((a) => [a.id, a]));
+            list.forEach((a) => a?.id && a.ten && byId.set(a.id, a));
+            acts[dieu] = [...byId.values()];
+          }
+          store.set('legal-custom-acts', acts);
+        }
         extra = `, ${data.cases.length} hồ sơ`;
       }
       document.dispatchEvent(new CustomEvent('docs-changed'));

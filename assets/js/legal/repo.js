@@ -1,5 +1,6 @@
 // Lưu trữ hồ sơ vụ án, người tham gia tố tụng, kế hoạch hỏi và biên bản (trên trình duyệt).
 import { store, uid } from '../lib/store.js';
+import { registerCustomActs } from './engine.js';
 
 function collection(key) {
   return {
@@ -57,3 +58,26 @@ export function deleteCase(id) {
   plansRepo.list((p) => p.caseId === id).forEach((p) => plansRepo.remove(p.id));
   casesRepo.remove(id);
 }
+
+/** Hành vi vi phạm do người dùng tự thêm cho từng điều luật. */
+export const customActs = {
+  all: () => store.get('legal-custom-acts', {}),
+  of: (dieu) => store.get('legal-custom-acts', {})[dieu] || [],
+  save(dieu, act) {
+    const all = this.all();
+    const list = all[dieu] || [];
+    const rec = { ...act, id: act.id || `tt-${uid()}` };
+    const i = list.findIndex((x) => x.id === rec.id);
+    if (i >= 0) list[i] = rec;
+    else list.push(rec);
+    all[dieu] = list;
+    store.set('legal-custom-acts', all);
+    return rec;
+  },
+  remove(dieu, id) {
+    const all = this.all();
+    all[dieu] = (all[dieu] || []).filter((x) => x.id !== id);
+    store.set('legal-custom-acts', all);
+  },
+};
+registerCustomActs(() => customActs.all());

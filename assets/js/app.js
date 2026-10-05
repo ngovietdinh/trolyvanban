@@ -14,6 +14,7 @@ import * as spell from './views/spell.js';
 import * as summary from './views/summary.js';
 import * as number from './views/number.js';
 import * as templates from './views/templates.js';
+import * as tpl from './views/tpl.js';
 import * as docs from './views/docs.js';
 import * as settings from './views/settings.js';
 import * as legal from './views/legal.js';
@@ -34,6 +35,7 @@ const ROUTES = {
   summary: { mod: summary, title: 'Tóm tắt văn bản', perm: 'tools' },
   number: { mod: number, title: 'Số thành chữ', perm: 'tools' },
   templates: { mod: templates, title: 'Thư viện mẫu', perm: 'docs' },
+  tpl: { mod: tpl, title: 'Mẫu từ file Word', perm: 'docs' },
   docs: { mod: docs, title: 'Tài liệu của tôi', perm: 'docs' },
   admin: { mod: admin, title: 'Quản trị tài khoản', perm: 'users' },
   settings: { mod: settings, title: 'Cài đặt' },
@@ -120,7 +122,7 @@ function route() {
   document.title = `${r.title} — Trợ Lý Văn Bản AI`;
   $('[data-view-title]').textContent = r.title;
   $$('[data-nav]').forEach((a) => {
-    const active = a.dataset.nav === name;
+    const active = a.dataset.nav === name || (name === 'tpl' && a.dataset.nav === 'templates');
     a.classList.toggle('active', active);
     if (active) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');

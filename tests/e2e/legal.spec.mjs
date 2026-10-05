@@ -62,7 +62,7 @@ test.describe('Cây hỏi đáp pháp luật', () => {
     await issue.locator('summary').click();
     const n = await issue.locator('.lg-q').count();
     await issue.locator('.lg-add input').fill('Ai là người duyệt cuối cùng các phiếu chi?');
-    await issue.locator('.lg-add button').click();
+    await issue.locator('.lg-add button[type="submit"]').click();
     await expect(issue.locator('.lg-q')).toHaveCount(n + 1);
     await expect(issue.locator('.lg-q').last()).toContainText('duyệt cuối cùng');
 
@@ -203,7 +203,7 @@ test.describe('Hồ sơ vụ án và ghi lời khai', () => {
     expect(text).toContain('BIÊN BẢN HỎI CUNG BỊ CAN');
     expect(text).toContain('NGUYỄN VĂN BÌNH');
     expect(text).toContain('Trả lời: Tôi nhận 70 triệu đồng tại quán cà phê.');
-    expect(text).toContain('Điều 183 Bộ luật Tố tụng hình sự');
+    expect(text).toContain('Điều 178, Điều 183 và Điều 184 Bộ luật Tố tụng hình sự năm 2015');
 
     // Danh sách biên bản trong hồ sơ
     await page.goto('/app.html#cases');

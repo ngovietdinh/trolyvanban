@@ -110,7 +110,9 @@ test('biên bản hỏi cung: đủ thể thức, hỏi – đáp, chữ ký; xu
   assert.equal(doc.title.name, 'BIÊN BẢN HỎI CUNG BỊ CAN');
   const html = renderDocumentHtml(doc);
   assert.match(html, /Hồi 08 giờ 05 phút, ngày 03 tháng 02 năm 2026/);
-  assert.match(html, /Điều 183 Bộ luật Tố tụng hình sự/);
+  assert.match(html, /Căn cứ Điều 178, Điều 183 và Điều 184 Bộ luật Tố tụng hình sự năm 2015 \(sửa đổi, bổ sung năm 2021, 2025\)/);
+  assert.match(html, /khoản 6 Điều 183/);
+  assert.doesNotMatch(html, /vb-formno/);
   assert.match(html, /Điều 60 Bộ luật Tố tụng hình sự/);
   assert.match(html, /NGUYỄN VĂN BÌNH/);
   assert.match(html, /Hỏi: /);
@@ -133,6 +135,20 @@ test('biên bản người làm chứng có cảnh báo Điều 382, 383 BLHS; k
   assert.match(html, /BIÊN BẢN GHI LỜI KHAI/);
   assert.match(html, /Điều 382 và Điều 383/);
   assert.match(html, /NGƯỜI KHAI/);
+  assert.match(html, /\(Người làm chứng\)/);
+  assert.match(html, /Điều 185, Điều 186 và Điều 187/);
+  assert.match(html, /ký xác nhận vào từng trang/);
+  // Phiếu hỏi in sẵn: câu hỏi chưa trả lời → dòng chấm; mẫu số cấu hình được
+  rec.qa = [{ q: 'Anh biết gì về vụ việc?', a: '' }];
+  rec.mauSo = '140';
+  rec.thongTu = 'Thông tư số 01/2025/TT-BCA';
+  rec.canCu = 'Điều 186 Bộ luật Tố tụng hình sự';
+  const doc2 = buildRecordDocument(rec);
+  assert.deepEqual(doc2.formNo, ['Mẫu số 140', 'Ban hành kèm theo Thông tư số 01/2025/TT-BCA']);
+  const h2 = renderDocumentHtml(doc2);
+  assert.match(h2, /Trả lời: <\/strong>…{10,}/);
+  assert.match(h2, /Căn cứ Điều 186 Bộ luật Tố tụng hình sự, tiến hành ghi lời khai/);
+  assert.match(buildDocumentXml(doc2), /Mẫu số 140/);
   const plan = generatePlan({ dieu: '235', roleId: 'lam-chung' });
   const pdoc = buildPlanDocument(plan, { coQuan: 'Phòng Cảnh sát môi trường', dieuTraVien: 'Phạm An' });
   assert.match(renderDocumentHtml(pdoc), /KẾ HOẠCH LẤY LỜI KHAI/);

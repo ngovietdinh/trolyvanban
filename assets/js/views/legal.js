@@ -1,9 +1,9 @@
 // Cây hỏi đáp pháp luật: lĩnh vực → nhóm → tội danh → hành vi → vấn đề cần làm rõ → bộ câu hỏi (chỉnh sửa được).
 import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, debounce } from '../ui.js';
-import { DOMAINS, findCrime, searchCrimes, generatePlan, planToText, SOURCE_LABELS, LEGAL_DISCLAIMER, ALL_CRIMES } from '../legal/engine.js';
+import { DOMAINS, findCrime, searchCrimes, generatePlan, planToText, SOURCE_LABELS, LEGAL_DISCLAIMER, ALL_CRIMES, crimeWithCustomActs, localFollowUps } from '../legal/engine.js';
 import { ROLES, ROLE_GROUPS, getRole } from '../legal/roles.js';
-import { buildPlanDocument, newRecord } from '../legal/record.js';
-import { casesRepo, plansRepo, recordsRepo, customBank } from '../legal/repo.js';
+import { buildPlanDocument, buildRecordDocument, newRecord, prefillQa } from '../legal/record.js';
+import { casesRepo, plansRepo, recordsRepo, customBank, customActs } from '../legal/repo.js';
 import { renderDocumentHtml } from '../lib/render-html.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { streamClaude, extractJson } from '../lib/ai.js';
@@ -34,6 +34,8 @@ export function render(ctx, params = []) {
   const openIssues = new Map(); // key → true/false (người dùng đã mở/đóng)
   let openTree = new Set(store.get('legal-open', ['kinh-te', 'kinh-te/dau-thau']));
   let plan = null;
+  /** Hộp gợi ý đang mở: { key, q (câu hỏi gốc hoặc null = cả vấn đề), items: [{ text, added }], loading, offline, error } */
+  let sugg = null;
 
   ctx.view.innerHTML = `
   <div class="legal">
@@ -99,6 +101,7 @@ export function render(ctx, params = []) {
     sel = { ...sel, dieu, hanhViIds: [crime.hanhVi[0].id], dinhKhung: [] };
     overlay = { removed: [], edited: {}, added: {}, ai: {} };
     editingPlanId = null;
+    sugg = null;
     persistSel();
     history.replaceState(null, '', `#legal/${dieu}`);
     renderTree($('[data-q]', root).value);
@@ -155,7 +158,7 @@ export function render(ctx, params = []) {
   }
 
   function renderMain() {
-    const crime = sel.dieu && findCrime(sel.dieu);
+    const crime = sel.dieu && crimeWithCustomActs(sel.dieu);
     if (!crime) return renderOverview();
     const domain = DOMAINS.find((d) => d.crimes.some((c) => c.dieu === crime.dieu));
     const group = domain.groups.find((g) => g.id === crime.nhom);
@@ -181,7 +184,13 @@ export function render(ctx, params = []) {
       <div class="lg-steps">
         <section class="lg-step">
           <h2><span>1</span>Hành vi vi phạm <small>${sel.hanhViIds.length}/${crime.hanhVi.length} đã chọn</small></h2>
-          <div class="lg-acts">${crime.hanhVi.map((h) => `<label class="lg-act ${sel.hanhViIds.includes(h.id) ? 'on' : ''}"><input type="checkbox" data-hv="${h.id}" ${sel.hanhViIds.includes(h.id) ? 'checked' : ''}/><span>${escapeHtml(h.ten)}</span><small>${h.cauHoi.length} câu hỏi đặc thù</small></label>`).join('')}</div>
+          <div class="lg-acts">${crime.hanhVi
+            .map(
+              (h) => `<label class="lg-act ${sel.hanhViIds.includes(h.id) ? 'on' : ''} ${h.custom ? 'custom' : ''}"><input type="checkbox" data-hv="${h.id}" ${sel.hanhViIds.includes(h.id) ? 'checked' : ''}/><span>${escapeHtml(h.ten)}</span><small>${h.custom ? '<em class="badge">Tự thêm</em> ' : ''}${h.cauHoi.length} câu hỏi đặc thù</small>${
+                h.custom ? `<span class="lg-act-tools"><button type="button" class="btn btn-ghost btn-sm btn-icon" data-act-edit="${h.id}" aria-label="Sửa hành vi ${escapeHtml(h.ten)}">${icon('wand', 'ic-sm')}</button><button type="button" class="btn btn-ghost btn-sm btn-icon" data-act-del="${h.id}" aria-label="Xóa hành vi ${escapeHtml(h.ten)}">${icon('trash', 'ic-sm')}</button></span>` : ''
+              }</label>`,
+            )
+            .join('')}<button type="button" class="lg-act lg-act-add" data-act-add>${icon('plus', 'ic-sm')}<span>Thêm hành vi thủ công</span><small>Tự định nghĩa hành vi và câu hỏi đặc thù</small></button></div>
         </section>
         <section class="lg-step">
           <h2><span>2</span>Tình tiết định khung cần làm rõ <small>tùy chọn</small></h2>
@@ -205,6 +214,7 @@ export function render(ctx, params = []) {
         <div class="lg-actions">
           <button class="btn btn-sm" type="button" data-ai-more title="Gợi ý thêm câu hỏi chuyên sâu bằng AI">${icon('sparkles', 'ic-sm')}AI gợi ý thêm</button>
           <span class="spacer"></span>
+          <button class="btn btn-sm btn-ghost" type="button" data-export-blank title="Xuất biên bản Word có sẵn toàn bộ câu hỏi, phần trả lời để trống">${icon('file', 'ic-sm')}Phiếu hỏi Word</button>
           <button class="btn btn-sm btn-ghost" type="button" data-copy-plan>${icon('copy', 'ic-sm')}Sao chép</button>
           <button class="btn btn-sm btn-ghost" type="button" data-preview-plan>${icon('eye', 'ic-sm')}Xem bản in</button>
           <button class="btn btn-sm" type="button" data-export-plan>${icon('download', 'ic-sm')}Xuất Word</button>
@@ -253,19 +263,76 @@ export function render(ctx, params = []) {
               <div class="lg-q-meta">
                 <span class="src src-${c.src}">${SOURCE_LABELS[c.src] || c.src}</span>
                 <span class="lg-q-tools">
+                  <button type="button" class="btn btn-ghost btn-sm btn-icon" data-qai aria-label="Gợi ý câu hỏi truy tiếp" title="Gợi ý câu hỏi truy tiếp (AI)">${icon('sparkles', 'ic-sm')}</button>
                   <button type="button" class="btn btn-ghost btn-sm btn-icon" data-qedit aria-label="Sửa câu hỏi">${icon('wand', 'ic-sm')}</button>
                   ${c.src === 'tuy-chinh' || c.src === 'ai' ? `<button type="button" class="btn btn-ghost btn-sm btn-icon" data-qkeep aria-label="${c.local || c.src === 'ai' ? 'Lưu vào bộ câu hỏi của tôi' : 'Bỏ khỏi bộ câu hỏi của tôi'}" title="${c.local || c.src === 'ai' ? 'Lưu vào bộ câu hỏi của tôi (dùng lại cho Điều này)' : 'Đã lưu trong bộ câu hỏi của tôi — bấm để bỏ'}">${icon('star', `ic-sm ${c.local || c.src === 'ai' ? '' : 'star-fill'}`)}</button>` : ''}
                   <button type="button" class="btn btn-ghost btn-sm btn-icon" data-qdel aria-label="Xóa câu hỏi">${icon('trash', 'ic-sm')}</button>
                 </span>
               </div>
-            </li>`,
+            </li>${sugg && sugg.key === is.key && sugg.q === c.text ? suggHtml() : ''}`,
             )
             .join('')}</ol>
-          <form class="lg-add" data-add="${is.key}"><input class="input" placeholder="Thêm câu hỏi cho vấn đề này…" aria-label="Thêm câu hỏi cho ${escapeHtml(is.tieuDe)}" /><button class="btn btn-sm" type="submit">${icon('plus', 'ic-sm')}Thêm</button></form>
+          ${sugg && sugg.key === is.key && !sugg.q ? suggHtml('div') : ''}
+          <form class="lg-add" data-add="${is.key}"><input class="input" placeholder="Thêm câu hỏi cho vấn đề này…" aria-label="Thêm câu hỏi cho ${escapeHtml(is.tieuDe)}" /><button class="btn btn-sm" type="submit">${icon('plus', 'ic-sm')}Thêm</button><button class="btn btn-sm btn-ghost" type="button" data-issue-ai title="Gợi ý thêm câu hỏi cho vấn đề này">${icon('sparkles', 'ic-sm')}Gợi ý AI</button></form>
         </details>
       </li>`,
       )
       .join('')}</ol>`;
+  }
+
+  function suggHtml(tag = 'li') {
+    const head = `<div class="lg-sugg-head">${icon('sparkles', 'ic-sm')}<strong>${sugg.q ? 'Câu hỏi truy tiếp' : 'Gợi ý thêm cho vấn đề'}</strong>${sugg.offline ? '<span class="badge" title="Tạo trên máy, không gửi dữ liệu ra ngoài">Gợi ý ngoại tuyến</span>' : sugg.loading ? '' : `<span class="badge badge-success">${escapeHtml(sugg.label || 'AI')}</span>`}<span class="spacer"></span>${sugg.items?.some((x) => !x.added) ? '<button type="button" class="btn btn-ghost btn-sm" data-sugg-all>Thêm tất cả</button>' : ''}<button type="button" class="btn btn-ghost btn-sm btn-icon" data-sugg-close aria-label="Đóng gợi ý">${icon('x', 'ic-sm')}</button></div>`;
+    let bodyHtml;
+    if (sugg.loading) bodyHtml = `<p class="lg-sugg-wait">${icon('refresh', 'ic-sm spin')}Đang phân tích…</p>`;
+    else if (sugg.error) bodyHtml = `<p class="lg-sugg-err">${escapeHtml(sugg.error)}</p>`;
+    else bodyHtml = `<ul>${sugg.items.map((x, i) => `<li><span>${escapeHtml(x.text)}</span>${x.added ? `<em>${icon('check', 'ic-sm')}Đã thêm</em>` : `<button type="button" class="btn btn-sm" data-sugg-add="${i}">${icon('plus', 'ic-sm')}Thêm</button>`}</li>`).join('')}</ul>`;
+    return `<${tag} class="lg-sugg" data-sugg aria-live="polite">${head}${bodyHtml}${sugg.offline && !ctx.hasAI('legal') ? `<p class="lg-sugg-note">${ctx.can('legal.ai') ? 'Thêm API key trong Cài đặt để dùng gợi ý AI.' : 'Phân hệ Tố tụng đang ngoại tuyến — cần quản trị cấp quyền để dùng AI trực tuyến.'}</p>` : ''}</${tag}>`;
+  }
+
+  /** Gợi ý câu hỏi cho một câu hỏi (truy tiếp) hoặc cho cả vấn đề. */
+  async function suggest(key, qText = null) {
+    const is = plan.issues.find((i) => i.key === key);
+    if (!is) return;
+    if (!ctx.hasAI('legal')) {
+      const items = localFollowUps(qText || is.tieuDe, sel.roleId).filter((t) => !is.cauHoi.some((c) => c.text === t));
+      sugg = { key, q: qText, items: items.map((text) => ({ text })), offline: true };
+      return renderPanel();
+    }
+    const { provider, apiKey, model, label } = ctx.ai('legal');
+    const token = {};
+    sugg = { key, q: qText, loading: true, token, label };
+    renderPanel();
+    try {
+      const out = await streamClaude({
+        provider,
+        apiKey,
+        model,
+        system: INVESTIGATOR_SYSTEM,
+        messages: [
+          {
+            role: 'user',
+            content: `Tội danh: Điều ${plan.crime.dieu} BLHS — ${plan.crime.ten}\nHành vi: ${plan.hanhVi.map((h) => h.ten).join('; ')}\nĐối tượng lấy lời khai: ${plan.role.ten}\nVấn đề cần làm rõ: ${is.tieuDe} (${is.canCu})\nCác câu hỏi đã có:\n${is.cauHoi.map((c) => `- ${c.text}`).join('\n')}\n\n${qText ? `Đề xuất 4–6 câu hỏi truy tiếp, đào sâu câu hỏi: "${qText}"` : 'Đề xuất 5–8 câu hỏi bổ sung, sắc bén, chưa có trong danh sách trên'} — đúng tư cách tố tụng của người khai, không mớm cung. Chỉ trả về JSON: {"cauHoi":["câu hỏi", "..."]}`,
+          },
+        ],
+      });
+      if (sugg?.token !== token) return;
+      const j = extractJson(out);
+      const list = (j?.cauHoi || []).map((x) => (typeof x === 'string' ? x : x?.text)).filter((t) => t && t.trim());
+      sugg = { key, q: qText, label, items: list.map((text) => ({ text: text.trim() })) };
+      if (!list.length) sugg.error = 'AI không trả về gợi ý phù hợp. Thử lại sau.';
+    } catch (err) {
+      if (sugg?.token !== token) return;
+      sugg = { key, q: qText, error: err.message, items: [] };
+    }
+    renderPanel();
+  }
+
+  function addSuggestion(i) {
+    const x = sugg?.items?.[i];
+    if (!x || x.added) return;
+    const bucket = sugg.offline ? overlay.added : overlay.ai;
+    bucket[sugg.key] = [...(bucket[sugg.key] || []), x.text];
+    x.added = true;
   }
 
   function mapHtml() {
@@ -358,6 +425,26 @@ export function render(ctx, params = []) {
         refresh();
       }),
     );
+    $('[data-act-add]', main).addEventListener('click', () => actDialog(crime));
+    $$('[data-act-edit]', main).forEach((b) =>
+      b.addEventListener('click', (e) => {
+        e.preventDefault();
+        actDialog(crime, customActs.of(crime.dieu).find((h) => h.id === b.dataset.actEdit));
+      }),
+    );
+    $$('[data-act-del]', main).forEach((b) =>
+      b.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const h = customActs.of(crime.dieu).find((x) => x.id === b.dataset.actDel);
+        if (!h || !(await ctx.confirm(`Xóa hành vi tự thêm “${h.ten}”?`, { title: 'Xóa hành vi', okText: 'Xóa', danger: true }))) return;
+        customActs.remove(crime.dieu, h.id);
+        sel.hanhViIds = sel.hanhViIds.filter((x) => x !== h.id);
+        if (!sel.hanhViIds.length) sel.hanhViIds = [findCrime(crime.dieu).hanhVi[0].id];
+        persistSel();
+        renderMain();
+        toast('Đã xóa hành vi');
+      }),
+    );
     $$('[data-dk]', main).forEach((b) =>
       b.addEventListener('click', () => {
         const d = b.dataset.dk;
@@ -404,11 +491,26 @@ export function render(ctx, params = []) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
       }
+      if (e.target.closest('[data-sugg-close]')) {
+        sugg = null;
+        return renderPanel();
+      }
+      const sa = e.target.closest('[data-sugg-add]');
+      if (sa || e.target.closest('[data-sugg-all]')) {
+        if (sa) addSuggestion(+sa.dataset.suggAdd);
+        else sugg.items.forEach((_, i) => addSuggestion(i));
+        refresh();
+        toast(sa ? 'Đã thêm câu hỏi' : 'Đã thêm tất cả câu hỏi gợi ý');
+        return;
+      }
+      const ia = e.target.closest('[data-issue-ai]');
+      if (ia) return suggest(ia.closest('[data-issue]').dataset.issue);
       const li = e.target.closest('.lg-q');
       if (!li) return;
       const key = li.closest('[data-issue]').dataset.issue;
       const text = li.dataset.text;
       const q = plan.issues.find((i) => i.key === key).cauHoi.find((c) => c.text === text);
+      if (e.target.closest('[data-qai]')) return suggest(key, q.text);
       if (e.target.closest('[data-qdel]')) {
         removeQuestion(key, q);
         refresh();
@@ -473,6 +575,13 @@ export function render(ctx, params = []) {
         },
       });
     });
+    $('[data-export-blank]', main).addEventListener('click', () => {
+      const rec = newRecord({ roleId: sel.roleId, plan, settings: ctx.settings() });
+      rec.gioBatDau = '';
+      prefillQa(rec, uid);
+      downloadBlob(buildDocx(buildRecordDocument(rec), 'Phiếu hỏi'), safeFileName(`phieu-hoi-dieu-${plan.crime.dieu}-${plan.role.id}`), DOCX_MIME);
+      toast(`Đã xuất phiếu hỏi Word (${rec.qa.length} câu hỏi, chưa trả lời)`);
+    });
     $('[data-save-plan]', main).addEventListener('click', () => savePlanDialog());
     $('[data-start]', main).addEventListener('click', () => startDialog());
     $('[data-ai-more]', main).addEventListener('click', aiMore);
@@ -518,6 +627,87 @@ export function render(ctx, params = []) {
       btn.disabled = false;
       btn.innerHTML = `${icon('sparkles', 'ic-sm')}AI gợi ý thêm`;
     }
+  }
+
+  /** Thêm / sửa hành vi vi phạm do người dùng tự định nghĩa. */
+  function actDialog(crime, act = null) {
+    const lines = (v) => String(v || '').split('\n').map((x) => x.replace(/^\s*[-•\d.)]+\s*/, '').trim()).filter(Boolean);
+    ctx.modal(
+      `<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button>
+      <h2 class="modal-title">${act ? 'Sửa hành vi' : 'Thêm hành vi vi phạm'}</h2>
+      <p class="hint" style="margin-bottom:14px">Điều ${crime.dieu} — ${escapeHtml(crime.ten)}. Hành vi tự thêm được lưu trên máy, theo tài khoản của bạn.</p>
+      <form class="auth-form" data-f>
+        <div class="field"><label for="act-ten">Tên hành vi</label><input class="input" id="act-ten" name="ten" required value="${escapeHtml(act?.ten || '')}" placeholder="VD: Lập hồ sơ khống để rút tiền tạm ứng" /></div>
+        <div class="field"><label for="act-q">Câu hỏi đặc thù (mỗi dòng một câu)</label><textarea class="textarea" rows="6" id="act-q" name="cauHoi">${escapeHtml((act?.cauHoi || []).join('\n'))}</textarea></div>
+        <div class="field"><label for="act-tl">Tài liệu cần thu thập (mỗi dòng một mục)</label><textarea class="textarea" rows="3" id="act-tl" name="taiLieu">${escapeHtml((act?.taiLieu || []).join('\n'))}</textarea></div>
+        <div class="modal-actions"><button class="btn btn-ghost" type="button" data-act-ai>${icon('sparkles', 'ic-sm')}Gợi ý câu hỏi</button><span class="spacer"></span><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="submit">${icon('save', 'ic-sm')}Lưu hành vi</button></div>
+      </form>`,
+      {
+        label: act ? 'Sửa hành vi' : 'Thêm hành vi',
+        onMount(box, close) {
+          const form = box.querySelector('[data-f]');
+          const aiBtn = box.querySelector('[data-act-ai]');
+          aiBtn.addEventListener('click', async () => {
+            const ten = form.ten.value.trim();
+            if (!ten) {
+              form.ten.focus();
+              return toast('Nhập tên hành vi trước', { type: 'error' });
+            }
+            let list;
+            if (ctx.hasAI('legal')) {
+              aiBtn.disabled = true;
+              aiBtn.innerHTML = `${icon('refresh', 'ic-sm spin')}Đang gợi ý…`;
+              try {
+                const { provider, apiKey, model } = ctx.ai('legal');
+                const out = await streamClaude({
+                  provider,
+                  apiKey,
+                  model,
+                  system: INVESTIGATOR_SYSTEM,
+                  messages: [{ role: 'user', content: `Tội danh: Điều ${crime.dieu} BLHS — ${crime.ten}\nHành vi vi phạm cần làm rõ: ${ten}\nĐối tượng lấy lời khai: ${getRole(sel.roleId).ten}\nĐề xuất 6–10 câu hỏi đặc thù bám sát hành vi này và 3–5 tài liệu cần thu thập. Chỉ trả về JSON: {"cauHoi":["..."],"taiLieu":["..."]}` }],
+                });
+                const j = extractJson(out) || {};
+                list = { cauHoi: (j.cauHoi || []).filter(Boolean), taiLieu: (j.taiLieu || []).filter(Boolean) };
+              } catch (err) {
+                toast(err.message, { type: 'error', timeout: 5000 });
+              } finally {
+                aiBtn.disabled = false;
+                aiBtn.innerHTML = `${icon('sparkles', 'ic-sm')}Gợi ý câu hỏi`;
+              }
+            } else {
+              const t = ten.charAt(0).toLowerCase() + ten.slice(1);
+              list = {
+                cauHoi: [
+                  `Anh/chị trình bày cụ thể việc ${t}: thời gian, địa điểm, cách thức thực hiện?`,
+                  `Ai chỉ đạo, ai cùng tham gia việc ${t}; vai trò của từng người?`,
+                  `Việc ${t} nhằm mục đích gì; lợi ích thu được là gì, ai được hưởng?`,
+                  `Việc ${t} đã gây ra hậu quả, thiệt hại gì; giá trị cụ thể?`,
+                  `Những tài liệu, chứng từ, dữ liệu điện tử nào phản ánh việc ${t}; hiện ai lưu giữ?`,
+                  `Có ai biết hoặc chứng kiến việc ${t} không?`,
+                ],
+                taiLieu: [`Tài liệu, chứng từ liên quan đến việc ${t}`, 'Dữ liệu điện tử, tin nhắn, thư điện tử liên quan'],
+              };
+              toast('Đã tạo gợi ý ngoại tuyến (không dùng AI)', { type: 'info' });
+            }
+            if (!list) return;
+            const merge = (el, xs) => (el.value = [...new Set([...lines(el.value), ...xs])].join('\n'));
+            merge(form.cauHoi, list.cauHoi);
+            merge(form.taiLieu, list.taiLieu);
+          });
+          form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const ten = form.ten.value.trim();
+            if (!ten) return;
+            const rec = customActs.save(crime.dieu, { ...(act || {}), ten, cauHoi: lines(form.cauHoi.value), taiLieu: lines(form.taiLieu.value) });
+            if (!sel.hanhViIds.includes(rec.id)) sel.hanhViIds = [...sel.hanhViIds, rec.id];
+            persistSel();
+            close();
+            renderMain();
+            toast(act ? 'Đã cập nhật hành vi' : 'Đã thêm hành vi — hệ thống tự sinh vấn đề cần làm rõ');
+          });
+        },
+      },
+    );
   }
 
   function caseOptions(selected = '') {
@@ -567,6 +757,7 @@ export function render(ctx, params = []) {
          <div class="field"><label for="st-case">Hồ sơ vụ án</label><select class="select" id="st-case" name="caseId">${caseOptions(cases[0]?.id || '')}</select></div>
          <div class="field"><label for="st-person">Người khai</label><select class="select" id="st-person" name="personId"></select></div>
          <div class="field" data-new-name><label for="st-name">Họ tên người khai</label><input class="input" id="st-name" name="hoTen" placeholder="Có thể bổ sung sau" /></div>
+         <label class="check"><input type="checkbox" name="prefill" />Đưa sẵn toàn bộ ${plan.stats.questions} câu hỏi vào biên bản (chưa trả lời)</label>
          <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="submit">${icon('message', 'ic-sm')}Bắt đầu ghi</button></div>
        </form>`,
       {
@@ -593,6 +784,7 @@ export function render(ctx, params = []) {
             rec.roleId = person?.roleId || sel.roleId;
             if (!person && f.hoTen) rec.nguoiKhai.hoTen = f.hoTen.trim();
             rec.lan = recordsRepo.list((r) => r.caseId && r.caseId === rec.caseId && r.personId && r.personId === rec.personId).length + 1;
+            if (f.prefill) prefillQa(rec, uid);
             const saved = recordsRepo.save(rec);
             close();
             ctx.navigate(`#interview/${saved.id}`);

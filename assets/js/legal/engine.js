@@ -199,13 +199,41 @@ function issueLoaiTru(crime, role) {
   ]);
 }
 
+/* ---------------- Hành vi do người dùng tự thêm ---------------- */
+let actsProvider = () => ({});
+/** Đăng ký nguồn hành vi tự thêm: fn() → { [dieu]: [{ id, ten, cauHoi[], taiLieu[] }] }. */
+export function registerCustomActs(fn) {
+  actsProvider = fn;
+}
+/** Tội danh kèm hành vi tự thêm (đánh dấu custom: true). */
+export function crimeWithCustomActs(dieu, customActs) {
+  const base = findCrime(dieu);
+  if (!base) return null;
+  const extra = (customActs ?? actsProvider()[base.dieu] ?? []).map((h) => ({ cauHoi: [], taiLieu: [], ...h, custom: true }));
+  return extra.length ? { ...base, hanhVi: [...base.hanhVi, ...extra] } : base;
+}
+
+/** Gợi ý câu hỏi truy tiếp cho một câu hỏi — chạy cục bộ, không cần AI. */
+export function localFollowUps(question, role = 'bi-can') {
+  const qtext = String(question || '').trim().replace(/[?？]+$/, '');
+  const core = qtext.replace(/^(anh\/chị|anh|chị|ông|bà)\s+/i, '').replace(/^(trình bày|cho biết|hãy)\s+/i, '');
+  const susp = ['bi-can', 'tam-giu', 'bi-to-giac'].includes(role);
+  return [
+    `Việc này diễn ra vào thời gian nào, ở đâu cụ thể; có những ai cùng có mặt?`,
+    `Căn cứ, tài liệu nào chứng minh nội dung ${susp ? 'anh/chị vừa khai' : 'anh/chị vừa trình bày'}; hiện ai đang lưu giữ?`,
+    core.length > 70 ? 'Ngoài anh/chị, còn những ai biết rõ về nội dung này; họ biết trong hoàn cảnh nào?' : `Ngoài anh/chị, còn ai biết rõ về việc: ${core.charAt(0).toLowerCase() + core.slice(1)}?`,
+    susp ? `Vì sao anh/chị lại làm như vậy; có ai chỉ đạo, gợi ý hoặc hứa hẹn lợi ích không?` : `Vì sao anh/chị biết được nội dung này; anh/chị trực tiếp chứng kiến hay nghe người khác kể lại?`,
+    `Nếu có tiền, tài sản liên quan: số lượng, giá trị bao nhiêu, giao nhận bằng hình thức nào, hiện ở đâu?`,
+  ];
+}
+
 /**
  * Sinh kế hoạch hỏi.
  * @param {object} opts { dieu, hanhViIds: string[], dinhKhung: string[], roleId, custom: {[key]: string[]} }
  * @returns { crime, role, hanhVi, issues, taiLieu, giamDinh, stats }
  */
-export function generatePlan({ dieu, hanhViIds = [], dinhKhung = [], roleId = 'bi-can', custom = {} } = {}) {
-  const crime = findCrime(dieu);
+export function generatePlan({ dieu, hanhViIds = [], dinhKhung = [], roleId = 'bi-can', custom = {}, customActs } = {}) {
+  const crime = crimeWithCustomActs(dieu, customActs);
   if (!crime) throw new Error(`Không tìm thấy Điều ${dieu}`);
   const role = getRole(roleId);
   const hanhViList = hanhViIds.length ? crime.hanhVi.filter((h) => hanhViIds.includes(h.id)) : crime.hanhVi;

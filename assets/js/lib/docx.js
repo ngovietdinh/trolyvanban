@@ -198,6 +198,7 @@ export function buildDocumentXml(doc) {
     h.subject ? c(r(h.subject, { size: 24 }), { before: 60 }) : '',
   ].join('');
   const right = [c(r(QUOC_HIEU, { bold: true, size: 26 })), c(r(TIEU_NGU, { bold: true, size: 28 })), rule(3000, HEAD_R), h.placeDate ? c(r(h.placeDate, { italic: true, size: 28 }), { before: 60 }) : ''].join('');
+  (doc.formNo || []).forEach((l, i, arr) => out.push(p(r(l, { italic: true, size: 22 }), { align: 'right', after: i === arr.length - 1 ? 120 : 0, line: 240 })));
   out.push(table([{ w: HEAD_L, content: left }, { w: HEAD_R, content: right }]));
 
   if (doc.title) {

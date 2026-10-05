@@ -1,5 +1,5 @@
 // Biên bản ghi lời khai / hỏi cung và kế hoạch lấy lời khai → doc model (dùng chung cho xem trước A4 và xuất Word).
-import { getRole } from './roles.js';
+import { getRole, canCuText } from './roles.js';
 import { findCrime } from './engine.js';
 import { toDate } from '../lib/vn-date.js';
 
@@ -22,8 +22,12 @@ export const PERSON_FIELDS = [
   ['ngayCap', 'Ngày cấp'],
   ['noiCap', 'Nơi cấp'],
   ['noiCuTru', 'Nơi cư trú'],
+  ['noiLamViec', 'Nơi làm việc, học tập'],
   ['soDienThoai', 'Số điện thoại'],
+  ['quanHe', 'Quan hệ với bị can, bị hại, vụ án'],
 ];
+
+const DOTS = '……………………………………………………………………………………………………';
 
 /** "Hồi 08 giờ 30 phút, ngày 05 tháng 10 năm 2026" */
 export function formatMoment(dateStr, timeStr) {
@@ -59,11 +63,17 @@ export function newRecord({ caseItem = null, person = null, roleId = 'bi-can', p
     plan: plan ? { dieu: plan.crime?.dieu || plan.dieu, roleId: plan.role?.id || plan.roleId, hanhViIds: (plan.hanhVi || []).map((h) => h.id || h), dinhKhung: plan.dinhKhung || [], issues: plan.issues } : null,
     coverage: {},
     soBan: 2,
+    canCu: '',
+    mauSo: org.mauSo || '',
+    thongTu: org.thongTu || '',
     status: 'dang-ghi',
   };
 }
 
-/** Dựng doc model biên bản. */
+/**
+ * Dựng doc model biên bản theo BLTTHS 2015 (sửa đổi, bổ sung năm 2021, 2025 — Luật số 99/2025/QH15).
+ * Câu hỏi chưa có câu trả lời được in thành dòng chấm để điền tay (phiếu hỏi in sẵn).
+ */
 export function buildRecordDocument(rec) {
   const role = getRole(rec.roleId);
   const hoiCung = role.id === 'bi-can';
@@ -74,35 +84,41 @@ export function buildRecordDocument(rec) {
 
   body.push(para(`${formatMoment(rec.ngay, rec.gioBatDau)}, tại ${blank(rec.diaDiem)}.`));
   const nth = (rec.nguoiTienHanh || []).filter((x) => x.hoTen || x.chucDanh);
-  body.push(para([run('Chúng tôi gồm: ', { bold: true }), run(nth.length ? nth.map((x) => `${x.hoTen || '…………'} — ${x.chucDanh || '…………'}`).join('; ') : '…………')]));
-  if (rec.nguoiGhi) body.push(para([run('Người ghi biên bản: ', { bold: true }), run(rec.nguoiGhi)]));
+  const coQuan = String(rec.coQuan || '').trim();
+  body.push(para([run(nth.length > 1 ? 'Chúng tôi gồm: ' : 'Tôi: ', { bold: true }), run(nth.length ? nth.map((x) => `${x.hoTen || '…………'} — ${x.chucDanh || '…………'}`).join('; ') : '…………'), run(coQuan ? ` thuộc ${coQuan}` : '')]));
+  body.push(para([run('Người ghi biên bản: ', { bold: true }), run(blank(rec.nguoiGhi))]));
   const tg = (rec.thamGia || []).filter((x) => x.hoTen);
-  if (tg.length) body.push(para([run('Với sự tham gia của: ', { bold: true }), run(tg.map((x) => `${x.hoTen} (${x.tuCach || 'người tham gia'})`).join('; '))]));
-  if (hoiCung) body.push(para(`Căn cứ ${role.canCu}, tiến hành hỏi cung bị can:`));
-  else body.push(para(`Tiến hành lấy lời khai của ${role.ten.toLowerCase()}:`));
+  body.push(para([run('Với sự tham gia của: ', { bold: true }), run(tg.length ? tg.map((x) => `${x.hoTen} (${x.tuCach || 'người tham gia'})`).join('; ') : '…………')]));
+  const canCu = String(rec.canCu || '').trim() || canCuText(role);
+  body.push(para(`Căn cứ ${canCu.replace(/^căn cứ\s+/i, '').replace(/[.,;:]+$/, '')}, tiến hành ${hoiCung ? 'hỏi cung bị can' : `ghi lời khai của ${role.ten.toLowerCase()}`}:`));
 
   body.push(para([run('Họ và tên: ', { bold: true }), run(upper(nk.hoTen) || '…………'), run(nk.tenGoiKhac ? `; tên gọi khác: ${nk.tenGoiKhac}` : ''), run(`; giới tính: ${blank(nk.gioiTinh, '……')}`)]));
   body.push(para(`Sinh ngày: ${blank(nk.ngaySinh)}; nơi sinh: ${blank(nk.noiSinh)}; quốc tịch: ${blank(nk.quocTich, '……')}; dân tộc: ${blank(nk.danToc, '……')}; tôn giáo: ${blank(nk.tonGiao, '……')}.`));
-  body.push(para(`Nghề nghiệp, chức vụ: ${blank(nk.ngheNghiep)}.`));
-  body.push(para(`Số định danh cá nhân/CCCD: ${blank(nk.soDinhDanh)}; cấp ngày: ${blank(nk.ngayCap, '……')}; nơi cấp: ${blank(nk.noiCap)}.`));
+  body.push(para(`Nghề nghiệp, chức vụ: ${blank(nk.ngheNghiep)}; nơi làm việc, học tập: ${blank(nk.noiLamViec)}.`));
+  body.push(para(`Số định danh cá nhân/thẻ căn cước: ${blank(nk.soDinhDanh)}; cấp ngày: ${blank(nk.ngayCap, '……')}; nơi cấp: ${blank(nk.noiCap)}.`));
   body.push(para(`Nơi cư trú: ${blank(nk.noiCuTru)}.${nk.soDienThoai ? ` Số điện thoại: ${nk.soDienThoai}.` : ''}`));
+  if (!hoiCung) body.push(para(`Quan hệ với bị can, bị hại, vụ án: ${blank(nk.quanHe)}.`));
   if (rec.tenVu || crime) body.push(para([run('Về vụ án/vụ việc: ', { bold: true }), run(`${(rec.tenVu || `có dấu hiệu ${crime.ten.toLowerCase()} (Điều ${crime.dieu} Bộ luật Hình sự)`).replace(/[.;]+$/, '')}.`)]));
   if (rec.lan > 1) body.push(para(`Đây là lần ${act} thứ ${rec.lan}.`));
-  body.push(para(`Trước khi ${act}, chúng tôi đã thông báo, giải thích quyền và nghĩa vụ của ${role.ten.toLowerCase()} theo quy định tại ${role.quyen}${rec.daThongBaoQuyen ? '; người khai xác nhận đã được nghe, hiểu rõ quyền và nghĩa vụ của mình' : ''}.`));
+  body.push(para(`Trước khi ${act}, ${nth.length > 1 ? 'chúng tôi' : 'tôi'} đã thông báo, giải thích quyền và nghĩa vụ của ${role.ten.toLowerCase()} theo quy định tại ${role.quyen}${rec.daThongBaoQuyen ? '; người khai xác nhận đã được nghe, hiểu rõ quyền và nghĩa vụ của mình' : ''}.`));
   if (role.canhBao) body.push(para([run(role.canhBao, { italic: true })]));
-  if (rec.ghiAmGhiHinh) body.push(para(`Việc ${act} có ghi âm, ghi hình có âm thanh theo quy định của Bộ luật Tố tụng hình sự.`));
+  if (hoiCung) body.push(para(`Việc hỏi cung bị can tại cơ sở giam giữ hoặc tại trụ sở Cơ quan điều tra phải được ghi âm hoặc ghi hình có âm thanh theo khoản 6 Điều 183 Bộ luật Tố tụng hình sự${rec.ghiAmGhiHinh ? '; buổi hỏi cung này có ghi âm, ghi hình có âm thanh' : ''}.`));
+  else if (rec.ghiAmGhiHinh) body.push(para('Việc lấy lời khai có ghi âm hoặc ghi hình có âm thanh theo quy định của Bộ luật Tố tụng hình sự.'));
 
   body.push(para([run('NỘI DUNG', { bold: true })], { align: 'center', indent: false, spaceBefore: true }));
   const qa = (rec.qa || []).filter((x) => String(x.q || '').trim() || String(x.a || '').trim());
   if (!qa.length) body.push(para('[Chưa có nội dung hỏi – đáp]'));
   qa.forEach((x) => {
     body.push(para([run('Hỏi: ', { bold: true }), run(String(x.q || '').trim())], { cls: 'vb-q' }));
-    body.push(para([run('Trả lời: ', { bold: true }), run(String(x.a || '').trim() || '[…]')], { cls: 'vb-a' }));
+    const a = String(x.a || '').trim();
+    body.push(para([run('Trả lời: ', { bold: true }), run(a || DOTS)], { cls: a ? 'vb-a' : 'vb-a vb-blank' }));
+    if (!a) body.push(para(DOTS, { indent: false, cls: 'vb-blank' }));
   });
 
+  const nguoiNghe = hoiCung ? 'bị can' : 'người khai';
   body.push(
     para(
-      `Việc ${act} kết thúc ${rec.gioKetThuc ? `hồi ${rec.gioKetThuc.replace(':', ' giờ ')} phút` : 'hồi … giờ … phút'} cùng ngày. Biên bản đã được đọc lại cho người khai nghe (hoặc người khai tự đọc lại), người khai xác nhận đúng lời khai của mình, không bổ sung, sửa chữa gì và cùng ký tên dưới đây. Biên bản được lập thành ${rec.soBan || 2} bản.`,
+      `Việc ${act} kết thúc ${rec.gioKetThuc ? `hồi ${rec.gioKetThuc.replace(':', ' giờ ')} phút` : 'hồi … giờ … phút'} cùng ngày. Biên bản gồm ${rec.soTrang || '……'} trang, đã được đọc lại cho ${nguoiNghe} nghe (hoặc ${nguoiNghe} tự đọc lại), ${nguoiNghe} xác nhận đúng lời khai của mình, không bổ sung, sửa chữa gì và cùng ký xác nhận vào từng trang của biên bản. Biên bản được lập thành ${rec.soBan || 2} bản.`,
       { spaceBefore: true },
     ),
   );
@@ -113,11 +129,14 @@ export function buildRecordDocument(rec) {
     { title: 'NGƯỜI GHI BIÊN BẢN', hint: '(Ký, ghi rõ họ tên)', name: rec.nguoiGhi || '' },
     { title: upper(nth[0]?.chucDanh || 'ĐIỀU TRA VIÊN'), hint: '(Ký, ghi rõ họ tên)', name: nth[0]?.hoTen || '' },
   ];
+  const mauSo = String(rec.mauSo || '').trim();
+  const thongTu = String(rec.thongTu || '').trim();
 
   return {
     typeId: 'bien-ban-loi-khai',
+    formNo: mauSo || thongTu ? [mauSo && (/^mẫu/i.test(mauSo) ? mauSo : `Mẫu số ${mauSo}`), thongTu && (/^ban hành/i.test(thongTu) ? thongTu : `Ban hành kèm theo ${thongTu}`)].filter(Boolean) : null,
     header: { parent: upper(rec.coQuanCapTren), org: upper(rec.coQuan), number: '', subject: null, placeDate: '' },
-    title: { name: role.bienBan, subject: '' },
+    title: { name: role.bienBan, subject: role.phuDe || '' },
     authority: null,
     recipients: null,
     body,
@@ -167,4 +186,18 @@ export function buildPlanDocument(plan, { coQuan = '', coQuanCapTren = '', tenVu
     dualSign: null,
     signers: [{ title: 'ĐIỀU TRA VIÊN', hint: '(Ký, ghi rõ họ tên)', name: dieuTraVien }],
   };
+}
+
+/** Đưa toàn bộ câu hỏi của kế hoạch vào phần hỏi – đáp (chưa có câu trả lời), bỏ qua câu đã có. */
+export function prefillQa(rec, uidFn = () => Math.random().toString(36).slice(2, 10)) {
+  const have = new Set((rec.qa || []).map((x) => x.planQ).filter(Boolean));
+  const add = [];
+  for (const is of rec.plan?.issues || []) {
+    for (const c of is.cauHoi || []) {
+      if (have.has(c.id)) continue;
+      add.push({ id: uidFn(), q: c.text, a: '', issueId: is.id, planQ: c.id, at: null });
+    }
+  }
+  rec.qa = [...(rec.qa || []), ...add];
+  return add.length;
 }

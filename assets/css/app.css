@@ -2168,3 +2168,296 @@ mark.err-mark.t-style {
   text-transform: uppercase;
   flex: none;
 }
+
+/* ---------- Mẫu từ file Word ---------- */
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: 4px 0 12px;
+}
+.tpl-mine {
+  margin-bottom: 26px;
+}
+.tpl-mine-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+.tpl-mine-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 14px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.tpl-mine-card h3 {
+  font-size: 15px;
+  margin: 0 0 2px;
+}
+.tpl-mine-card p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.tpl-mine-card small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.tpl-mine-card .inline {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+.tpl-mine-empty {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  border: 1.5px dashed var(--line-strong);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.tpl-mine-empty:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.tpl-mine-empty > svg {
+  width: 28px;
+  height: 28px;
+  color: var(--accent);
+  flex: none;
+}
+.tpl-mine-empty span {
+  display: grid;
+  gap: 2px;
+}
+.tpl-mine-empty small {
+  color: var(--text-3);
+}
+.tpl-upload .panel-body {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+}
+.dropzone-lg {
+  min-height: 180px;
+  justify-content: center;
+}
+.tpl-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.tpl-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.tpl-steps span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+  flex: none;
+}
+.tpl-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.tpl-side {
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.tpl-meta {
+  display: grid;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.tpl-fields-head .seg button {
+  white-space: nowrap;
+}
+.tpl-fields-head {
+  flex-wrap: wrap;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px 8px;
+}
+.tpl-fields {
+  overflow: auto;
+  padding: 4px 16px 12px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.tpl-field {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.tpl-field label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.tpl-field-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.tpl-field-row .input {
+  flex: 1;
+  font-weight: 600;
+}
+.input-sm {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+.tpl-find {
+  font-size: 12px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tpl-empty {
+  text-align: center;
+  color: var(--text-3);
+  padding: 20px 8px;
+  font-size: 14px;
+}
+.tpl-tip {
+  margin: 0;
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.tpl-preview-wrap {
+  position: relative;
+  min-width: 0;
+}
+.tpl-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-3);
+  margin-bottom: 8px;
+  min-height: 32px;
+}
+.tpl-preview {
+  overflow: auto;
+  padding: 4px;
+}
+.tpl-doc {
+  width: min(100%, 210mm);
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 20mm 15mm 20mm 25mm;
+  background: #fff;
+  color: #000;
+  font-family: var(--font-doc);
+  font-size: 13pt;
+  line-height: 1.4;
+  box-shadow: var(--shadow-paper);
+  border-radius: 2px;
+}
+.tpl-doc p {
+  margin: 0 0 6pt;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tpl-doc p.al-center {
+  text-align: center;
+}
+.tpl-doc p.al-right {
+  text-align: right;
+}
+.tpl-doc p.al-justify {
+  text-align: justify;
+}
+.tpl-doc p.b {
+  font-weight: 700;
+}
+.tpl-doc p.hf {
+  font-size: 11pt;
+  color: #555;
+}
+.tpl-part-sep {
+  border: 0;
+  border-top: 1px dashed #bbb;
+  margin: 8pt 0;
+}
+.tpl-doc mark {
+  background: #fdecc8;
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+  box-shadow: inset 0 -2px 0 #e0a83a;
+}
+.tpl-doc mark.filled {
+  background: #dcf3e3;
+  box-shadow: inset 0 -2px 0 #3a9b5c;
+}
+.tpl-doc mark.on {
+  outline: 2px solid #c9821f;
+}
+.tpl-make-field {
+  position: absolute;
+  z-index: 5;
+  box-shadow: var(--shadow-md);
+}
+.tpl-find-box {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 14px;
+  max-height: 120px;
+  overflow: auto;
+}
+@media (max-width: 900px) {
+  .tpl-layout {
+    grid-template-columns: 1fr;
+  }
+  .tpl-side {
+    position: static;
+    max-height: none;
+  }
+  .tpl-doc {
+    padding: 14mm 10mm;
+    min-height: 0;
+  }
+}

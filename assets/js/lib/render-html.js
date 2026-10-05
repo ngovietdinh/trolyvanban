@@ -20,7 +20,8 @@ const runsHtml = (runs) =>
 
 export function renderDocumentHtml(doc) {
   const h = doc.header;
-  const head = `
+  const formNo = doc.formNo?.length ? `<div class="vb-formno">${doc.formNo.map((l) => `<div>${tx(l)}</div>`).join('')}</div>` : '';
+  const head = `${formNo}
   <table class="vb-head" role="presentation"><tr>
     <td class="vb-head-left">
       ${h.parent ? `<div class="vb-parent">${tx(h.parent)}</div>` : ''}

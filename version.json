@@ -1,10 +1,10 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "date": "2026-10-05",
   "notes": [
-    "Tài khoản, vai trò và phân quyền; tài khoản quản trị tối cao",
-    "API key ChatGPT, Gemini, Grok, Claude mã hóa riêng theo từng tài khoản",
-    "Phân hệ Tố tụng chỉ dành cho tài khoản được cấp quyền, mặc định ngoại tuyến",
-    "Chạy ngoại tuyến và tự cập nhật phiên bản mới"
+    "Gợi ý AI cho từng câu hỏi trong cây hỏi đáp, thêm hành vi vi phạm thủ công",
+    "Phiếu hỏi Word: đưa toàn bộ câu hỏi vào biên bản, phần trả lời để trống",
+    "Mẫu biên bản ghi lời khai theo BLTTHS sửa đổi, bổ sung năm 2025",
+    "Tạo mẫu văn bản từ file Word: nhận diện trường, AI chắt lọc, xem trước, lưu và xuất Word"
   ]
 }

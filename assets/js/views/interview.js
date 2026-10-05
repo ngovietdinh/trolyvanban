@@ -1,8 +1,8 @@
 // Ghi lời khai / hỏi cung trực tiếp theo kế hoạch, có trợ lý phân tích (AI hoặc cục bộ) và xuất biên bản.
 import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, debounce } from '../ui.js';
 import { recordsRepo, casesRepo } from '../legal/repo.js';
-import { buildRecordDocument, PERSON_FIELDS, newRecord } from '../legal/record.js';
-import { ROLES, getRole } from '../legal/roles.js';
+import { buildRecordDocument, PERSON_FIELDS, newRecord, prefillQa } from '../legal/record.js';
+import { ROLES, getRole, canCuText } from '../legal/roles.js';
 import { findCrime, generatePlan } from '../legal/engine.js';
 import { aiSuggest, aiContradictions, aiCoverage, aiNormalize, localSuggest, localContradictions, localCoverage, localNormalize } from '../legal/assist.js';
 import { renderDocumentHtml } from '../lib/render-html.js';
@@ -133,9 +133,12 @@ export function render(ctx, params = []) {
   }
 
   /* ----- Kế hoạch bên trái ----- */
+  /** Câu hỏi kế hoạch đã hỏi = đã có câu trả lời trong biên bản. */
   function askedSet() {
-    return new Set((rec.qa || []).map((x) => x.planQ).filter(Boolean));
+    return new Set((rec.qa || []).filter((x) => String(x.a || '').trim()).map((x) => x.planQ).filter(Boolean));
   }
+  /** Vị trí lượt hỏi đã đưa sẵn (chưa trả lời) của câu hỏi kế hoạch. */
+  const pendingIndex = (planQ) => (planQ ? (rec.qa || []).findIndex((x) => x.planQ === planQ && !String(x.a || '').trim()) : -1);
   function renderPlan() {
     const issues = rec.plan?.issues || [];
     const host = $('[data-plan]', root);
@@ -149,7 +152,8 @@ export function render(ctx, params = []) {
     const cov = rec.coverage || {};
     const done = issues.filter((i) => cov[i.id] === 'ro').length;
     const pct = Math.round((done / issues.length) * 100);
-    $('[data-progress]', root).innerHTML = `<div class="bar"><span style="width:${pct}%"></span></div><small>${done}/${issues.length} vấn đề đã rõ</small>`;
+    const pending = issues.reduce((n, is) => n + is.cauHoi.filter((c) => !(rec.qa || []).some((x) => x.planQ === c.id)).length, 0);
+    $('[data-progress]', root).innerHTML = `<div class="bar"><span style="width:${pct}%"></span></div><small>${done}/${issues.length} vấn đề đã rõ</small>${pending ? `<button type="button" class="btn btn-ghost btn-sm iv-prefill" data-prefill title="Đưa toàn bộ câu hỏi kế hoạch vào biên bản, phần trả lời để trống — xuất Word làm phiếu hỏi">${icon('plus', 'ic-sm')}Thêm tất cả ${pending} câu hỏi vào biên bản</button>` : ''}`;
     host.innerHTML = issues
       .map((is, i) => {
         const st = cov[is.id] || 'chua';
@@ -171,6 +175,14 @@ export function render(ctx, params = []) {
     },
     true,
   );
+  $('[data-progress]', root).addEventListener('click', (e) => {
+    if (!e.target.closest('[data-prefill]')) return;
+    const n = prefillQa(rec, uid);
+    save();
+    renderTranscript();
+    renderPlan();
+    toast(`Đã thêm ${n} câu hỏi vào biên bản (chưa trả lời) — có thể xuất Word làm phiếu hỏi`);
+  });
   $('[data-plan]', root).addEventListener('click', (e) => {
     const b = e.target.closest('[data-pq]');
     if (b) {
@@ -190,6 +202,8 @@ export function render(ctx, params = []) {
   });
 
   function setQuestion(text, issueId = null, planQ = null) {
+    const pi = pendingIndex(planQ);
+    if (pi >= 0) return editQa(pi);
     cancelEdit();
     current = { q: text, issueId, planQ, editIndex: null };
     qBox.value = text;
@@ -211,11 +225,11 @@ export function render(ctx, params = []) {
     host.innerHTML = qa
       .map((x, i) => {
         const is = rec.plan?.issues?.find((y) => y.id === x.issueId);
-        return `<article class="iv-qa" data-i="${i}">
+        return `<article class="iv-qa ${String(x.a || '').trim() ? '' : 'pending'}" data-i="${i}">
           <div class="iv-qa-n">${i + 1}</div>
           <div class="iv-qa-body">
             <p class="iv-qa-q"><strong>Hỏi:</strong> ${escapeHtml(x.q)}</p>
-            <p class="iv-qa-a"><strong>Trả lời:</strong> ${escapeHtml(x.a || '…')}</p>
+            <p class="iv-qa-a"><strong>Trả lời:</strong> ${x.a ? escapeHtml(x.a) : '<em class="muted">chưa trả lời — bấm để ghi</em>'}</p>
             <div class="iv-qa-meta">${is ? `<span class="src">${escapeHtml(is.tieuDe)}</span>` : ''}<span>${x.at ? new Date(x.at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
               <span class="iv-qa-tools">
                 <button type="button" class="btn btn-ghost btn-sm btn-icon" data-edit aria-label="Sửa lượt hỏi – đáp ${i + 1}">${icon('wand', 'ic-sm')}</button>
@@ -227,7 +241,7 @@ export function render(ctx, params = []) {
         </article>`;
       })
       .join('');
-    host.scrollTop = host.scrollHeight;
+    if (current.editIndex === null) host.scrollTop = host.scrollHeight;
   }
 
   $('[data-transcript]', root).addEventListener('click', async (e) => {
@@ -244,21 +258,30 @@ export function render(ctx, params = []) {
       [rec.qa[i - 1], rec.qa[i]] = [rec.qa[i], rec.qa[i - 1]];
       save();
       renderTranscript();
-    } else if (e.target.closest('[data-edit]')) {
-      const x = rec.qa[i];
-      current = { q: x.q, issueId: x.issueId, planQ: x.planQ, editIndex: i };
-      qBox.value = x.q;
-      aBox.value = x.a;
-      autoGrow(qBox);
-      autoGrow(aBox);
-      $('[data-cancel-edit]', root).hidden = false;
-      $('[data-submit]', root).innerHTML = `${icon('save', 'ic-sm')}Cập nhật lượt ${i + 1}`;
-      aBox.focus();
+    } else if (e.target.closest('[data-edit]') || e.target.closest('.iv-qa.pending')) {
+      editQa(i);
     }
   });
 
+  function editQa(i) {
+    const x = rec.qa[i];
+    current = { q: x.q, issueId: x.issueId, planQ: x.planQ, editIndex: i };
+    qBox.value = x.q;
+    aBox.value = x.a || '';
+    autoGrow(qBox);
+    autoGrow(aBox);
+    const is = rec.plan?.issues?.find((y) => y.id === x.issueId);
+    $('[data-issue-hint]', root).textContent = is ? `Vấn đề: ${is.tieuDe}` : '';
+    $('[data-cancel-edit]', root).hidden = false;
+    $('[data-submit]', root).innerHTML = `${icon('save', 'ic-sm')}${x.a ? 'Cập nhật' : 'Ghi trả lời'} lượt ${i + 1}`;
+    $$('.iv-qa', root).forEach((el) => el.classList.toggle('editing', +el.dataset.i === i));
+    $(`.iv-qa[data-i="${i}"]`, root)?.scrollIntoView({ block: 'nearest' });
+    aBox.focus();
+  }
+
   function cancelEdit() {
     current.editIndex = null;
+    $$('.iv-qa.editing', root).forEach((el) => el.classList.remove('editing'));
     $('[data-cancel-edit]', root).hidden = true;
     $('[data-submit]', root).innerHTML = `${icon('check', 'ic-sm')}Ghi vào biên bản`;
   }
@@ -277,9 +300,11 @@ export function render(ctx, params = []) {
       toast('Nhập câu hỏi trước khi ghi', { type: 'error' });
       return;
     }
+    const wasPending = current.editIndex !== null && !String(rec.qa[current.editIndex]?.a || '').trim();
     if (current.editIndex !== null) {
-      rec.qa[current.editIndex] = { ...rec.qa[current.editIndex], q, a };
-      toast(`Đã cập nhật lượt ${current.editIndex + 1}`);
+      rec.qa[current.editIndex] = { ...rec.qa[current.editIndex], q, a, at: rec.qa[current.editIndex].at || (a ? Date.now() : null) };
+      if (wasPending && a && current.issueId && !(rec.coverage || {})[current.issueId]) rec.coverage = { ...(rec.coverage || {}), [current.issueId]: 'mot-phan' };
+      if (!wasPending) toast(`Đã cập nhật lượt ${current.editIndex + 1}`);
     } else {
       const planText = rec.plan?.issues?.find((x) => x.id === current.issueId)?.cauHoi.find((c) => c.id === current.planQ)?.text;
       rec.qa = [...(rec.qa || []), { id: uid(), q, a, issueId: current.issueId, planQ: planText === q || planText ? current.planQ : null, at: Date.now() }];
@@ -288,6 +313,7 @@ export function render(ctx, params = []) {
     }
     if (rec.status === 'hoan-thanh') rec.status = 'dang-ghi';
     save();
+    const editedIndex = current.editIndex;
     cancelEdit();
     qBox.value = '';
     aBox.value = '';
@@ -300,7 +326,12 @@ export function render(ctx, params = []) {
     const is = rec.plan?.issues?.find((x) => x.id === current.issueId);
     const asked = askedSet();
     const next = is?.cauHoi.find((c) => !asked.has(c.id));
-    if (next) setQuestion(next.text, is.id, next.id);
+    const nextPending = wasPending ? (rec.qa || []).findIndex((x, k) => k > editedIndex && !String(x.a || '').trim()) : -1;
+    if (editedIndex !== null && !wasPending) {
+      current = { q: '', issueId: null, planQ: null, editIndex: null };
+      $('[data-issue-hint]', root).textContent = '';
+    } else if (nextPending >= 0) editQa(nextPending);
+    else if (next) setQuestion(next.text, is.id, next.id);
     else {
       current = { q: '', issueId: null, planQ: null, editIndex: null };
       $('[data-issue-hint]', root).textContent = '';
@@ -453,7 +484,13 @@ export function render(ctx, params = []) {
         <fieldset class="fieldset"><legend>Thủ tục</legend>
           <label class="check"><input type="checkbox" name="daThongBaoQuyen" ${rec.daThongBaoQuyen ? 'checked' : ''}/>Đã thông báo, giải thích quyền và nghĩa vụ</label>
           <label class="check" style="margin-top:8px"><input type="checkbox" name="ghiAmGhiHinh" ${rec.ghiAmGhiHinh ? 'checked' : ''}/>Có ghi âm, ghi hình có âm thanh</label>
-          <div class="field" style="margin-top:12px;max-width:200px"><label for="i-sb">Số bản</label><input class="input" type="number" min="1" id="i-sb" name="soBan" value="${rec.soBan || 2}" /></div>
+          <div class="grid-2" style="margin-top:12px">
+            <div class="field"><label for="i-sb">Số bản</label><input class="input" type="number" min="1" id="i-sb" name="soBan" value="${rec.soBan || 2}" /></div>
+            <div class="field"><label for="i-st">Số trang (để trống để điền tay)</label><input class="input" type="number" min="1" id="i-st" name="soTrang" value="${rec.soTrang || ''}" /></div>
+            <div class="field span-2"><label for="i-cc">Căn cứ pháp lý (để trống dùng mặc định theo tư cách người khai)</label><input class="input" id="i-cc" name="canCu" value="${escapeHtml(rec.canCu || '')}" placeholder="${escapeHtml(canCuText(getRole(rec.roleId)))}" /></div>
+            <div class="field"><label for="i-ms">Mẫu số</label><input class="input" id="i-ms" name="mauSo" value="${escapeHtml(rec.mauSo || '')}" placeholder="Để trống nếu không in" /></div>
+            <div class="field"><label for="i-tt">Ban hành kèm theo</label><input class="input" id="i-tt" name="thongTu" value="${escapeHtml(rec.thongTu || '')}" placeholder="Thông tư số …/2025/TT-BCA" /></div>
+          </div>
         </fieldset>
         <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="submit">${icon('save', 'ic-sm')}Lưu thông tin</button></div>
       </form>`,
@@ -486,6 +523,10 @@ export function render(ctx, params = []) {
               daThongBaoQuyen: f.get('daThongBaoQuyen') === 'on',
               ghiAmGhiHinh: f.get('ghiAmGhiHinh') === 'on',
               soBan: Math.max(1, parseInt(g('soBan'), 10) || 2),
+              soTrang: parseInt(g('soTrang'), 10) || '',
+              canCu: g('canCu'),
+              mauSo: g('mauSo'),
+              thongTu: g('thongTu'),
             });
             rec = recordsRepo.save(rec);
             close();
