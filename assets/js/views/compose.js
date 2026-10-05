@@ -75,7 +75,7 @@ export function render(ctx, params = []) {
         <div class="ai-box">
           <div class="ai-box-label">
             <span>${icon('sparkles', 'ic-sm')}Soạn nội dung bằng AI</span>
-            <span class="badge ${ctx.hasAI() ? 'badge-success' : ''}" data-ai-badge>${ctx.hasAI() ? 'Claude' : 'Cơ bản'}</span>
+            <span class="badge ${ctx.hasAI() ? 'badge-success' : ''}" data-ai-badge>${ctx.ai()?.label || 'Cơ bản'}</span>
           </div>
           <div class="ai-box-row">
             <textarea rows="1" placeholder="Mô tả ngắn: mục đích, đối tượng, thời gian…" aria-label="Mô tả yêu cầu cho AI" data-brief></textarea>
@@ -257,11 +257,12 @@ export function render(ctx, params = []) {
       toast('Đã tạo bản nháp từ mẫu cơ bản. Thêm API key để AI soạn chi tiết hơn.', { type: 'info', timeout: 4200 });
       return;
     }
-    const { apiKey, model } = ctx.settings();
+    const { provider, apiKey, model } = ctx.ai();
     aiController = new AbortController();
     setAiBusy(true);
     try {
       const out = await streamClaude({
+        provider,
         apiKey,
         model,
         messages: [{ role: 'user', content: composePrompt(state.typeId, text, state.values) }],

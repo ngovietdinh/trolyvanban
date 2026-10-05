@@ -7,11 +7,14 @@ test.describe('Trang giới thiệu', () => {
     await page.goto('/');
     await expect(page).toHaveTitle(/Trợ Lý Văn Bản/);
     await expect(page.locator('h1')).toContainText('Văn bản hành chính chuẩn mực');
-    for (const id of ['tinh-nang', 'to-tung', 'quy-trinh', 'mau-van-ban', 'demo', 'bang-gia', 'hoi-dap', 'lien-he']) {
+    for (const id of ['tinh-nang', 'quy-trinh', 'mau-van-ban', 'demo', 'bang-gia', 'hoi-dap', 'lien-he']) {
       await expect(page.locator(`#${id}`)).toBeAttached();
     }
     await expect(page.locator('[data-templates] .tpl')).toHaveCount(8);
     await expect(page.locator('.plan')).toHaveCount(3);
+    // Phân hệ tố tụng không được giới thiệu công khai
+    await expect(page.locator('#to-tung')).toHaveCount(0);
+    expect(await page.locator('body').innerText()).not.toMatch(/tố tụng|lời khai/i);
     // Phông chữ tiếng Việt đã được tải
     const fontOk = await page.evaluate(async () => {
       await document.fonts.ready;
@@ -101,10 +104,19 @@ test.describe('Trang giới thiệu', () => {
     await expect(second).toHaveAttribute('open', '');
   });
 
-  test('thẻ mẫu văn bản mở đúng trình soạn thảo', async ({ page }) => {
+  test('thẻ mẫu văn bản yêu cầu đăng nhập rồi mở đúng trình soạn thảo', async ({ page }) => {
     await page.goto('/#mau-van-ban');
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
     await page.locator('.tpl', { hasText: 'Tờ trình' }).click();
     await expect(page).toHaveURL(/app\.html#compose\/to-trinh/);
+    await expect(page.locator('.gate')).toBeVisible();
+    await page.fill('#g-name', 'Quản trị');
+    await page.fill('#g-pass', 'matkhau-toi-cao');
+    await page.click('[data-gate-form] button[type="submit"]');
     await expect(page.locator('[data-type="to-trinh"]')).toHaveAttribute('aria-selected', 'true');
   });
+
 });

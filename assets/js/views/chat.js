@@ -30,7 +30,7 @@ export function render(ctx) {
         <button class="btn btn-ghost btn-icon" type="button" title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới" data-new>${icon('plus')}</button>
         <button class="btn btn-primary btn-icon" type="submit" aria-label="Gửi" data-send>${icon('send')}</button>
       </form>
-      <p class="composer-note">${ctx.hasAI() ? `Đang dùng <strong>${escapeHtml(ctx.settings().model)}</strong>. AI có thể sai sót — hãy rà soát trước khi ban hành.` : 'Chế độ cơ bản — <a class="link" href="#settings">thêm API key</a> để trò chuyện tự do với AI Claude.'}</p>
+      <p class="composer-note">${ctx.hasAI() ? `Đang dùng <strong>${escapeHtml(ctx.ai().label)} · ${escapeHtml(ctx.ai().model)}</strong>. AI có thể sai sót — hãy rà soát trước khi ban hành.` : ctx.can('ai') ? 'Chế độ cơ bản — <a class="link" href="#settings">thêm API key</a> (ChatGPT, Gemini, Grok hoặc Claude) để trò chuyện tự do với AI.' : 'Chế độ cơ bản — tài khoản chưa được cấp quyền dùng AI trực tuyến.'}</p>
     </div>
   </div>`;
 
@@ -105,12 +105,13 @@ export function render(ctx) {
       return;
     }
 
-    const { apiKey, model } = ctx.settings();
+    const { provider, apiKey, model } = ctx.ai();
     controller = new AbortController();
     setBusy(true);
     try {
       if (type) {
         const out = await streamClaude({
+          provider,
           apiKey,
           model,
           signal: controller.signal,
@@ -129,6 +130,7 @@ export function render(ctx) {
           .slice(-20)
           .map((m) => ({ role: m.role, content: m.content }));
         await streamClaude({
+          provider,
           apiKey,
           model,
           signal: controller.signal,

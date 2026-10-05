@@ -1,0 +1,10 @@
+{
+  "name": "Trợ Lý Văn Bản AI",
+  "short_name": "Trợ Lý VB",
+  "start_url": "app.html",
+  "display": "standalone",
+  "background_color": "#f7f4ee",
+  "theme_color": "#0d1a2e",
+  "lang": "vi",
+  "icons": [{ "src": "assets/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

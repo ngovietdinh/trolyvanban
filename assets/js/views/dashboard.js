@@ -39,16 +39,17 @@ export function render(ctx) {
       </form>
     </section>
 
-    <div class="legal-promo">
+    ${ctx.can('legal') ? `<div class="legal-promo">
       <a href="#legal"><span class="quick-icon">${icon('layers')}</span><span><strong>Cây hỏi đáp pháp luật</strong><span>Chọn lĩnh vực → tội danh → hành vi để sinh bộ vấn đề cần làm rõ và câu hỏi theo BLHS.</span></span></a>
-      <a href="#interview"><span class="quick-icon">${icon('message')}</span><span><strong>Ghi lời khai thông minh</strong><span>Ghi hỏi – đáp theo kế hoạch, AI gợi ý câu hỏi truy tiếp và phát hiện mâu thuẫn.</span></span></a>
-    </div>
+      <a href="#interview"><span class="quick-icon">${icon('message')}</span><span><strong>Ghi lời khai thông minh</strong><span>Ghi hỏi – đáp theo kế hoạch, gợi ý câu hỏi truy tiếp và phát hiện mâu thuẫn.</span></span></a>
+    </div>` : ''}
 
     <div class="quick-grid">
-      <a class="quick" href="#compose/cong-van"><span class="quick-icon">${icon('mail')}</span><strong>Công văn</strong><span>Trao đổi, đề nghị</span></a>
-      <a class="quick" href="#compose/quyet-dinh"><span class="quick-icon">${icon('gavel')}</span><strong>Quyết định</strong><span>Bổ nhiệm, thành lập</span></a>
+      ${ctx.can('docs') ? `<a class="quick" href="#compose/cong-van"><span class="quick-icon">${icon('mail')}</span><strong>Công văn</strong><span>Trao đổi, đề nghị</span></a>
+      <a class="quick" href="#compose/quyet-dinh"><span class="quick-icon">${icon('gavel')}</span><strong>Quyết định</strong><span>Bổ nhiệm, thành lập</span></a>` : ''}
+      ${ctx.can('tools') ? `
       <a class="quick" href="#spell"><span class="quick-icon">${icon('spell')}</span><strong>Kiểm tra chính tả</strong><span>Soát lỗi trong 1 giây</span></a>
-      <a class="quick" href="#number"><span class="quick-icon">${icon('hash')}</span><strong>Số thành chữ</strong><span>Chuẩn chứng từ</span></a>
+      <a class="quick" href="#number"><span class="quick-icon">${icon('hash')}</span><strong>Số thành chữ</strong><span>Chuẩn chứng từ</span></a>` : ''}
     </div>
 
     <div class="dash-grid">

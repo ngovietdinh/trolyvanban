@@ -1,0 +1,10 @@
+{
+  "version": "2.0.0",
+  "date": "2026-10-05",
+  "notes": [
+    "Tài khoản, vai trò và phân quyền; tài khoản quản trị tối cao",
+    "API key ChatGPT, Gemini, Grok, Claude mã hóa riêng theo từng tài khoản",
+    "Phân hệ Tố tụng chỉ dành cho tài khoản được cấp quyền, mặc định ngoại tuyến",
+    "Chạy ngoại tuyến và tự cập nhật phiên bản mới"
+  ]
+}

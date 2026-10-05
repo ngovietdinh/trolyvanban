@@ -51,8 +51,68 @@ function sse(model, text) {
   ].join('');
 }
 
-export async function freshApp(page, hash = '') {
+export const SUPER = { name: 'Quản trị hệ thống', email: 'gsnvbu@gmail.com', password: 'matkhau-toi-cao' };
+
+/** Xóa dữ liệu, tạo tài khoản quản trị tối cao (toàn quyền) rồi mở màn hình cần kiểm thử. */
+export async function freshApp(page, hash = '', { login = true } = {}) {
   await page.goto('/index.html');
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
   await page.goto('/app.html' + hash);
+  if (!login) return;
+  await page.fill('#g-name', SUPER.name);
+  await page.fill('#g-pass', SUPER.password);
+  await page.click('[data-gate-form] button[type="submit"]');
+  await page.waitForSelector('.shell:not([hidden])');
+  if (hash) await page.goto('/app.html' + hash);
+}
+
+/** Đăng nhập bằng tài khoản có sẵn qua màn hình đăng nhập. */
+export async function loginAs(page, email, password) {
+  await page.goto('/app.html');
+  if (await page.locator('.avatar-btn').isVisible().catch(() => false)) {
+    await page.click('.avatar-btn');
+    await page.click('[data-logout]');
+  }
+  if (await page.locator('[data-gate-mode="login"]').isVisible().catch(() => false)) await page.click('[data-gate-mode="login"]');
+  await page.fill('#g-email', email);
+  await page.fill('#g-pass', password);
+  await page.click('[data-gate-form] button[type="submit"]');
+  await page.waitForSelector('.shell:not([hidden])');
+}
+
+/** Lưu API key (mã hóa trong kho của tài khoản) qua màn hình Cài đặt. */
+export async function setApiKey(page, provider, key, model) {
+  await page.goto('/app.html#settings');
+  await page.click(`[data-prov="${provider}"]`);
+  await page.fill('[data-key]', key);
+  if (model) await page.fill('[data-model]', model);
+  await page.click('[data-save-key]');
+  await page.locator('.toast', { hasText: 'Đã lưu API key' }).last().waitFor();
+  await page.selectOption('[data-default-prov]', provider);
+}
+
+/** Giả lập API tương thích OpenAI (ChatGPT, Grok) và Gemini ở chế độ streaming SSE. */
+export async function mockProviders(page, reply = () => 'Xin chào từ AI') {
+  const calls = [];
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' };
+  const handler = (provider) => async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    const body = JSON.parse(req.postData() || '{}');
+    calls.push({ provider, url: req.url(), headers: req.headers(), body });
+    const text = reply(provider, body);
+    const chunks = text.match(/[\s\S]{1,10}/g) || [''];
+    const sse =
+      provider === 'gemini'
+        ? chunks.map((c) => `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: c }], role: 'model' } }] })}\r\n\r\n`).join('')
+        : chunks.map((c) => `data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`).join('') + 'data: [DONE]\n\n';
+    return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'text/event-stream' }, body: sse });
+  };
+  await page.route('https://api.openai.com/**', handler('openai'));
+  await page.route('https://api.x.ai/**', handler('grok'));
+  await page.route('https://generativelanguage.googleapis.com/**', handler('gemini'));
+  return calls;
 }

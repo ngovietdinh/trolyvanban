@@ -109,7 +109,7 @@ export function render(ctx, params = []) {
     <aside class="iv-ai" aria-label="Trợ lý phân tích lời khai">
       <div class="iv-ai-head">
         <strong>${icon('sparkles', 'ic-sm')}Trợ lý phân tích</strong>
-        <span class="badge ${ctx.hasAI() ? 'badge-success' : ''}">${ctx.hasAI() ? 'Claude' : 'Cục bộ'}</span>
+        <span class="badge ${ctx.hasAI('legal') ? 'badge-success' : ''}" data-ai-mode title="${ctx.hasAI('legal') ? 'Nội dung lời khai sẽ được gửi tới dịch vụ AI bên ngoài' : 'Phân tích chạy hoàn toàn trên máy, không gửi dữ liệu ra ngoài'}">${ctx.hasAI('legal') ? escapeHtml(ctx.ai('legal').label) : 'Ngoại tuyến'}</span>
       </div>
       <div class="tabs iv-ai-tabs" role="tablist">
         <button class="tab" role="tab" data-aitab="suggest">Gợi ý hỏi</button>
@@ -306,7 +306,7 @@ export function render(ctx, params = []) {
       $('[data-issue-hint]', root).textContent = '';
       qBox.focus();
     }
-    if (aiTab === 'suggest' && !ctx.hasAI()) runAnalysis('suggest');
+    if (aiTab === 'suggest' && !ctx.hasAI('legal')) runAnalysis('suggest');
   });
 
   [qBox, aBox].forEach((el) => {
@@ -329,9 +329,8 @@ export function render(ctx, params = []) {
     const btn = e.currentTarget;
     btn.disabled = true;
     try {
-      if (ctx.hasAI()) {
-        const { apiKey, model } = ctx.settings();
-        aBox.value = await aiNormalize({ apiKey, model, question: qBox.value, answer: a });
+      if (ctx.hasAI('legal')) {
+        aBox.value = await aiNormalize({ ...ctx.ai('legal'), question: qBox.value, answer: a });
       } else aBox.value = localNormalize(a);
       autoGrow(aBox);
       toast('Đã chuẩn hóa văn phong — hãy đọc lại cho người khai xác nhận');
@@ -403,17 +402,16 @@ export function render(ctx, params = []) {
 
   async function runAnalysis(kind) {
     const others = rec.caseId ? recordsRepo.list((r) => r.caseId === rec.caseId && r.id !== rec.id) : [];
-    if (!ctx.hasAI()) {
+    if (!ctx.hasAI('legal')) {
       aiResults[kind] = kind === 'suggest' ? localSuggest(rec) : kind === 'contra' ? localContradictions(rec, others) : localCoverage(rec);
       renderAi();
       return;
     }
-    const { apiKey, model } = ctx.settings();
     controller = new AbortController();
     aiResults[kind] = 'loading';
     renderAi();
     try {
-      const args = { apiKey, model, rec, crime, signal: controller.signal };
+      const args = { ...ctx.ai('legal'), rec, crime, signal: controller.signal };
       aiResults[kind] = kind === 'suggest' ? await aiSuggest(args) : kind === 'contra' ? await aiContradictions({ ...args, others }) : await aiCoverage(args);
     } catch (err) {
       aiResults[kind] = { error: err.message };

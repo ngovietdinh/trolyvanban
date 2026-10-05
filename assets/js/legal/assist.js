@@ -23,8 +23,8 @@ NỘI DUNG LỜI KHAI ĐÃ GHI:
 ${qaToText(rec) || '(chưa có)'}`;
 }
 
-async function askJson({ apiKey, model, prompt, signal }) {
-  const out = await streamClaude({ apiKey, model, system: INVESTIGATOR_SYSTEM, signal, messages: [{ role: 'user', content: prompt }] });
+async function askJson({ provider, apiKey, model, prompt, signal }) {
+  const out = await streamClaude({ provider, apiKey, model, system: INVESTIGATOR_SYSTEM, signal, messages: [{ role: 'user', content: prompt }] });
   const json = extractJson(out);
   if (!json) throw new Error('Không đọc được kết quả phân tích từ AI');
   return json;
@@ -32,8 +32,9 @@ async function askJson({ apiKey, model, prompt, signal }) {
 
 /* ---------------- Claude ---------------- */
 
-export async function aiSuggest({ apiKey, model, rec, crime, signal }) {
+export async function aiSuggest({ provider, apiKey, model, rec, crime, signal }) {
   const j = await askJson({
+    provider,
     apiKey,
     model,
     signal,
@@ -45,9 +46,10 @@ Chỉ trả về JSON: {"cauHoi": [{"text": "câu hỏi", "lyDo": "vì sao cần
   return (j.cauHoi || []).filter((x) => x?.text);
 }
 
-export async function aiContradictions({ apiKey, model, rec, crime, others = [], signal }) {
+export async function aiContradictions({ provider, apiKey, model, rec, crime, others = [], signal }) {
   const prev = others.length ? `\n\nCÁC LỜI KHAI KHÁC TRONG HỒ SƠ (để đối chiếu):\n${others.map((o, i) => `--- Biên bản ${i + 1} (${o.nguoiKhai?.hoTen || 'không rõ'}):\n${qaToText(o)}`).join('\n')}` : '';
   const j = await askJson({
+    provider,
     apiKey,
     model,
     signal,
@@ -59,8 +61,9 @@ Chỉ trả về JSON: {"mauThuan": [{"moTa": "mô tả mâu thuẫn", "trichDan
   return j.mauThuan || [];
 }
 
-export async function aiCoverage({ apiKey, model, rec, crime, signal }) {
+export async function aiCoverage({ provider, apiKey, model, rec, crime, signal }) {
   const j = await askJson({
+    provider,
     apiKey,
     model,
     signal,
@@ -72,8 +75,9 @@ Chỉ trả về JSON: {"tongQuan": "nhận xét chung 2-3 câu", "danhGia": [{"
   return { tongQuan: j.tongQuan || '', danhGia: j.danhGia || [] };
 }
 
-export async function aiNormalize({ apiKey, model, question, answer, signal }) {
+export async function aiNormalize({ provider, apiKey, model, question, answer, signal }) {
   const out = await streamClaude({
+    provider,
     apiKey,
     model,
     system: INVESTIGATOR_SYSTEM,

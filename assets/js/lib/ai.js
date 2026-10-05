@@ -1,5 +1,5 @@
-// Lớp AI: dùng Claude (Anthropic) khi người dùng cấu hình API key, ngược lại dùng
-// "Trợ lý mẫu" chạy cục bộ dựa trên quy tắc — bảo đảm mọi tính năng luôn sử dụng được.
+// Lớp AI: hỗ trợ Claude (Anthropic), ChatGPT (OpenAI), Gemini (Google), Grok (xAI) bằng API key
+// của từng tài khoản. Khi chưa có key hoặc không được cấp quyền, dùng "Trợ lý mẫu" chạy cục bộ.
 
 import { moneyToWords, formatNumberVi, parseNumberInput } from './number-words.js';
 import { summarize } from './summarize.js';
@@ -12,6 +12,14 @@ export const MODELS = [
   { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — siêu tốc' },
 ];
 export const DEFAULT_MODEL = 'claude-opus-5-5';
+
+/** Nhà cung cấp AI. Tên mô hình của OpenAI/Google/xAI thay đổi thường xuyên nên cho phép nhập tự do. */
+export const PROVIDERS = {
+  anthropic: { label: 'Claude', vendor: 'Anthropic', keyHint: 'sk-ant-…', keyPrefix: /^sk-ant-/, console: 'console.anthropic.com', defaultModel: DEFAULT_MODEL, models: MODELS.map((m) => m.id) },
+  openai: { label: 'ChatGPT', vendor: 'OpenAI', keyHint: 'sk-…', keyPrefix: /^sk-/, console: 'platform.openai.com', defaultModel: 'gpt-4o', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini', 'o4-mini'], base: 'https://api.openai.com/v1' },
+  gemini: { label: 'Gemini', vendor: 'Google', keyHint: 'AIza…', keyPrefix: /^AIza/, console: 'aistudio.google.com', defaultModel: 'gemini-2.5-flash', models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'], base: 'https://generativelanguage.googleapis.com/v1beta' },
+  grok: { label: 'Grok', vendor: 'xAI', keyHint: 'xai-…', keyPrefix: /^xai-/, console: 'console.x.ai', defaultModel: 'grok-3', models: ['grok-3', 'grok-3-mini', 'grok-4'], base: 'https://api.x.ai/v1' },
+};
 
 export const SYSTEM_PROMPT = `Bạn là "Trợ Lý Văn Bản", chuyên gia văn thư - hành chính nhà nước Việt Nam với nhiều năm kinh nghiệm.
 - Luôn trả lời bằng tiếng Việt chuẩn mực, lịch sự, súc tích.
@@ -41,7 +49,16 @@ export function friendlyError(err, Anthropic) {
  * Gọi Claude ở chế độ streaming. onText nhận từng đoạn chữ.
  * Trả về toàn bộ văn bản. Ném lỗi với thông điệp tiếng Việt thân thiện.
  */
-export async function streamClaude({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000 }) {
+export async function streamClaude(opts) {
+  const provider = opts.provider || 'anthropic';
+  if (provider === 'openai' || provider === 'grok') return streamOpenAICompatible({ ...opts, provider });
+  if (provider === 'gemini') return streamGemini(opts);
+  return streamAnthropic(opts);
+}
+/** Tên trung tính cho mọi nhà cung cấp. */
+export const streamAI = streamClaude;
+
+async function streamAnthropic({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000 }) {
   const Anthropic = await loadSdk();
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   const params = { model, max_tokens: maxTokens, system, messages };
@@ -67,8 +84,116 @@ export async function streamClaude({ apiKey, model = DEFAULT_MODEL, system = SYS
   }
 }
 
+/* ---------------- OpenAI / xAI (giao thức tương thích OpenAI) và Google Gemini ---------------- */
+
+function httpError(status, provider, bodyText = '') {
+  const label = PROVIDERS[provider]?.label || 'AI';
+  if (status === 401 || status === 403 || /API_KEY_INVALID|invalid api key|incorrect api key/i.test(bodyText)) return `API key ${label} không hợp lệ hoặc không có quyền. Vui lòng kiểm tra trong Cài đặt.`;
+  if (status === 404) return `Không tìm thấy mô hình ${label} đã chọn. Kiểm tra lại tên mô hình trong Cài đặt.`;
+  if (status === 429) return `${label} đang quá tải hoặc vượt hạn mức sử dụng. Vui lòng thử lại sau.`;
+  if (status === 400) return `Yêu cầu tới ${label} không hợp lệ (400). ${bodyText.slice(0, 160)}`;
+  return `Lỗi từ máy chủ ${label} (${status}). Vui lòng thử lại.`;
+}
+
+/** Đọc luồng SSE, gọi onEvent(dataString) cho từng sự kiện. */
+async function readSSE(res, onEvent) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).replace(/\r$/, '');
+      buf = buf.slice(i + 1);
+      if (line.startsWith('data:')) onEvent(line.slice(5).trim());
+    }
+  }
+  if (buf.startsWith('data:')) onEvent(buf.slice(5).trim());
+}
+
+async function doFetch(url, init, provider, signal) {
+  let res;
+  try {
+    res = await fetch(url, { ...init, signal });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw new Error('Đã dừng tạo nội dung.');
+    throw new Error(`Không kết nối được tới ${PROVIDERS[provider].label}. Kiểm tra mạng hoặc dịch vụ có cho phép gọi từ trình duyệt không.`);
+  }
+  if (!res.ok) throw new Error(httpError(res.status, provider, await res.text().catch(() => '')));
+  return res;
+}
+
+async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000 }) {
+  const cfg = PROVIDERS[provider];
+  const res = await doFetch(
+    `${cfg.base}/chat/completions`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: model || cfg.defaultModel, stream: true, max_tokens: Math.min(maxTokens, 16000), messages: [{ role: 'system', content: system }, ...messages] }),
+    },
+    provider,
+    signal,
+  );
+  let text = '';
+  try {
+    await readSSE(res, (data) => {
+      if (!data || data === '[DONE]') return;
+      const j = JSON.parse(data);
+      const d = j.choices?.[0]?.delta?.content;
+      if (d) {
+        text += d;
+        onText?.(d, text);
+      }
+    });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw new Error('Đã dừng tạo nội dung.');
+    throw err;
+  }
+  return text;
+}
+
+async function streamGemini({ apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000 }) {
+  const cfg = PROVIDERS.gemini;
+  const contents = messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(m.content) }] }));
+  const res = await doFetch(
+    `${cfg.base}/models/${encodeURIComponent(model || cfg.defaultModel)}:streamGenerateContent?alt=sse`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents, generationConfig: { maxOutputTokens: Math.min(maxTokens, 16000) } }),
+    },
+    'gemini',
+    signal,
+  );
+  let text = '';
+  try {
+    await readSSE(res, (data) => {
+      if (!data) return;
+      const j = JSON.parse(data);
+      const d = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+      if (d) {
+        text += d;
+        onText?.(d, text);
+      }
+    });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw new Error('Đã dừng tạo nội dung.');
+    throw err;
+  }
+  return text;
+}
+
 /** Kiểm tra nhanh API key bằng một yêu cầu rất ngắn. */
-export async function testApiKey(apiKey, model = DEFAULT_MODEL) {
+export async function testApiKey(apiKey, model, provider = 'anthropic') {
+  if (provider !== 'anthropic') {
+    await streamClaude({ provider, apiKey, model, system: 'Trả lời ngắn.', messages: [{ role: 'user', content: 'Chào' }], maxTokens: 16 });
+    return true;
+  }
+  model = model || DEFAULT_MODEL;
   const Anthropic = await loadSdk();
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   try {

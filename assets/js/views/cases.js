@@ -238,10 +238,9 @@ export function render(ctx, params = []) {
       out.innerHTML = '<p><span class="typing"><span></span><span></span><span></span></span> Đang đối chiếu…</p>';
       try {
         let items;
-        if (ctx.hasAI()) {
-          const { apiKey, model } = ctx.settings();
+        if (ctx.hasAI('legal')) {
           const crime = findCrime(c.toiDanh?.[0]);
-          items = await aiContradictions({ apiKey, model, rec: recs[0], crime, others: recs.slice(1) });
+          items = await aiContradictions({ ...ctx.ai('legal'), rec: recs[0], crime, others: recs.slice(1) });
         } else items = localContradictions(recs[0], recs.slice(1));
         out.innerHTML = items.length ? `<ul class="iv-ai-list">${items.map((m) => `<li class="lvl-${m.mucDo || 'trung-binh'}"><p><strong>${escapeHtml(m.moTa)}</strong></p>${(m.trichDan || []).map((t) => `<blockquote>${escapeHtml(t)}</blockquote>`).join('')}${m.cauHoiLamRo ? `<small>Câu hỏi làm rõ: ${escapeHtml(m.cauHoiLamRo)}</small>` : ''}</li>`).join('')}</ul>` : `<p class="note">${icon('check-circle', 'ic-sm')}<span>Chưa phát hiện mâu thuẫn rõ rệt giữa các lời khai.</span></p>`;
       } catch (err) {

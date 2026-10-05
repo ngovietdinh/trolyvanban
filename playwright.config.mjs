@@ -11,6 +11,7 @@ export default defineConfig({
     baseURL: 'http://localhost:4174',
     locale: 'vi-VN',
     acceptDownloads: true,
+    serviceWorkers: 'block',
     trace: 'retain-on-failure',
     launchOptions: process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {},
   },

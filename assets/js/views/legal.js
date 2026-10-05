@@ -486,17 +486,18 @@ export function render(ctx, params = []) {
   }
 
   async function aiMore() {
-    if (!ctx.hasAI()) {
-      toast('Cần thêm API key Claude trong Cài đặt để dùng gợi ý AI', { type: 'info' });
+    if (!ctx.hasAI('legal')) {
+      toast(ctx.can('legal.ai') ? 'Cần thêm API key AI trong Cài đặt để dùng gợi ý AI' : 'Phân hệ Tố tụng đang ở chế độ ngoại tuyến. Liên hệ quản trị để được cấp quyền dùng AI trực tuyến.', { type: 'info', timeout: 4500 });
       return;
     }
     const btn = $('[data-ai-more]', main);
     btn.disabled = true;
     btn.innerHTML = `${icon('refresh', 'ic-sm spin')}Đang phân tích…`;
     try {
-      const { apiKey, model } = ctx.settings();
+      const { provider, apiKey, model } = ctx.ai('legal');
       const issues = plan.issues.map((i) => `- [${i.key}] ${i.tieuDe}: ${i.cauHoi.length} câu`).join('\n');
       const out = await streamClaude({
+        provider,
         apiKey,
         model,
         system: INVESTIGATOR_SYSTEM,

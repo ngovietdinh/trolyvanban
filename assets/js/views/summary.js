@@ -87,7 +87,7 @@ export function render(ctx) {
   async function runAI() {
     if (controller) return controller.abort();
     if (!ctx.hasAI()) {
-      toast('Thêm API key Claude trong Cài đặt để dùng tóm tắt bằng AI', { type: 'info' });
+      toast(ctx.can('ai') ? 'Thêm API key (ChatGPT, Gemini, Grok hoặc Claude) trong Cài đặt để dùng tóm tắt bằng AI' : 'Tài khoản chưa được cấp quyền dùng AI trực tuyến', { type: 'info' });
       return ctx.navigate('#settings');
     }
     const text = input.value.trim();
@@ -95,7 +95,7 @@ export function render(ctx) {
       toast('Văn bản quá ngắn để tóm tắt', { type: 'error' });
       return input.focus();
     }
-    const { apiKey, model } = ctx.settings();
+    const { provider, apiKey, model } = ctx.ai();
     const btn = $('[data-ai]', root);
     controller = new AbortController();
     btn.innerHTML = `${icon('stop', 'ic-sm')}Dừng`;
@@ -104,6 +104,7 @@ export function render(ctx) {
     usage.track('ai');
     try {
       const all = await streamClaude({
+        provider,
         apiKey,
         model,
         signal: controller.signal,

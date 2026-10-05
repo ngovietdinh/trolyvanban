@@ -1,7 +1,9 @@
 // Ứng dụng chính: khung giao diện, điều hướng theo hash, tài khoản, bảng lệnh.
 import { $, $$, icon, toast, bindThemeToggles, escapeHtml } from './ui.js';
-import { store, auth, docsRepo } from './lib/store.js';
-import { DEFAULT_MODEL } from './lib/ai.js';
+import { store, docsRepo } from './lib/store.js';
+import { PROVIDERS } from './lib/ai.js';
+import { accounts, vault, SUPER_EMAIL, systemConfig } from './lib/accounts.js';
+import { initUpdates } from './update.js';
 import { DOC_TYPES } from './lib/doc-types.js';
 import { ALL_CRIMES } from './legal/engine.js';
 
@@ -17,32 +19,36 @@ import * as settings from './views/settings.js';
 import * as legal from './views/legal.js';
 import * as interview from './views/interview.js';
 import * as cases from './views/cases.js';
+import * as admin from './views/admin.js';
 import { casesRepo } from './legal/repo.js';
 
+// perm: quyền cần có để mở màn hình.
 const ROUTES = {
   dashboard: { mod: dashboard, title: 'Tổng quan' },
-  compose: { mod: compose, title: 'Soạn văn bản' },
-  legal: { mod: legal, title: 'Cây hỏi đáp pháp luật' },
-  interview: { mod: interview, title: 'Ghi lời khai' },
-  cases: { mod: cases, title: 'Hồ sơ vụ án' },
-  chat: { mod: chat, title: 'Trợ lý AI' },
-  spell: { mod: spell, title: 'Kiểm tra chính tả' },
-  summary: { mod: summary, title: 'Tóm tắt văn bản' },
-  number: { mod: number, title: 'Số thành chữ' },
-  templates: { mod: templates, title: 'Thư viện mẫu' },
-  docs: { mod: docs, title: 'Tài liệu của tôi' },
+  compose: { mod: compose, title: 'Soạn văn bản', perm: 'docs' },
+  legal: { mod: legal, title: 'Cây hỏi đáp pháp luật', perm: 'legal' },
+  interview: { mod: interview, title: 'Ghi lời khai', perm: 'legal' },
+  cases: { mod: cases, title: 'Hồ sơ vụ án', perm: 'legal' },
+  chat: { mod: chat, title: 'Trợ lý AI', perm: 'docs' },
+  spell: { mod: spell, title: 'Kiểm tra chính tả', perm: 'tools' },
+  summary: { mod: summary, title: 'Tóm tắt văn bản', perm: 'tools' },
+  number: { mod: number, title: 'Số thành chữ', perm: 'tools' },
+  templates: { mod: templates, title: 'Thư viện mẫu', perm: 'docs' },
+  docs: { mod: docs, title: 'Tài liệu của tôi', perm: 'docs' },
+  admin: { mod: admin, title: 'Quản trị tài khoản', perm: 'users' },
   settings: { mod: settings, title: 'Cài đặt' },
 };
 
 let view = $('#view');
 let cleanup = null;
 let currentRoute = null;
+let aiCache = { providers: {} }; // Kho API key đã giải mã của tài khoản hiện tại (chỉ trong bộ nhớ).
 
 /* ---------- Context chia sẻ cho các màn hình ---------- */
 export const ctx = {
   view,
   settings() {
-    return { apiKey: '', model: DEFAULT_MODEL, ...store.get('settings', {}) };
+    return { ...store.get('settings', {}) };
   },
   saveSettings(patch) {
     const next = { ...this.settings(), ...patch };
@@ -50,10 +56,31 @@ export const ctx = {
     refreshChrome();
     return next;
   },
-  hasAI() {
-    return !!this.settings().apiKey;
+  /**
+   * Cấu hình AI đang dùng: { provider, apiKey, model, label } hoặc null nếu chưa có key / không có quyền.
+   * scope = 'legal' yêu cầu quyền “AI trực tuyến trong Tố tụng” (mặc định tắt).
+   */
+  ai(scope = 'docs') {
+    const user = accounts.current();
+    if (!user || !user.permSet.has(scope === 'legal' ? 'legal.ai' : 'ai')) return null;
+    const configured = Object.keys(PROVIDERS).filter((p) => aiCache.providers?.[p]?.key);
+    const pref = this.settings().aiProvider;
+    const provider = configured.includes(pref) ? pref : configured[0];
+    if (!provider) return null;
+    const cfg = aiCache.providers[provider];
+    return { provider, apiKey: cfg.key, model: cfg.model || PROVIDERS[provider].defaultModel, label: PROVIDERS[provider].label };
   },
-  user: () => auth.current(),
+  hasAI(scope) {
+    return !!this.ai(scope);
+  },
+  aiProviders: () => aiCache.providers || {},
+  async saveAiProviders(providers) {
+    aiCache = { ...aiCache, providers };
+    await vault.write(aiCache);
+    refreshChrome();
+  },
+  user: () => accounts.current(),
+  can: (perm) => accounts.can(perm),
   navigate(hash) {
     if (location.hash === hash) route();
     else location.hash = hash;
@@ -73,15 +100,16 @@ function parseHash() {
 }
 
 function route() {
+  if (!accounts.current()) return showGate();
   let { name, params } = parseHash();
   if (name === 'login' || name === 'register') {
-    openAuth(name);
     name = currentRoute || 'dashboard';
     history.replaceState(null, '', `#${name}`);
     if (currentRoute) return;
   }
-  const r = ROUTES[name] || ROUTES.dashboard;
+  let r = ROUTES[name] || ROUTES.dashboard;
   if (!ROUTES[name]) name = 'dashboard';
+  const denied = r.perm && !accounts.can(r.perm);
   if (typeof cleanup === 'function') cleanup();
   cleanup = null;
   currentRoute = name;
@@ -99,6 +127,10 @@ function route() {
   });
   closeSidebar();
   refreshChrome();
+  if (denied) {
+    view.innerHTML = `<div class="page"><div class="empty"><div class="empty-icon">${icon('lock', 'ic-lg')}</div><h3>Bạn chưa được cấp quyền truy cập</h3><p>Chức năng “${escapeHtml(r.title)}” cần được quản trị viên cấp quyền cho tài khoản của bạn.</p><a class="btn btn-primary" href="#dashboard">${icon('home')}Về Tổng quan</a></div></div>`;
+    return;
+  }
   try {
     cleanup = r.mod.render(ctx, params) || null;
   } catch (err) {
@@ -109,24 +141,29 @@ function route() {
 
 /* ---------- Chrome: sidebar, user menu, AI status ---------- */
 function refreshChrome() {
+  const user = accounts.current();
+  if (!user) return;
   $('[data-docs-count]').textContent = docsRepo.list().length;
   $('[data-cases-count]').textContent = casesRepo.list().length;
+  // Ẩn mục điều hướng không có quyền.
+  $$('[data-nav]').forEach((a) => {
+    const r = ROUTES[a.dataset.nav];
+    a.hidden = !!(r?.perm && !user.permSet.has(r.perm));
+  });
+  $$('[data-perm-section]').forEach((el) => (el.hidden = !user.permSet.has(el.dataset.permSection)));
+  $$('[data-need-perm]').forEach((el) => (el.hidden = !user.permSet.has(el.dataset.needPerm)));
   const st = $('[data-ai-status]');
-  const on = ctx.hasAI();
-  st.classList.toggle('on', on);
-  st.querySelector('strong').textContent = on ? 'AI Claude đã bật' : 'Chế độ cơ bản';
-  st.querySelector('small').textContent = on ? ctx.settings().model : 'Thêm API key để bật AI';
+  const ai = ctx.ai();
+  st.classList.toggle('on', !!ai);
+  st.querySelector('strong').textContent = ai ? `AI ${ai.label} đã bật` : user.permSet.has('ai') ? 'Chế độ cơ bản' : 'AI trực tuyến bị tắt';
+  st.querySelector('small').textContent = ai ? ai.model : user.permSet.has('ai') ? 'Thêm API key để bật AI' : 'Chưa được cấp quyền';
   renderUserMenu();
 }
 
 function renderUserMenu() {
   const host = $('[data-user-menu]');
-  const user = auth.current();
-  if (!user) {
-    host.innerHTML = `<button class="btn btn-sm" type="button" data-login>${icon('user', 'ic-sm')}<span>Đăng nhập</span></button>`;
-    host.querySelector('[data-login]').addEventListener('click', () => openAuth('login'));
-    return;
-  }
+  const user = accounts.current();
+  if (!user) return;
   const initials = user.name
     .split(/\s+/)
     .slice(-2)
@@ -136,9 +173,11 @@ function renderUserMenu() {
   host.innerHTML = `
     <button class="avatar-btn" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Tài khoản ${escapeHtml(user.name)}"><span class="avatar">${escapeHtml(initials)}</span></button>
     <div class="dropdown" role="menu" hidden>
-      <div class="dropdown-head"><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.email)}</small></div>
-      <a href="#docs" role="menuitem">${icon('folder')}Tài liệu của tôi</a>
+      <div class="dropdown-head"><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.email)}</small><span class="badge badge-accent role-badge" data-role-badge>${escapeHtml(user.roleLabel)}</span></div>
+      ${user.permSet.has('docs') ? `<a href="#docs" role="menuitem">${icon('folder')}Tài liệu của tôi</a>` : ''}
+      ${user.permSet.has('users') ? `<a href="#admin" role="menuitem">${icon('shield')}Quản trị tài khoản</a>` : ''}
       <a href="#settings" role="menuitem">${icon('settings')}Cài đặt</a>
+      <button type="button" role="menuitem" data-change-pw>${icon('key')}Đổi mật khẩu</button>
       <button type="button" role="menuitem" data-logout>${icon('logout')}Đăng xuất</button>
     </div>`;
   const btn = host.querySelector('.avatar-btn');
@@ -159,10 +198,43 @@ function renderUserMenu() {
     if (e.target.closest('a,button')) close();
   });
   host.querySelector('[data-logout]').addEventListener('click', () => {
-    auth.logout();
-    refreshChrome();
+    accounts.logout();
+    aiCache = { providers: {} };
     toast('Đã đăng xuất');
+    showGate();
   });
+  host.querySelector('[data-change-pw]').addEventListener('click', changePasswordDialog);
+}
+
+function changePasswordDialog() {
+  modal(
+    `<h2 class="modal-title">Đổi mật khẩu</h2>
+     <p class="hint" style="margin-bottom:12px">API key đã lưu sẽ được mã hóa lại bằng mật khẩu mới.</p>
+     <form class="auth-form" data-f novalidate>
+       <div class="field"><label for="cp-old">Mật khẩu hiện tại</label><input class="input" type="password" id="cp-old" name="old" autocomplete="current-password" /></div>
+       <div class="field"><label for="cp-new">Mật khẩu mới</label><input class="input" type="password" id="cp-new" name="pw" autocomplete="new-password" /><span class="hint">Tối thiểu 8 ký tự</span></div>
+       <div class="auth-err" role="alert" hidden></div>
+       <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="submit">Đổi mật khẩu</button></div>
+     </form>`,
+    {
+      label: 'Đổi mật khẩu',
+      onMount(box, close) {
+        box.querySelector('[data-f]').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const f = Object.fromEntries(new FormData(e.target));
+          const err = box.querySelector('.auth-err');
+          try {
+            await accounts.changePassword(f.old, f.pw);
+            close();
+            toast('Đã đổi mật khẩu');
+          } catch (ex) {
+            err.textContent = ex.message;
+            err.hidden = false;
+          }
+        });
+      },
+    },
+  );
 }
 
 const sidebar = $('#sidebar');
@@ -242,56 +314,93 @@ function confirm(message, { title = 'Xác nhận', okText = 'Đồng ý', danger
   });
 }
 
-/* ---------- Đăng nhập / Đăng ký ---------- */
-function openAuth(mode = 'login') {
-  if ($('.auth-modal')) return;
+/* ---------- Màn hình đăng nhập bắt buộc ---------- */
+const shell = $('.shell');
+let gateEl = null;
+
+function gateHtml(mode) {
+  const first = !accounts.hasUsers();
+  const signup = systemConfig().allowSignup || !accounts.superExists();
+  if (mode === 'register' && !signup) mode = 'login';
+  if (first && mode === 'login') mode = 'setup';
+  const isSetup = mode === 'setup';
   const isLogin = mode === 'login';
-  modal(
-    `<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button>
-    <div class="auth-head">
-      <span class="logo-mark">VB</span>
-      <h2>${isLogin ? 'Chào mừng trở lại' : 'Tạo tài khoản'}</h2>
-      <p>${isLogin ? 'Đăng nhập để đồng bộ tên người soạn và tài liệu.' : 'Miễn phí — chỉ mất 20 giây.'}</p>
-    </div>
-    <form class="auth-form" novalidate>
-      ${isLogin ? '' : `<div class="field"><label for="a-name">Họ và tên</label><input class="input" id="a-name" name="name" autocomplete="name" autofocus /></div>`}
-      <div class="field"><label for="a-email">Email</label><input class="input" id="a-email" name="email" type="email" autocomplete="email" ${isLogin ? 'autofocus' : ''} /></div>
-      <div class="field"><label for="a-pass">Mật khẩu</label><input class="input" id="a-pass" name="password" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" />${isLogin ? '' : '<span class="hint">Tối thiểu 8 ký tự</span>'}</div>
-      <div class="auth-err" role="alert" hidden></div>
-      <button class="btn btn-primary btn-lg" type="submit">${isLogin ? 'Đăng nhập' : 'Tạo tài khoản'}</button>
-    </form>
-    <p class="auth-switch">${isLogin ? 'Chưa có tài khoản?' : 'Đã có tài khoản?'} <button type="button" data-switch>${isLogin ? 'Đăng ký miễn phí' : 'Đăng nhập'}</button></p>`,
-    {
-      label: isLogin ? 'Đăng nhập' : 'Đăng ký',
-      className: 'auth-modal',
-      onMount(box, close) {
-        const form = box.querySelector('form');
-        const err = box.querySelector('.auth-err');
-        form.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const data = Object.fromEntries(new FormData(form));
-          const btn = form.querySelector('[type="submit"]');
-          btn.disabled = true;
-          try {
-            const user = isLogin ? await auth.login(data) : await auth.register(data);
-            close();
-            refreshChrome();
-            toast(`Xin chào, ${user.name}!`);
-            if (currentRoute === 'dashboard') route();
-          } catch (ex) {
-            err.textContent = ex.message;
-            err.hidden = false;
-          } finally {
-            btn.disabled = false;
-          }
-        });
-        box.querySelector('[data-switch]').addEventListener('click', () => {
-          close();
-          openAuth(isLogin ? 'register' : 'login');
-        });
-      },
-    },
-  );
+  const title = isSetup ? 'Thiết lập hệ thống' : isLogin ? 'Đăng nhập' : 'Tạo tài khoản';
+  const sub = isSetup
+    ? `Tạo tài khoản <strong>quản trị tối cao</strong> (${SUPER_EMAIL}). Tài khoản này toàn quyền, cấp quyền cho các tài khoản khác.`
+    : isLogin
+      ? 'Dữ liệu và API key của mỗi tài khoản được lưu, mã hóa riêng trên máy này.'
+      : 'Tài khoản mới có quyền Người dùng; quản trị viên sẽ cấp thêm quyền khi cần.';
+  return `
+    <div class="gate-card">
+      <div class="auth-head">
+        <span class="logo-mark">VB</span>
+        <h2>${title}</h2>
+        <p>${sub}</p>
+      </div>
+      <form class="auth-form" data-gate-form="${mode}" novalidate>
+        ${isLogin ? '' : `<div class="field"><label for="g-name">Họ và tên</label><input class="input" id="g-name" name="name" autocomplete="name" /></div>`}
+        <div class="field"><label for="g-email">Email</label><input class="input" id="g-email" name="email" type="email" autocomplete="email" ${isSetup ? `value="${SUPER_EMAIL}" readonly` : ''} /></div>
+        <div class="field"><label for="g-pass">Mật khẩu</label><input class="input" id="g-pass" name="password" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" />${isLogin ? '' : '<span class="hint">Tối thiểu 8 ký tự. Không có cách khôi phục mật khẩu — hãy ghi nhớ cẩn thận.</span>'}</div>
+        <div class="auth-err" role="alert" hidden></div>
+        <button class="btn btn-primary btn-lg" type="submit">${isSetup ? 'Tạo tài khoản quản trị' : isLogin ? 'Đăng nhập' : 'Tạo tài khoản'}</button>
+      </form>
+      <p class="auth-switch">
+        ${isSetup ? `Không phải quản trị? <button type="button" data-gate-mode="register">Đăng ký tài khoản thường</button>` : ''}
+        ${isLogin && signup ? `Chưa có tài khoản? <button type="button" data-gate-mode="register">Đăng ký</button>` : ''}
+        ${isLogin && !signup ? 'Liên hệ quản trị viên để được cấp tài khoản.' : ''}
+        ${mode === 'register' ? `Đã có tài khoản? <button type="button" data-gate-mode="${first ? 'setup' : 'login'}">${first ? 'Thiết lập quản trị' : 'Đăng nhập'}</button>` : ''}
+      </p>
+      <p class="gate-foot">${icon('lock', 'ic-sm')}Chạy cục bộ trên máy · <a href="index.html">Về trang giới thiệu</a></p>
+    </div>`;
+}
+
+function showGate(mode = 'login') {
+  if (typeof cleanup === 'function') cleanup();
+  cleanup = null;
+  currentRoute = null;
+  shell.hidden = true;
+  document.title = 'Đăng nhập — Trợ Lý Văn Bản AI';
+  if (!gateEl) {
+    gateEl = document.createElement('main');
+    gateEl.className = 'gate';
+    document.body.append(gateEl);
+  }
+  gateEl.hidden = false;
+  gateEl.innerHTML = gateHtml(mode);
+  const form = $('[data-gate-form]', gateEl);
+  ($('input:not([readonly])', form) || form.querySelector('input'))?.focus();
+  gateEl.querySelectorAll('[data-gate-mode]').forEach((b) => b.addEventListener('click', () => showGate(b.dataset.gateMode)));
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(form));
+    const err = $('.auth-err', form);
+    const btn = form.querySelector('[type="submit"]');
+    btn.disabled = true;
+    try {
+      const user = form.dataset.gateForm === 'login' ? await accounts.login(data) : await accounts.register(data);
+      await enterApp();
+      toast(`Xin chào, ${user.name}!`);
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+async function enterApp() {
+  aiCache = await vault.read();
+  if (gateEl) gateEl.hidden = true;
+  shell.hidden = false;
+  refreshChrome();
+  if (/^#(login|register)$/.test(location.hash)) history.replaceState(null, '', '#dashboard');
+  route();
+}
+
+function openAuth() {
+  showGate('login');
 }
 
 /* ---------- Bảng lệnh (Ctrl + K) ---------- */
@@ -309,16 +418,18 @@ const norm = (s) =>
     .toLowerCase();
 
 function paletteCommands() {
-  const nav = Object.entries(ROUTES).map(([k, r]) => ({ group: 'Điều hướng', label: r.title, icon: { dashboard: 'home', compose: 'file', legal: 'layers', interview: 'message', cases: 'folder', chat: 'sparkles', spell: 'spell', summary: 'book', number: 'hash', templates: 'layers', docs: 'folder', settings: 'settings' }[k], run: () => ctx.navigate(`#${k}`) }));
-  const crimes = ALL_CRIMES.map((c) => ({ group: 'Tội danh — cây hỏi đáp', label: `Điều ${c.dieu}. ${c.ten}`, icon: 'gavel', run: () => ctx.navigate(`#legal/${c.dieu}`) }));
-  const types = DOC_TYPES.map((t) => ({ group: 'Soạn mới', label: `Soạn ${t.name.toLowerCase()}`, icon: t.icon, hint: t.abbr, run: () => ctx.navigate(`#compose/${t.id}`) }));
-  const recent = docsRepo
-    .list()
+  const can = (p) => accounts.can(p);
+  const nav = Object.entries(ROUTES)
+    .filter(([, r]) => !r.perm || can(r.perm))
+    .map(([k, r]) => ({ group: 'Điều hướng', label: r.title, icon: { dashboard: 'home', compose: 'file', legal: 'layers', interview: 'message', cases: 'folder', chat: 'sparkles', spell: 'spell', summary: 'book', number: 'hash', templates: 'layers', docs: 'folder', admin: 'shield', settings: 'settings' }[k], run: () => ctx.navigate(`#${k}`) }));
+  const crimes = (can('legal') ? ALL_CRIMES : []).map((c) => ({ group: 'Tội danh — cây hỏi đáp', label: `Điều ${c.dieu}. ${c.ten}`, icon: 'gavel', run: () => ctx.navigate(`#legal/${c.dieu}`) }));
+  const types = (can('docs') ? DOC_TYPES : []).map((t) => ({ group: 'Soạn mới', label: `Soạn ${t.name.toLowerCase()}`, icon: t.icon, hint: t.abbr, run: () => ctx.navigate(`#compose/${t.id}`) }));
+  const recent = (can('docs') ? docsRepo.list() : [])
     .slice(0, 8)
     .map((d) => ({ group: 'Tài liệu', label: d.title, icon: 'file', run: () => ctx.navigate(`#compose/doc/${d.id}`) }));
   const actions = [
     { group: 'Thao tác', label: 'Chuyển giao diện sáng/tối', icon: 'moon', run: () => $('[data-theme-toggle]').click() },
-    auth.current() ? { group: 'Thao tác', label: 'Đăng xuất', icon: 'logout', run: () => $('[data-logout]')?.click() } : { group: 'Thao tác', label: 'Đăng nhập', icon: 'user', run: () => openAuth('login') },
+    { group: 'Thao tác', label: 'Đăng xuất', icon: 'logout', run: () => $('[data-logout]')?.click() },
   ];
   return [...nav, ...types, ...crimes, ...recent, ...actions];
 }
@@ -388,7 +499,7 @@ palette.addEventListener('mousedown', (e) => {
   if (e.target === palette) closePalette();
 });
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && accounts.current()) {
     e.preventDefault();
     if (palette.hidden) openPalette();
     else closePalette();
@@ -398,7 +509,8 @@ document.addEventListener('keydown', (e) => {
 /* ---------- Khởi động ---------- */
 bindThemeToggles();
 window.addEventListener('hashchange', route);
-window.addEventListener('storage', refreshChrome);
+window.addEventListener('storage', () => accounts.current() && refreshChrome());
 document.addEventListener('docs-changed', refreshChrome);
-refreshChrome();
-route();
+initUpdates();
+if (accounts.current()) enterApp();
+else showGate(/^#register/.test(location.hash) ? 'register' : 'login');

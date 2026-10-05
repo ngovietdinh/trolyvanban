@@ -7,6 +7,7 @@
   <meta name="description" content="Soạn thảo văn bản hành chính chuẩn NĐ 30/2020, trợ lý AI, kiểm tra chính tả, tóm tắt và đọc số tiền thành chữ." />
   <meta name="theme-color" content="#0d1a2e" />
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="manifest.webmanifest" />
   <link rel="preload" href="assets/fonts/be-vietnam-pro-vietnamese-400-normal.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="assets/css/base.css" />
   <link rel="stylesheet" href="assets/css/document.css" />
@@ -17,7 +18,7 @@
   </script>
 </head>
 <body class="app">
-  <div class="shell">
+  <div class="shell" hidden>
     <!-- ============ Sidebar ============ -->
     <aside class="sidebar" id="sidebar" aria-label="Thanh điều hướng ứng dụng">
       <div class="sb-top">
@@ -30,7 +31,7 @@
         </button>
       </div>
 
-      <a class="btn btn-primary sb-new" href="#compose">
+      <a class="btn btn-primary sb-new" href="#compose" data-need-perm="docs">
         <svg class="ic"><use href="assets/icons.svg#i-plus" /></svg>Văn bản mới
       </a>
 
@@ -39,15 +40,15 @@
         <a href="#dashboard" data-nav="dashboard"><svg class="ic"><use href="assets/icons.svg#i-home" /></svg>Tổng quan</a>
         <a href="#compose" data-nav="compose"><svg class="ic"><use href="assets/icons.svg#i-file" /></svg>Soạn văn bản</a>
         <a href="#chat" data-nav="chat"><svg class="ic"><use href="assets/icons.svg#i-sparkles" /></svg>Trợ lý AI</a>
-        <span class="sb-label">Tố tụng hình sự</span>
+        <span class="sb-label" data-perm-section="legal">Tố tụng hình sự</span>
         <a href="#legal" data-nav="legal"><svg class="ic"><use href="assets/icons.svg#i-layers" /></svg>Cây hỏi đáp pháp luật</a>
         <a href="#interview" data-nav="interview"><svg class="ic"><use href="assets/icons.svg#i-message" /></svg>Ghi lời khai</a>
         <a href="#cases" data-nav="cases"><svg class="ic"><use href="assets/icons.svg#i-folder" /></svg>Hồ sơ vụ án<span class="sb-count" data-cases-count>0</span></a>
-        <span class="sb-label">Công cụ</span>
+        <span class="sb-label" data-perm-section="tools">Công cụ</span>
         <a href="#spell" data-nav="spell"><svg class="ic"><use href="assets/icons.svg#i-spell" /></svg>Kiểm tra chính tả</a>
         <a href="#summary" data-nav="summary"><svg class="ic"><use href="assets/icons.svg#i-book" /></svg>Tóm tắt văn bản</a>
         <a href="#number" data-nav="number"><svg class="ic"><use href="assets/icons.svg#i-hash" /></svg>Số thành chữ</a>
-        <span class="sb-label">Lưu trữ</span>
+        <span class="sb-label" data-perm-section="docs">Lưu trữ</span>
         <a href="#templates" data-nav="templates"><svg class="ic"><use href="assets/icons.svg#i-layers" /></svg>Thư viện mẫu</a>
         <a href="#docs" data-nav="docs"><svg class="ic"><use href="assets/icons.svg#i-folder" /></svg>Tài liệu của tôi<span class="sb-count" data-docs-count>0</span></a>
       </nav>
@@ -57,6 +58,7 @@
           <span class="ai-dot"></span>
           <div><strong>Chế độ cơ bản</strong><small>Thêm API key để bật AI</small></div>
         </div>
+        <a href="#admin" data-nav="admin" class="sb-link"><svg class="ic"><use href="assets/icons.svg#i-shield" /></svg>Quản trị tài khoản</a>
         <a href="#settings" data-nav="settings" class="sb-link"><svg class="ic"><use href="assets/icons.svg#i-settings" /></svg>Cài đặt</a>
       </div>
     </aside>

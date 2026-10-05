@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { trackErrors, mockClaude, freshApp } from './helpers.mjs';
+import { trackErrors, mockClaude, freshApp, setApiKey, loginAs, SUPER } from './helpers.mjs';
 import { docxToText, buildDocx } from '../../assets/js/lib/docx.js';
 import { buildDocument, sampleValues } from '../../assets/js/lib/doc-types.js';
 
@@ -286,33 +286,21 @@ test.describe('Không gian làm việc', () => {
     await expect(page.locator('[data-palette]')).toBeHidden();
   });
 
-  test('đăng ký, đăng xuất, đăng nhập sai và đúng mật khẩu', async ({ page }) => {
-    await freshApp(page, '#register');
-    const modal = page.locator('.modal');
-    await expect(modal).toContainText('Tạo tài khoản');
-    await modal.locator('[name="name"]').fill('Lê Minh Châu');
-    await modal.locator('[name="email"]').fill('chau@example.vn');
-    await modal.locator('[name="password"]').fill('123');
-    await modal.locator('button[type="submit"]').click();
-    await expect(modal.locator('.auth-err')).toContainText('tối thiểu 8');
-    await modal.locator('[name="password"]').fill('matkhau123');
-    await modal.locator('button[type="submit"]').click();
-    await expect(page.locator('.toast').last()).toContainText('Xin chào, Lê Minh Châu');
-    await expect(page.locator('.avatar')).toHaveText('MC');
-    await expect(page.locator('.hello h1')).toContainText('Châu');
-
+  test('đăng xuất, đăng nhập sai và đúng mật khẩu', async ({ page }) => {
+    await freshApp(page);
+    await expect(page.locator('.avatar')).toHaveText('HT');
     await page.locator('.avatar-btn').click();
+    await expect(page.locator('[data-role-badge]')).toHaveText('Quản trị tối cao');
     await page.locator('[data-logout]').click();
-    await expect(page.locator('[data-login]')).toBeVisible();
-
-    await page.locator('[data-login]').click();
-    await modal.locator('[name="email"]').fill('chau@example.vn');
-    await modal.locator('[name="password"]').fill('sai-mat-khau');
-    await modal.locator('button[type="submit"]').click();
-    await expect(modal.locator('.auth-err')).toContainText('không đúng');
-    await modal.locator('[name="password"]').fill('matkhau123');
-    await modal.locator('button[type="submit"]').click();
-    await expect(page.locator('.avatar')).toBeVisible();
+    await expect(page.locator('.gate')).toBeVisible();
+    await expect(page.locator('.shell')).toBeHidden();
+    await page.fill('#g-email', SUPER.email);
+    await page.fill('#g-pass', 'sai-mat-khau');
+    await page.click('[data-gate-form] button[type="submit"]');
+    await expect(page.locator('.gate .auth-err')).toContainText('không đúng');
+    await page.fill('#g-pass', SUPER.password);
+    await page.click('[data-gate-form] button[type="submit"]');
+    await expect(page.locator('.hello h1')).toContainText('thống');
   });
 
   test('cài đặt: thông tin đơn vị mặc định được điền vào văn bản mới', async ({ page }) => {
@@ -346,6 +334,9 @@ test.describe('Không gian làm việc', () => {
     await page.locator('[data-wipe]').click();
     await page.getByRole('button', { name: 'Xóa vĩnh viễn' }).click();
     await expect(page.locator('[data-docs-count]')).toHaveText('0');
+    // Xóa dữ liệu không xóa tài khoản: vẫn đăng nhập, đăng xuất rồi đăng nhập lại được
+    await expect(page.locator('.avatar')).toBeVisible();
+    await loginAs(page, SUPER.email, SUPER.password);
 
     await page.goto('/app.html#settings');
     const dir = mkdtempSync(join(tmpdir(), 'tlvb-'));
@@ -360,7 +351,7 @@ test.describe('Không gian làm việc', () => {
     await expect(page.locator('.toast.error').last()).toContainText('không hợp lệ');
   });
 
-  test('cài đặt: kiểm tra định dạng API key', async ({ page }) => {
+  test('cài đặt: kiểm tra định dạng API key theo nhà cung cấp', async ({ page }) => {
     await freshApp(page, '#settings');
     await page.fill('[data-key]', 'abc');
     await page.locator('[data-save-key]').click();
@@ -368,7 +359,12 @@ test.describe('Không gian làm việc', () => {
     await page.fill('[data-key]', 'sk-ant-test-123');
     await page.locator('[data-save-key]').click();
     await expect(page.locator('[data-ai-status]')).toHaveClass(/on/);
-    await expect(page.locator('[data-ai-state]')).toHaveText('Đã kết nối');
+    await expect(page.locator('[data-ai-state]')).toHaveText('Đang dùng Claude');
+    await page.click('[data-prov="gemini"]');
+    await page.fill('[data-key]', 'sk-sai-dinh-dang');
+    await page.locator('[data-save-key]').click();
+    await expect(page.locator('.toast.error').last()).toContainText('AIza');
+    await page.click('[data-prov="anthropic"]');
     await page.locator('[data-remove-key]').click();
     await expect(page.locator('[data-ai-status]')).not.toHaveClass(/on/);
   });
@@ -383,7 +379,7 @@ test.describe('Tích hợp AI Claude (API giả lập)', () => {
     await expect(page.locator('.toast.error').last()).toContainText('API key không hợp lệ');
     await page.fill('[data-key]', 'sk-ant-good');
     await page.locator('[data-test-key]').click();
-    await expect(page.locator('.toast').last()).toContainText('Kết nối thành công');
+    await expect(page.locator('.toast').last()).toContainText('Kết nối Claude thành công');
     expect(calls.at(-1).headers['x-api-key']).toBe('sk-ant-good');
     expect(calls.at(-1).headers['anthropic-dangerous-direct-browser-access']).toBe('true');
     expect(calls.at(-1).body.model).toBe('claude-opus-5-5');
@@ -393,7 +389,7 @@ test.describe('Tích hợp AI Claude (API giả lập)', () => {
     const t = trackErrors(page);
     const calls = await mockClaude(page, () => 'Theo **Nghị định 30/2020/NĐ-CP**, lề trái từ 30 đến 35 mm.\n- Lề trên: 20–25 mm\n- Lề phải: 15–20 mm');
     await freshApp(page);
-    await page.evaluate(() => localStorage.setItem('tlvb:settings', JSON.stringify({ apiKey: 'sk-ant-good', model: 'claude-sonnet-5-5' })));
+    await setApiKey(page, 'anthropic', 'sk-ant-good', 'claude-sonnet-5-5');
     await page.goto('/app.html#chat');
     await expect(page.locator('.composer-note')).toContainText('claude-sonnet-5-5');
     await page.fill('[data-input]', 'Lề văn bản bao nhiêu?');
@@ -412,7 +408,7 @@ test.describe('Tích hợp AI Claude (API giả lập)', () => {
   test('soạn văn bản bằng Claude: JSON được áp vào biểu mẫu', async ({ page }) => {
     await mockClaude(page, () => '```json\n{"trichYeu": "tổ chức tập huấn kỹ năng số cho cán bộ", "noiDung": "Nhằm nâng cao kỹ năng số cho đội ngũ cán bộ, công chức.\\nThời gian: [...]"}\n```');
     await freshApp(page);
-    await page.evaluate(() => localStorage.setItem('tlvb:settings', JSON.stringify({ apiKey: 'sk-ant-good', model: 'claude-opus-5-5' })));
+    await setApiKey(page, 'anthropic', 'sk-ant-good', 'claude-opus-5-5');
     await page.goto('/app.html#compose/thong-bao');
     await expect(page.locator('[data-ai-badge]')).toHaveText('Claude');
     await page.fill('[data-brief]', 'thông báo tập huấn kỹ năng số');
@@ -425,7 +421,7 @@ test.describe('Tích hợp AI Claude (API giả lập)', () => {
   test('tóm tắt bằng Claude', async ({ page }) => {
     await mockClaude(page, () => '- Ý chính thứ nhất\n- Ý chính thứ hai\n\n**Từ khóa:** chuyển đổi số');
     await freshApp(page);
-    await page.evaluate(() => localStorage.setItem('tlvb:settings', JSON.stringify({ apiKey: 'sk-ant-good', model: 'claude-opus-5-5' })));
+    await setApiKey(page, 'anthropic', 'sk-ant-good', 'claude-opus-5-5');
     await page.goto('/app.html#summary');
     await page.locator('[data-sample]').click();
     await page.locator('[data-ai]').click();

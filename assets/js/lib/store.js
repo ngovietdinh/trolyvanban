@@ -16,7 +16,41 @@ function backend() {
 }
 const ls = typeof window !== 'undefined' ? backend() : null;
 
+// Dữ liệu nghiệp vụ được tách riêng theo từng tài khoản: khóa trong danh sách này được tự động
+// gắn tiền tố `u:<mã tài khoản>:`. Tài khoản khác đăng nhập trên cùng máy không đọc được.
+export const SCOPED_KEYS = [
+  'docs', 'chat', 'settings', 'compose-draft', 'usage', 'spell-text', 'summary-text', 'summary-ratio',
+  'number-history', 'number-last', 'number-opts', 'cases', 'records', 'plans', 'legal-custom',
+  'legal-selection', 'legal-open', 'zoom',
+];
+/** Dữ liệu bị xóa khi “Xóa toàn bộ dữ liệu” (giữ lại tài khoản, API key, cài đặt). */
+export const WIPE_KEYS = SCOPED_KEYS.filter((k) => k !== 'settings' && k !== 'zoom');
+const SCOPED = new Set(SCOPED_KEYS);
+let scope = null;
+
+export function setScope(userId) {
+  scope = userId || null;
+}
+export const getScope = () => scope;
+const resolve = (key) => (SCOPED.has(key) ? `u:${scope || 'anon'}:${key}` : key);
+
 export const store = {
+  get(key, fallback = null) {
+    return rawStore.get(resolve(key), fallback);
+  },
+  set(key, value) {
+    return rawStore.set(resolve(key), value);
+  },
+  remove(key) {
+    rawStore.remove(resolve(key));
+  },
+  update(key, fn, fallback = null) {
+    return this.set(key, fn(this.get(key, fallback)));
+  },
+};
+
+/** Truy cập trực tiếp theo khóa đầy đủ (không gắn phạm vi tài khoản). */
+export const rawStore = {
   get(key, fallback = null) {
     try {
       const raw = ls ? ls.getItem(PREFIX + key) : memory.get(PREFIX + key);
@@ -43,8 +77,52 @@ export const store = {
     }
     memory.delete(PREFIX + key);
   },
-  update(key, fn, fallback = null) {
-    return this.set(key, fn(this.get(key, fallback)));
+  has(key) {
+    try {
+      return ls ? ls.getItem(PREFIX + key) != null : memory.has(PREFIX + key);
+    } catch {
+      return false;
+    }
+  },
+};
+
+/** Phiên làm việc: lưu trong sessionStorage — tự hết khi đóng thẻ/trình duyệt. */
+const sessMem = new Map();
+function sessBackend() {
+  try {
+    window.sessionStorage.setItem('__p', '1');
+    window.sessionStorage.removeItem('__p');
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+const ss = typeof window !== 'undefined' ? sessBackend() : null;
+export const sessionStore = {
+  get(key, fallback = null) {
+    try {
+      const raw = ss ? ss.getItem(PREFIX + key) : sessMem.get(key);
+      return raw == null ? fallback : JSON.parse(raw);
+    } catch {
+      return fallback;
+    }
+  },
+  set(key, value) {
+    const raw = JSON.stringify(value);
+    try {
+      if (ss) ss.setItem(PREFIX + key, raw);
+      else sessMem.set(key, raw);
+    } catch {
+      sessMem.set(key, raw);
+    }
+  },
+  remove(key) {
+    try {
+      ss?.removeItem(PREFIX + key);
+    } catch {
+      /* bỏ qua */
+    }
+    sessMem.delete(key);
   },
 };
 
@@ -80,44 +158,6 @@ export const docsRepo = {
     if (d) d.starred = !d.starred;
     store.set('docs', all);
     return d;
-  },
-};
-
-/* ---------- Tài khoản (bản dùng thử lưu trên thiết bị) ---------- */
-async function sha256(text) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-export const auth = {
-  current() {
-    return store.get('session', null);
-  },
-  async register({ name, email, password }) {
-    email = String(email || '').trim().toLowerCase();
-    if (!name?.trim()) throw new Error('Vui lòng nhập họ tên');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new Error('Email không hợp lệ');
-    if (String(password || '').length < 8) throw new Error('Mật khẩu tối thiểu 8 ký tự');
-    const users = store.get('users', []);
-    if (users.some((u) => u.email === email)) throw new Error('Email đã được đăng ký');
-    const user = { id: uid(), name: name.trim(), email, hash: await sha256(email + ':' + password), plan: 'free', createdAt: Date.now() };
-    users.push(user);
-    store.set('users', users);
-    return this._login(user);
-  },
-  async login({ email, password }) {
-    email = String(email || '').trim().toLowerCase();
-    const user = store.get('users', []).find((u) => u.email === email);
-    if (!user || user.hash !== (await sha256(email + ':' + password))) throw new Error('Email hoặc mật khẩu không đúng');
-    return this._login(user);
-  },
-  _login(user) {
-    const session = { id: user.id, name: user.name, email: user.email, plan: user.plan };
-    store.set('session', session);
-    return session;
-  },
-  logout() {
-    store.remove('session');
   },
 };
 

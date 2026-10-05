@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { trackErrors, mockClaude, freshApp } from './helpers.mjs';
+import { trackErrors, mockClaude, freshApp, setApiKey, loginAs, SUPER } from './helpers.mjs';
 import { docxToText } from '../../assets/js/lib/docx.js';
 
 test.describe('Cây hỏi đáp pháp luật', () => {
@@ -292,7 +292,7 @@ test.describe('AI phân tích lời khai (API giả lập)', () => {
       return '{}';
     });
     await freshApp(page);
-    await page.evaluate(() => localStorage.setItem('tlvb:settings', JSON.stringify({ apiKey: 'sk-ant-good', model: 'claude-opus-5-5' })));
+    await setApiKey(page, 'anthropic', 'sk-ant-good', 'claude-opus-5-5');
 
     // Cây: AI gợi ý thêm
     await page.goto('/app.html#legal/353');
