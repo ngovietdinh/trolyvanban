@@ -3,6 +3,7 @@ import { $, $$, icon, toast, bindThemeToggles, escapeHtml } from './ui.js';
 import { store, auth, docsRepo } from './lib/store.js';
 import { DEFAULT_MODEL } from './lib/ai.js';
 import { DOC_TYPES } from './lib/doc-types.js';
+import { ALL_CRIMES } from './legal/engine.js';
 
 import * as dashboard from './views/dashboard.js';
 import * as compose from './views/compose.js';
@@ -13,10 +14,17 @@ import * as number from './views/number.js';
 import * as templates from './views/templates.js';
 import * as docs from './views/docs.js';
 import * as settings from './views/settings.js';
+import * as legal from './views/legal.js';
+import * as interview from './views/interview.js';
+import * as cases from './views/cases.js';
+import { casesRepo } from './legal/repo.js';
 
 const ROUTES = {
   dashboard: { mod: dashboard, title: 'Tổng quan' },
   compose: { mod: compose, title: 'Soạn văn bản' },
+  legal: { mod: legal, title: 'Cây hỏi đáp pháp luật' },
+  interview: { mod: interview, title: 'Ghi lời khai' },
+  cases: { mod: cases, title: 'Hồ sơ vụ án' },
   chat: { mod: chat, title: 'Trợ lý AI' },
   spell: { mod: spell, title: 'Kiểm tra chính tả' },
   summary: { mod: summary, title: 'Tóm tắt văn bản' },
@@ -90,6 +98,7 @@ function route() {
     else a.removeAttribute('aria-current');
   });
   closeSidebar();
+  refreshChrome();
   try {
     cleanup = r.mod.render(ctx, params) || null;
   } catch (err) {
@@ -101,6 +110,7 @@ function route() {
 /* ---------- Chrome: sidebar, user menu, AI status ---------- */
 function refreshChrome() {
   $('[data-docs-count]').textContent = docsRepo.list().length;
+  $('[data-cases-count]').textContent = casesRepo.list().length;
   const st = $('[data-ai-status]');
   const on = ctx.hasAI();
   st.classList.toggle('on', on);
@@ -299,7 +309,8 @@ const norm = (s) =>
     .toLowerCase();
 
 function paletteCommands() {
-  const nav = Object.entries(ROUTES).map(([k, r]) => ({ group: 'Điều hướng', label: r.title, icon: { dashboard: 'home', compose: 'file', chat: 'sparkles', spell: 'spell', summary: 'book', number: 'hash', templates: 'layers', docs: 'folder', settings: 'settings' }[k], run: () => ctx.navigate(`#${k}`) }));
+  const nav = Object.entries(ROUTES).map(([k, r]) => ({ group: 'Điều hướng', label: r.title, icon: { dashboard: 'home', compose: 'file', legal: 'layers', interview: 'message', cases: 'folder', chat: 'sparkles', spell: 'spell', summary: 'book', number: 'hash', templates: 'layers', docs: 'folder', settings: 'settings' }[k], run: () => ctx.navigate(`#${k}`) }));
+  const crimes = ALL_CRIMES.map((c) => ({ group: 'Tội danh — cây hỏi đáp', label: `Điều ${c.dieu}. ${c.ten}`, icon: 'gavel', run: () => ctx.navigate(`#legal/${c.dieu}`) }));
   const types = DOC_TYPES.map((t) => ({ group: 'Soạn mới', label: `Soạn ${t.name.toLowerCase()}`, icon: t.icon, hint: t.abbr, run: () => ctx.navigate(`#compose/${t.id}`) }));
   const recent = docsRepo
     .list()
@@ -309,7 +320,7 @@ function paletteCommands() {
     { group: 'Thao tác', label: 'Chuyển giao diện sáng/tối', icon: 'moon', run: () => $('[data-theme-toggle]').click() },
     auth.current() ? { group: 'Thao tác', label: 'Đăng xuất', icon: 'logout', run: () => $('[data-logout]')?.click() } : { group: 'Thao tác', label: 'Đăng nhập', icon: 'user', run: () => openAuth('login') },
   ];
-  return [...nav, ...types, ...recent, ...actions];
+  return [...nav, ...types, ...crimes, ...recent, ...actions];
 }
 
 function renderPalette() {

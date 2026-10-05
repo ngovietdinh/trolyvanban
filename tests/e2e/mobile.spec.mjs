@@ -51,7 +51,7 @@ test.describe('Giao diện di động', () => {
     await expect(page.locator('[name="trichYeu"]')).toBeFocused();
   });
 
-  for (const view of ['dashboard', 'chat', 'spell', 'summary', 'templates', 'docs', 'settings']) {
+  for (const view of ['dashboard', 'chat', 'spell', 'summary', 'templates', 'docs', 'settings', 'legal', 'legal/222', 'cases', 'interview']) {
     test(`màn hình ${view} không tràn ngang`, async ({ page }) => {
       const t = trackErrors(page);
       await freshApp(page, `#${view}`);
@@ -62,4 +62,17 @@ test.describe('Giao diện di động', () => {
       t.assertClean();
     });
   }
+});
+
+test('ghi lời khai trên điện thoại: kế hoạch, ghi hỏi – đáp, không tràn ngang', async ({ page }) => {
+  await freshApp(page, '#legal/354');
+  await page.locator('[data-start]').click();
+  await page.fill('#st-name', 'Lê Văn Cường');
+  await page.locator('.modal button[type="submit"]').click();
+  await expect(page).toHaveURL(/#interview\//);
+  await page.locator('.iv-issue[open] [data-pq]').first().click();
+  await page.fill('[data-a]', 'Tôi không nhận tiền của ai.');
+  await page.locator('[data-submit]').click();
+  await expect(page.locator('.iv-qa')).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });

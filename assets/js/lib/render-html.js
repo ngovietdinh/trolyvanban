@@ -26,14 +26,14 @@ export function renderDocumentHtml(doc) {
       ${h.parent ? `<div class="vb-parent">${tx(h.parent)}</div>` : ''}
       <div class="vb-org">${tx(h.org || ' ')}</div>
       <div class="vb-rule vb-rule-short"></div>
-      <div class="vb-number">${tx(h.number)}</div>
+      ${h.number ? `<div class="vb-number">${tx(h.number)}</div>` : ''}
       ${h.subject ? `<div class="vb-subject-cv">${tx(h.subject)}</div>` : ''}
     </td>
     <td class="vb-head-right">
       <div class="vb-qh">${QUOC_HIEU}</div>
       <div class="vb-tn">${TIEU_NGU}</div>
       <div class="vb-rule vb-rule-tn"></div>
-      <div class="vb-date">${tx(h.placeDate)}</div>
+      ${h.placeDate ? `<div class="vb-date">${tx(h.placeDate)}</div>` : ''}
     </td>
   </tr></table>`;
 
@@ -58,7 +58,7 @@ export function renderDocumentHtml(doc) {
 
   const body = doc.body
     .map((p) => {
-      const cls = ['vb-p', `al-${p.align || 'justify'}`, p.indent ? 'ind' : '', p.spaceBefore ? 'sb' : ''].filter(Boolean).join(' ');
+      const cls = ['vb-p', `al-${p.align || 'justify'}`, p.indent ? 'ind' : '', p.spaceBefore ? 'sb' : '', p.cls || ''].filter(Boolean).join(' ');
       return `<p class="${cls}">${runsHtml(p.runs)}</p>`;
     })
     .join('');
@@ -83,6 +83,13 @@ export function renderDocumentHtml(doc) {
   } else if (doc.dualSign) {
     const col = (c) => `<td class="vb-sign-right"><div class="vb-sign-pos">${tx(c.title)}</div><div class="vb-sign-hint">(Ký, ghi rõ họ tên)</div><div class="vb-sign-space"></div><div class="vb-sign-name">${tx(c.name.replace(/\s*-.*$/, '').replace(/^(Ông|Bà)\s+/i, ''))}</div></td>`;
     sign = `<table class="vb-sign" role="presentation"><tr>${col(doc.dualSign.left)}${col(doc.dualSign.right)}</tr></table>`;
+  } else if (doc.signers?.length) {
+    // Nhiều người ký (biên bản): tối đa 3 người mỗi hàng.
+    const rows = [];
+    for (let i = 0; i < doc.signers.length; i += 3) rows.push(doc.signers.slice(i, i + 3));
+    sign = rows
+      .map((r) => `<table class="vb-sign vb-signers" role="presentation"><tr>${r.map((c) => `<td class="vb-sign-right"><div class="vb-sign-pos">${tx(c.title)}</div>${c.hint ? `<div class="vb-sign-hint">${tx(c.hint)}</div>` : ''}<div class="vb-sign-space"></div><div class="vb-sign-name">${tx(c.name || '')}</div></td>`).join('')}</tr></table>`)
+      .join('');
   }
 
   return `<article class="vb-page" lang="vi">${head}${title}${authority}${recipients}<div class="vb-body">${body}</div>${sign}</article>`;

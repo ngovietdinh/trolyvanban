@@ -194,10 +194,10 @@ export function buildDocumentXml(doc) {
     h.parent ? c(r(h.parent, { size: 26 })) : '',
     c(r(h.org || ' ', { bold: true, size: 26 })),
     rule(1300, HEAD_L),
-    c(r(h.number, { size: 26 })),
+    h.number ? c(r(h.number, { size: 26 })) : '',
     h.subject ? c(r(h.subject, { size: 24 }), { before: 60 }) : '',
   ].join('');
-  const right = [c(r(QUOC_HIEU, { bold: true, size: 26 })), c(r(TIEU_NGU, { bold: true, size: 28 })), rule(3000, HEAD_R), c(r(h.placeDate, { italic: true, size: 28 }), { before: 60 })].join('');
+  const right = [c(r(QUOC_HIEU, { bold: true, size: 26 })), c(r(TIEU_NGU, { bold: true, size: 28 })), rule(3000, HEAD_R), h.placeDate ? c(r(h.placeDate, { italic: true, size: 28 }), { before: 60 }) : ''].join('');
   out.push(table([{ w: HEAD_L, content: left }, { w: HEAD_R, content: right }]));
 
   if (doc.title) {
@@ -232,6 +232,13 @@ export function buildDocumentXml(doc) {
   } else if (doc.dualSign) {
     const col = (x) => [c(r(x.title, { bold: true, size: 28 }), { before: 240 }), c(r('(Ký, ghi rõ họ tên)', { italic: true, size: 26 })), p(r(''), { after: 1400 }), c(r(x.name.replace(/\s*-.*$/, '').replace(/^(Ông|Bà)\s+/i, ''), { bold: true, size: 28 }))].join('');
     out.push(table([{ w: Math.round(TEXT_W / 2), content: col(doc.dualSign.left) }, { w: TEXT_W - Math.round(TEXT_W / 2), content: col(doc.dualSign.right) }]));
+  } else if (doc.signers?.length) {
+    for (let i = 0; i < doc.signers.length; i += 3) {
+      const row = doc.signers.slice(i, i + 3);
+      const w = Math.floor(TEXT_W / row.length);
+      const col = (x) => [c(r(x.title, { bold: true, size: 26 }), { before: 240 }), x.hint ? c(r(x.hint, { italic: true, size: 24 })) : '', p(r(''), { after: 1300 }), c(r(x.name || '', { bold: true, size: 26 }))].join('');
+      out.push(table(row.map((x, j) => ({ w: j === row.length - 1 ? TEXT_W - w * (row.length - 1) : w, content: col(x) }))));
+    }
   }
 
   const sect = `<w:sectPr><w:pgSz w:w="${PAGE.w}" w:h="${PAGE.h}"/><w:pgMar w:top="${PAGE.top}" w:right="${PAGE.right}" w:bottom="${PAGE.bottom}" w:left="${PAGE.left}" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr>`;

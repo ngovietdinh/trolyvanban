@@ -7,7 +7,7 @@ test.describe('Trang giới thiệu', () => {
     await page.goto('/');
     await expect(page).toHaveTitle(/Trợ Lý Văn Bản/);
     await expect(page.locator('h1')).toContainText('Văn bản hành chính chuẩn mực');
-    for (const id of ['tinh-nang', 'quy-trinh', 'mau-van-ban', 'demo', 'bang-gia', 'hoi-dap', 'lien-he']) {
+    for (const id of ['tinh-nang', 'to-tung', 'quy-trinh', 'mau-van-ban', 'demo', 'bang-gia', 'hoi-dap', 'lien-he']) {
       await expect(page.locator(`#${id}`)).toBeAttached();
     }
     await expect(page.locator('[data-templates] .tpl')).toHaveCount(8);

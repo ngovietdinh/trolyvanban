@@ -13,9 +13,18 @@ const ORG_FIELDS = [
   ['nguoiKy', 'Họ tên người ký', 'Nguyễn Văn An'],
 ];
 
+const LEGAL_FIELDS = [
+  ['coQuanCapTren', 'Cơ quan cấp trên', 'CÔNG AN TỈNH NINH BÌNH'],
+  ['coQuan', 'Cơ quan điều tra', 'CƠ QUAN CẢNH SÁT ĐIỀU TRA'],
+  ['dieuTraVien', 'Họ tên điều tra viên', 'Trần Minh Đức'],
+  ['chucDanh', 'Chức danh', 'Điều tra viên'],
+  ['diaDiem', 'Địa điểm làm việc thường xuyên', 'Trụ sở Cơ quan Cảnh sát điều tra'],
+];
+
 export function render(ctx) {
   const s = ctx.settings();
   const org = s.org || {};
+  const legalOrg = s.legalOrg || {};
   const theme = document.documentElement.dataset.theme || 'system';
 
   ctx.view.innerHTML = `
@@ -53,6 +62,19 @@ export function render(ctx) {
               ${ORG_FIELDS.map(([k, l, p]) => `<div class="field ${k === 'coQuan' ? 'span-2' : ''}"><label for="o-${k}">${l}</label><input class="input" id="o-${k}" name="${k}" value="${escapeHtml(org[k] || '')}" placeholder="${escapeHtml(p)}" autocomplete="off" /></div>`).join('')}
             </div>
             <div><button class="btn btn-primary btn-sm" type="submit">${icon('save', 'ic-sm')}Lưu thông tin đơn vị</button></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>${icon('shield', 'ic-sm')}Cơ quan điều tra (biên bản tố tụng)</h2></div>
+        <div class="setting-row">
+          <div><h3>Thông tin mặc định</h3><p>Điền sẵn vào biên bản ghi lời khai, kế hoạch hỏi và hồ sơ vụ án mới.</p></div>
+          <form class="setting-ctl" data-legal-org>
+            <div class="grid-2">
+              ${LEGAL_FIELDS.map(([k, l, p]) => `<div class="field"><label for="lo-${k}">${l}</label><input class="input" id="lo-${k}" name="${k}" value="${escapeHtml(legalOrg[k] || '')}" placeholder="${escapeHtml(p)}" autocomplete="off" /></div>`).join('')}
+            </div>
+            <div><button class="btn btn-primary btn-sm" type="submit">${icon('save', 'ic-sm')}Lưu thông tin cơ quan</button></div>
           </form>
         </div>
       </section>
@@ -131,6 +153,12 @@ export function render(ctx) {
     toast('Đã đổi mô hình');
   });
 
+  $('[data-legal-org]', root).addEventListener('submit', (e) => {
+    e.preventDefault();
+    ctx.saveSettings({ legalOrg: Object.fromEntries(new FormData(e.target)) });
+    toast('Đã lưu thông tin cơ quan điều tra');
+  });
+
   $('[data-org]', root).addEventListener('submit', (e) => {
     e.preventDefault();
     ctx.saveSettings({ org: Object.fromEntries(new FormData(e.target)) });
@@ -167,7 +195,7 @@ export function render(ctx) {
   });
   $('[data-wipe]', root).addEventListener('click', async () => {
     if (!(await ctx.confirm('Toàn bộ tài liệu, lịch sử và cài đặt trên trình duyệt này sẽ bị xóa vĩnh viễn.', { title: 'Xóa toàn bộ dữ liệu?', okText: 'Xóa vĩnh viễn', danger: true }))) return;
-    ['docs', 'chat', 'settings', 'compose-draft', 'usage', 'spell-text', 'summary-text', 'number-history', 'session', 'users'].forEach((k) => store.remove(k));
+    ['docs', 'chat', 'settings', 'cases', 'records', 'plans', 'legal-custom', 'legal-selection', 'compose-draft', 'usage', 'spell-text', 'summary-text', 'number-history', 'session', 'users'].forEach((k) => store.remove(k));
     document.dispatchEvent(new CustomEvent('docs-changed'));
     toast('Đã xóa toàn bộ dữ liệu');
     ctx.navigate('#dashboard');
