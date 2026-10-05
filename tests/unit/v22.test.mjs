@@ -169,3 +169,45 @@ test('hashText ổn định', () => {
   assert.equal(hashText('abc'), hashText('abc'));
   assert.notEqual(hashText('abc'), hashText('abd'));
 });
+
+test('Mẫu số 140: Word có chú thích (1) cuối trang, số trang từ trang 2, ô mẫu số, chữ ký 2 cột', async () => {
+  const { buildRecordDocument } = await import('../../assets/js/legal/record.js');
+  const { buildDocx, readZip } = await import('../../assets/js/lib/docx.js');
+  const rec = newRecord({ roleId: 'lien-quan' });
+  Object.assign(rec, { ngay: '2026-10-05', gioBatDau: '09:00', nguoiTienHanh: [{ hoTen: 'Nguyễn Bá Nhuận', chucDanh: 'Điều tra viên' }], coQuan: 'Cơ quan CSĐT Bộ Công an' });
+  rec.nguoiKhai.ngaySinh = '26/05/1971';
+  rec.nguoiKhai.noiSinh = 'thành phố Hà Nội';
+  const zip = await readZip(buildDocx(buildRecordDocument(rec)));
+  const dec = new TextDecoder();
+  const doc = dec.decode(await zip.read('word/document.xml'));
+  assert.match(dec.decode(await zip.read('word/footnotes.xml')), /Điều 55 BLTTHS/);
+  assert.match(dec.decode(await zip.read('word/header1.xml')), /PAGE/);
+  assert.match(doc, /<w:titlePg\/>/);
+  assert.match(doc, /w:footnoteReference w:id="1"/);
+  assert.match(doc, /Mẫu số: 140/);
+  assert.match(doc, /Sinh ngày 26 tháng 05 năm 1971 tại thành phố Hà Nội;/);
+  assert.match(doc, /<w:tab\/>/);
+  assert.match(doc, /HỎI VÀ ĐÁP/);
+  assert.match(doc, /w:left="1701"/);
+  assert.match(dec.decode(await zip.read('[Content_Types].xml')), /footnotes\+xml/);
+});
+
+test('Groq: gọi API tương thích OpenAI tại api.groq.com, giới hạn max_tokens', async () => {
+  const origFetch = globalThis.fetch;
+  let req;
+  globalThis.fetch = async (url, init) => {
+    req = { url: String(url), body: JSON.parse(init.body), auth: init.headers.authorization };
+    return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Xin chào từ Groq' } }] })}\n\ndata: [DONE]\n\n`, { status: 200 });
+  };
+  setAIHooks({ chain: () => [], options: () => ({ fallback: false, cache: false }) });
+  try {
+    const out = await streamClaude({ provider: 'groq', apiKey: 'gsk_1', messages: [{ role: 'user', content: 'Chào' }] });
+    assert.equal(out, 'Xin chào từ Groq');
+    assert.equal(req.url, 'https://api.groq.com/openai/v1/chat/completions');
+    assert.equal(req.auth, 'Bearer gsk_1');
+    assert.equal(req.body.model, 'llama-3.3-70b-versatile');
+    assert.equal(req.body.max_tokens, 8192);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});

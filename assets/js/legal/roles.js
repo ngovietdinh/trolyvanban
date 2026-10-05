@@ -2,14 +2,13 @@
 
 export const BLTTHS = 'Bộ luật Tố tụng hình sự năm 2015 (sửa đổi, bổ sung năm 2021, 2025)';
 
-/** "Điều 178, Điều 183 và Điều 184" */
+/** "Điều 178, Điều 183, Điều 184" — cách ghi của Mẫu số 140. */
 export function dieuList(nums = []) {
-  const xs = nums.map((n) => `Điều ${n}`);
-  return xs.length > 1 ? `${xs.slice(0, -1).join(', ')} và ${xs.at(-1)}` : xs[0] || '';
+  return nums.map((n) => `Điều ${n}`).join(', ');
 }
 
-/** Căn cứ pháp lý mặc định của biên bản theo tư cách người khai. */
-export const canCuText = (role) => `${dieuList(role.canCu)} ${BLTTHS}`;
+/** Căn cứ pháp lý mặc định của biên bản theo tư cách người khai (sửa được trong từng biên bản). */
+export const canCuText = (role) => `${dieuList(role.canCu)} Bộ luật Tố tụng hình sự`;
 
 export const ROLE_GROUPS = [
   { id: 'nghi-pham', ten: 'Bị can / người bị tạm giữ / người bị tố giác', moTa: 'Hỏi về hành vi của chính người khai' },

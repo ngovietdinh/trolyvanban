@@ -22,12 +22,13 @@ const ORG_FIELDS = [
 
 const LEGAL_FIELDS = [
   ['coQuanCapTren', 'Cơ quan cấp trên', 'CÔNG AN TỈNH NINH BÌNH'],
-  ['coQuan', 'Cơ quan điều tra', 'CƠ QUAN CẢNH SÁT ĐIỀU TRA'],
+  ['coQuan', 'Cơ quan điều tra (ghi trong câu “Tôi: …, Điều tra viên thuộc …”)', 'Cơ quan CSĐT Bộ Công an'],
   ['dieuTraVien', 'Họ tên điều tra viên', 'Trần Minh Đức'],
   ['chucDanh', 'Chức danh', 'Điều tra viên'],
   ['diaDiem', 'Địa điểm làm việc thường xuyên', 'Trụ sở Cơ quan Cảnh sát điều tra'],
-  ['mauSo', 'Mẫu số in góc biên bản (để trống nếu không dùng)', 'VD: 140'],
-  ['thongTu', 'Ban hành kèm theo (thông tư biểu mẫu hiện hành)', 'VD: Thông tư số …/2025/TT-BCA'],
+  ['mauSo', 'Mẫu số — biên bản ghi lời khai (gõ “-” để ẩn)', '140 (mặc định)'],
+  ['mauSoHoiCung', 'Mẫu số — biên bản hỏi cung bị can (gõ “-” để ẩn)', 'Theo TT 128/2025/TT-BCA'],
+  ['thongTu', 'Ban hành theo (in trong ô mẫu số)', 'TT số 128/2025/TT-BCA ngày 19/12/2025 (mặc định)'],
 ];
 
 export function render(ctx) {

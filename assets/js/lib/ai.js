@@ -19,6 +19,8 @@ export const PROVIDERS = {
   openai: { label: 'ChatGPT', vendor: 'OpenAI', keyHint: 'sk-…', keyPrefix: /^sk-/, console: 'platform.openai.com', backup: ['gpt-4o-mini', 'gpt-4.1-mini'], defaultModel: 'gpt-4o', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini', 'o4-mini'], base: 'https://api.openai.com/v1' },
   gemini: { label: 'Gemini', vendor: 'Google', keyHint: 'AIza…', keyPrefix: /^AIza/, console: 'aistudio.google.com', defaultModel: 'gemini-2.5-flash', models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'], backup: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash-lite'], base: 'https://generativelanguage.googleapis.com/v1beta' },
   grok: { label: 'Grok', vendor: 'xAI', keyHint: 'xai-…', keyPrefix: /^xai-/, console: 'console.x.ai', backup: ['grok-3-mini'], defaultModel: 'grok-3', models: ['grok-3', 'grok-3-mini', 'grok-4'], base: 'https://api.x.ai/v1' },
+  // Groq: hạ tầng suy luận rất nhanh cho các mô hình mở (Llama, GPT-OSS, Qwen, Kimi…), giao thức tương thích OpenAI.
+  groq: { label: 'Groq', vendor: 'Groq', keyHint: 'gsk_…', keyPrefix: /^gsk_/, console: 'console.groq.com', backup: ['openai/gpt-oss-120b', 'llama-3.1-8b-instant'], defaultModel: 'llama-3.3-70b-versatile', models: ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3-32b', 'moonshotai/kimi-k2-instruct', 'llama-3.1-8b-instant'], base: 'https://api.groq.com/openai/v1', maxTokens: 8192 },
 };
 
 export const SYSTEM_PROMPT = `Bạn là "Trợ Lý Văn Bản", chuyên gia văn thư - hành chính nhà nước Việt Nam với nhiều năm kinh nghiệm.
@@ -51,7 +53,7 @@ export function friendlyError(err, Anthropic) {
  */
 function streamOnce(opts) {
   const provider = opts.provider || 'anthropic';
-  if (provider === 'openai' || provider === 'grok') return streamOpenAICompatible({ ...opts, provider });
+  if (provider === 'openai' || provider === 'grok' || provider === 'groq') return streamOpenAICompatible({ ...opts, provider });
   if (provider === 'gemini') return streamGemini(opts);
   return streamAnthropic(opts);
 }
@@ -305,7 +307,7 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: model || cfg.defaultModel, stream: true, max_tokens: Math.min(maxTokens, 16000), messages: [{ role: 'system', content: system }, ...messages] }),
+      body: JSON.stringify({ model: model || cfg.defaultModel, stream: true, max_tokens: Math.min(maxTokens, cfg.maxTokens || 16000), messages: [{ role: 'system', content: system }, ...messages] }),
     },
     provider,
     signal,
@@ -395,6 +397,7 @@ export async function listModels(provider, apiKey) {
   if (provider === 'gemini') ids = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m) => String(m.name).replace(/^models\//, ''));
   else ids = (j.data || []).map((m) => m.id);
   if (provider === 'openai') ids = ids.filter((id) => /^(gpt|o\d|chatgpt)/.test(id) && !/(audio|realtime|transcribe|tts|image|search|embedding)/.test(id));
+  if (provider === 'groq') ids = (j.data || []).filter((m) => m.active !== false).map((m) => m.id).filter((id) => !/(whisper|tts|guard|playai|distil|orpheus)/i.test(id));
   return [...new Set(ids.filter(Boolean))].sort((a, b) => b.localeCompare(a));
 }
 

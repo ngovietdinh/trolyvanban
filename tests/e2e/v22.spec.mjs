@@ -118,7 +118,7 @@ test.describe('Ghi lời khai: dán & chuyển đổi, tự học, ghi nhớ', (
     await expect(page.locator('.iv-qa').last()).toContainText('Tôi có nhận 50 triệu đồng.');
     const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-export]').click()]);
     const text = await docxToText(readFileSync(await dl.path()));
-    expect(text).toMatch(/Trả lời: Tôi tên là/);
+    expect(text).toMatch(/Đáp: Tôi tên là/);
     expect(text).toContain('Hỏi: Anh có nhận tiền của nhà thầu không?');
     t.assertClean();
   });

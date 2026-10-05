@@ -109,12 +109,18 @@ test('biên bản hỏi cung: đủ thể thức, hỏi – đáp, chữ ký; xu
   const doc = buildRecordDocument(rec);
   assert.equal(doc.title.name, 'BIÊN BẢN HỎI CUNG BỊ CAN');
   const html = renderDocumentHtml(doc);
-  assert.match(html, /Hồi 08 giờ 05 phút, ngày 03 tháng 02 năm 2026/);
-  assert.match(html, /Căn cứ Điều 178, Điều 183 và Điều 184 Bộ luật Tố tụng hình sự năm 2015 \(sửa đổi, bổ sung năm 2021, 2025\)/);
-  assert.match(html, /khoản 6 Điều 183/);
-  assert.doesNotMatch(html, /vb-formno/);
+  assert.match(html, /Hồi 8 giờ 05 phút ngày 3 tháng 2 năm 2026 tại Trụ sở Cơ quan CSĐT\./);
+  assert.match(html, /Tôi: <strong>Trần Minh Đức<\/strong>, Điều tra viên thuộc Cơ quan Cảnh sát điều tra\./);
+  assert.equal(doc.layout, 'form');
+  assert.deepEqual(doc.formNo, null); // hỏi cung: mẫu số chưa cấu hình → không in
+  assert.match(html, /HỎI VÀ ĐÁP/);
+  assert.match(html, /Đáp: <\/strong>Tôi đã lập/);
+  assert.match(html, /Việc hỏi cung kết thúc hồi 10 giờ 30 phút cùng ngày\. Biên bản này đã cho bị can tự đọc lại/);
+  assert.match(html, /Căn cứ Điều 178, Điều 183, Điều 184 Bộ luật Tố tụng hình sự, tiến hành hỏi cung bị can:/);
+  assert.match(html, /Bị can đã được giải thích quyền và nghĩa vụ của mình theo quy định tại Điều 60 Bộ luật Tố tụng hình sự và cam đoan/);
+  assert.match(html, /Tư cách tham gia tố tụng: Bị can\./);
   assert.match(html, /Điều 60 Bộ luật Tố tụng hình sự/);
-  assert.match(html, /NGUYỄN VĂN BÌNH/);
+  assert.match(html, /Họ tên: <strong>Nguyễn Văn Bình<\/strong>/);
   assert.match(html, /Hỏi: /);
   assert.match(html, /BỊ CAN/);
   assert.match(html, /ĐIỀU TRA VIÊN/);
@@ -124,8 +130,10 @@ test('biên bản hỏi cung: đủ thể thức, hỏi – đáp, chữ ký; xu
   writeFileSync(join(dir, 'd.xml'), xml);
   execFileSync('python3', ['-c', 'import sys,xml.dom.minidom as m; m.parse(sys.argv[1])', join(dir, 'd.xml')]);
   const text = await docxToText(buildDocx(doc));
-  assert.match(text, /CÔNG AN TỈNH NINH BÌNH/);
-  assert.match(text, /Trả lời: Tôi đã lập 05 phiếu chi khống/);
+  assert.match(text, /Độc lập - Tự do - Hạnh phúc/);
+  assert.match(text, /Đáp: Tôi đã lập 05 phiếu chi khống/);
+  assert.match(text, /^Mẫu số|CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM/m);
+  assert.match(text, /BIÊN BẢN HỎI CUNG BỊ CAN \(\)/);
   assert.match(qaToText(rec), /\[1\] Hỏi:/);
 });
 
@@ -135,24 +143,27 @@ test('biên bản người làm chứng có cảnh báo Điều 382, 383 BLHS; k
   assert.match(html, /BIÊN BẢN GHI LỜI KHAI/);
   assert.match(html, /Điều 382 và Điều 383/);
   assert.match(html, /NGƯỜI KHAI/);
-  assert.match(html, /\(Người làm chứng\)/);
-  assert.match(html, /Điều 185, Điều 186 và Điều 187/);
-  assert.match(html, /ký xác nhận vào từng trang/);
+  assert.match(html, /Tư cách tham gia tố tụng: Người làm chứng\./);
+  assert.match(html, /Điều 178, Điều 185, Điều 186, Điều 187 Bộ luật Tố tụng hình sự, tiến hành lập biên bản ghi lời khai của:/);
+  assert.match(html, /Mẫu số: 140/);
+  assert.match(html, /BH theo TT số 128\/2025\/TT-BCA/);
+  assert.match(html, /Điều 55 BLTTHS/);
   // Phiếu hỏi in sẵn: câu hỏi chưa trả lời → dòng chấm; mẫu số cấu hình được
   rec.qa = [{ q: 'Anh biết gì về vụ việc?', a: '' }];
   rec.mauSo = '140';
   rec.thongTu = 'Thông tư số 01/2025/TT-BCA';
   rec.canCu = 'Điều 186 Bộ luật Tố tụng hình sự';
   const doc2 = buildRecordDocument(rec);
-  assert.deepEqual(doc2.formNo, ['Mẫu số 140', 'Ban hành kèm theo Thông tư số 01/2025/TT-BCA']);
+  assert.deepEqual(doc2.formNo, ['Mẫu số: 140', 'BH theo Thông tư số 01/2025/TT-BCA']);
   const h2 = renderDocumentHtml(doc2);
-  assert.match(h2, /Trả lời: <\/strong>…{10,}/);
-  assert.match(h2, /Căn cứ Điều 186 Bộ luật Tố tụng hình sự, tiến hành ghi lời khai/);
-  assert.match(buildDocumentXml(doc2), /Mẫu số 140/);
+  assert.match(h2, /Đáp: <\/strong>…{10,}/);
+  assert.match(h2, /Căn cứ Điều 186 Bộ luật Tố tụng hình sự, tiến hành lập biên bản ghi lời khai của/);
+  assert.match(buildDocumentXml(doc2), /Mẫu số: 140/);
+  assert.match(buildDocumentXml(doc2), /w:framePr/);
   const plan = generatePlan({ dieu: '235', roleId: 'lam-chung' });
   const pdoc = buildPlanDocument(plan, { coQuan: 'Phòng Cảnh sát môi trường', dieuTraVien: 'Phạm An' });
   assert.match(renderDocumentHtml(pdoc), /KẾ HOẠCH LẤY LỜI KHAI/);
-  assert.match(formatMoment('2026-10-05', '14:00'), /^Hồi 14 giờ 00 phút, ngày 05 tháng 10 năm 2026$/);
+  assert.match(formatMoment('2026-10-05', '14:00'), /^Hồi 14 giờ 00 phút ngày 5 tháng 10 năm 2026$/);
 });
 
 test('phân tích cục bộ: trích xuất, gợi ý truy tiếp, mâu thuẫn, mức độ làm rõ, chuẩn hóa', () => {

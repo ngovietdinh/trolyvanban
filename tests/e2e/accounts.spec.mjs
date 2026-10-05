@@ -256,6 +256,7 @@ test.describe('AI đa nhà cung cấp (API giả lập)', () => {
     ['openai', 'sk-openai-test', 'ChatGPT', 'api.openai.com'],
     ['gemini', 'AIza-gemini-test', 'Gemini', 'generativelanguage.googleapis.com'],
     ['grok', 'xai-grok-test', 'Grok', 'api.x.ai'],
+    ['groq', 'gsk_groq-test', 'Groq', 'api.groq.com/openai/v1/chat/completions'],
   ]) {
     test(`trò chuyện streaming với ${label}`, async ({ page }) => {
       const t = trackErrors(page);
@@ -277,6 +278,10 @@ test.describe('AI đa nhà cung cấp (API giả lập)', () => {
       } else {
         expect(c.headers.authorization).toBe(`Bearer ${key}`);
         expect(c.body.stream).toBe(true);
+        if (provider === 'groq') {
+          expect(c.body.model).toBe('llama-3.3-70b-versatile');
+          expect(c.body.max_tokens).toBeLessThanOrEqual(8192);
+        }
         expect(c.body.messages[0].role).toBe('system');
         expect(c.body.messages.at(-1)).toEqual({ role: 'user', content: 'Xin chào' });
       }

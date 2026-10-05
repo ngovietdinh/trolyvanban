@@ -359,7 +359,7 @@ export function render(ctx, params = []) {
   /* ----- AI chắt lọc ----- */
   async function aiExtract() {
     if (!ctx.hasAI()) {
-      toast(ctx.can('ai') ? 'Thêm API key (ChatGPT, Gemini, Grok hoặc Claude) trong Cài đặt để dùng AI chắt lọc mẫu' : 'Tài khoản chưa được cấp quyền dùng AI trực tuyến — dùng “Nhận diện lại” hoặc bôi đen để tạo trường', { type: 'info', timeout: 4500 });
+      toast(ctx.can('ai') ? 'Thêm API key (ChatGPT, Gemini, Grok, Groq hoặc Claude) trong Cài đặt để dùng AI chắt lọc mẫu' : 'Tài khoản chưa được cấp quyền dùng AI trực tuyến — dùng “Nhận diện lại” hoặc bôi đen để tạo trường', { type: 'info', timeout: 4500 });
       return;
     }
     if (busy) return;

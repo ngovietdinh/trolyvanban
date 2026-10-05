@@ -234,3 +234,88 @@
     color: inherit;
   }
 }
+
+/* ---------- Biểu mẫu tố tụng (Mẫu số 140 — TT 128/2025/TT-BCA) ---------- */
+.vb-form {
+  padding-top: 18mm;
+  padding-right: 20mm;
+}
+.vb-form-no {
+  position: absolute;
+  top: 7mm;
+  right: 20mm;
+  width: 50mm;
+  text-align: center;
+  font-size: 8pt;
+  font-style: italic;
+  line-height: 1.25;
+}
+.vb-form-head {
+  text-align: center;
+}
+.vb-form-head .vb-rule-tn {
+  width: 36%;
+}
+.vb-form-title {
+  text-align: center;
+  font-weight: 700;
+  margin-top: 14pt;
+}
+.vb-form-title + .vb-form-title {
+  margin-top: 0;
+}
+.vb-fn-ref {
+  font-weight: 400;
+}
+.vb-form .vb-body {
+  margin-top: 14pt;
+}
+.vb-form .vb-p {
+  margin: 0;
+  line-height: 1.12;
+}
+.vb-form .vb-p.ind {
+  text-indent: 12.7mm;
+}
+.vb-form .vb-p.sb {
+  margin-top: 12pt;
+}
+.vb-form .vb-p.sa {
+  margin-bottom: 12pt;
+}
+.vb-tab {
+  display: inline-block;
+  width: 25mm;
+}
+.vb-form-sign {
+  margin-top: 14pt;
+}
+.vb-form-sign td {
+  width: 50%;
+  text-align: center;
+}
+.vb-footnote {
+  margin-top: 18pt;
+  padding-top: 4pt;
+  border-top: 1px solid #000;
+  width: 100%;
+  font-size: 10pt;
+  line-height: 1.3;
+}
+.vb-form .vb-p.vb-a,
+.vb-form .vb-p.vb-q {
+  margin-bottom: 0;
+}
+.vb-form .vb-footnote {
+  border-top: 0;
+  position: relative;
+  padding-top: 6pt;
+}
+.vb-form .vb-footnote::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 35%;
+  border-top: 1px solid #000;
+}

@@ -494,11 +494,10 @@ export function render(ctx, params = []) {
           <label class="check"><input type="checkbox" name="daThongBaoQuyen" ${rec.daThongBaoQuyen ? 'checked' : ''}/>Đã thông báo, giải thích quyền và nghĩa vụ</label>
           <label class="check" style="margin-top:8px"><input type="checkbox" name="ghiAmGhiHinh" ${rec.ghiAmGhiHinh ? 'checked' : ''}/>Có ghi âm, ghi hình có âm thanh</label>
           <div class="grid-2" style="margin-top:12px">
-            <div class="field"><label for="i-sb">Số bản</label><input class="input" type="number" min="1" id="i-sb" name="soBan" value="${rec.soBan || 2}" /></div>
-            <div class="field"><label for="i-st">Số trang (để trống để điền tay)</label><input class="input" type="number" min="1" id="i-st" name="soTrang" value="${rec.soTrang || ''}" /></div>
             <div class="field span-2"><label for="i-cc">Căn cứ pháp lý (để trống dùng mặc định theo tư cách người khai)</label><input class="input" id="i-cc" name="canCu" value="${escapeHtml(rec.canCu || '')}" placeholder="${escapeHtml(canCuText(getRole(rec.roleId)))}" /></div>
-            <div class="field"><label for="i-ms">Mẫu số</label><input class="input" id="i-ms" name="mauSo" value="${escapeHtml(rec.mauSo || '')}" placeholder="Để trống nếu không in" /></div>
-            <div class="field"><label for="i-tt">Ban hành kèm theo</label><input class="input" id="i-tt" name="thongTu" value="${escapeHtml(rec.thongTu || '')}" placeholder="Thông tư số …/2025/TT-BCA" /></div>
+            <div class="field"><label for="i-ms">Mẫu số (${rec.roleId === 'bi-can' ? 'hỏi cung' : 'ghi lời khai'}; “-” để ẩn)</label><input class="input" id="i-ms" name="mauSo" value="${escapeHtml((rec.roleId === 'bi-can' ? rec.mauSoHC : rec.mauSoGLK ?? rec.mauSo) || '')}" placeholder="${rec.roleId === 'bi-can' ? 'Theo TT 128/2025/TT-BCA' : '140'}" /></div>
+            <div class="field"><label for="i-tt">Ban hành theo</label><input class="input" id="i-tt" name="thongTu" value="${escapeHtml(rec.thongTu || '')}" placeholder="TT số 128/2025/TT-BCA ngày 19/12/2025" /></div>
+            <div class="field span-2"><label for="i-doc">Cách đọc lại biên bản</label><select class="select" id="i-doc" name="cachDoc"><option value="tu-doc" ${rec.cachDoc !== 'doc-nghe' ? 'selected' : ''}>Người khai tự đọc lại</option><option value="doc-nghe" ${rec.cachDoc === 'doc-nghe' ? 'selected' : ''}>Đọc lại cho người khai nghe</option></select></div>
           </div>
         </fieldset>
         <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="submit">${icon('save', 'ic-sm')}Lưu thông tin</button></div>
@@ -531,11 +530,10 @@ export function render(ctx, params = []) {
               nguoiKhai: Object.fromEntries(PERSON_FIELDS.map(([k]) => [k, g(`nk_${k}`)])),
               daThongBaoQuyen: f.get('daThongBaoQuyen') === 'on',
               ghiAmGhiHinh: f.get('ghiAmGhiHinh') === 'on',
-              soBan: Math.max(1, parseInt(g('soBan'), 10) || 2),
-              soTrang: parseInt(g('soTrang'), 10) || '',
               canCu: g('canCu'),
-              mauSo: g('mauSo'),
+              ...(g('roleId') === 'bi-can' ? { mauSoHC: g('mauSo') } : { mauSoGLK: g('mauSo') }),
               thongTu: g('thongTu'),
+              cachDoc: g('cachDoc') || 'tu-doc',
             });
             rec = recordsRepo.save(rec);
             close();

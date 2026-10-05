@@ -161,9 +161,14 @@ const TEXT_W = PAGE.w - PAGE.left - PAGE.right;
 const HEAD_L = Math.round(TEXT_W * 0.42);
 const HEAD_R = TEXT_W - HEAD_L;
 
-function r(text, { bold, italic, size = 28, caps } = {}) {
-  const props = [`<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>`, bold ? '<w:b/>' : '', italic ? '<w:i/>' : '', caps ? '<w:caps/>' : '', `<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>`].join('');
-  return `<w:r><w:rPr>${props}</w:rPr><w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r>`;
+function r(text, { bold, italic, size = 28, caps, sup } = {}) {
+  const props = [`<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>`, bold ? '<w:b/>' : '', italic ? '<w:i/>' : '', caps ? '<w:caps/>' : '', `<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>`, sup ? '<w:vertAlign w:val="superscript"/>' : ''].join('');
+  // Ký tự tab → <w:tab/> (dùng cho dòng "Họ tên: …⇥⇥Giới tính: …").
+  const inner = String(text ?? '')
+    .split('\t')
+    .map((t) => `<w:t xml:space="preserve">${xmlEsc(t)}</w:t>`)
+    .join('<w:tab/>');
+  return `<w:r><w:rPr>${props}</w:rPr>${inner}</w:r>`;
 }
 
 function p(runs, { align = 'both', indent = 0, before = 0, after = 120, line = 288, keep = false, border } = {}) {
@@ -186,7 +191,46 @@ function table(cells) {
 
 const c = (runs, o = {}) => p(runs, { align: 'center', after: 0, line: 240, ...o });
 
+/* ----- Bố cục biểu mẫu tố tụng (Mẫu số 140 — TT 128/2025/TT-BCA) ----- */
+const FORM_LINE = 269; // giãn dòng như mẫu gốc (≈1,12)
+
+function buildFormXml(doc) {
+  const out = [];
+  const fp = (l, i) => p(r(l, { italic: true, size: 16 }), { align: 'center', after: 0, line: 240 }).replace('<w:pPr>', `<w:pPr><w:framePr w:w="2820" w:hSpace="180" w:wrap="around" w:vAnchor="page" w:hAnchor="margin" w:xAlign="right" w:y="397"/>`);
+  (doc.formNo || []).forEach((l, i) => out.push(fp(l, i)));
+  out.push(p(r(QUOC_HIEU, { bold: true, size: 26 }), { align: 'center', after: 0, line: FORM_LINE }));
+  out.push(p(r(TIEU_NGU, { bold: true, size: 28 }), { align: 'center', after: 0, line: FORM_LINE }));
+  out.push(rule(3000, TEXT_W));
+  out.push(p(r(''), { align: 'center', after: 0, line: FORM_LINE }));
+  const note = doc.title.note ? `${r(' (')}<w:r><w:rPr><w:sz w:val="28"/><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="1"/></w:r>${r(')')}` : '';
+  out.push(p([r(doc.title.name, { bold: true, size: 28 }), note], { align: 'center', after: 0, line: FORM_LINE }));
+  if (doc.title.subject) out.push(p(r(doc.title.subject, { bold: true, size: 28 }), { align: 'center', after: 0, line: FORM_LINE }));
+  out.push(p(r(''), { after: 0, line: FORM_LINE }));
+  for (const para of doc.body) {
+    const align = { justify: 'both', center: 'center', left: 'left', right: 'right' }[para.align || 'justify'];
+    out.push(p(para.runs.map((x) => r(x.text, { bold: x.bold, italic: x.italic, size: 28 })), { align, indent: para.indent ? 720 : 0, before: para.spaceBefore ? 240 : 0, after: para.spaceAfter ? 240 : 0, line: FORM_LINE }));
+  }
+  out.push(p(r(''), { after: 0, line: FORM_LINE }));
+  const list = doc.signers || [];
+  for (let i = 0; i < list.length; i += 2) {
+    const row = list.slice(i, i + 2);
+    const half = Math.round(TEXT_W / 2);
+    const col = (x) => [c(r(x.title, { bold: true, size: 28 }), { line: FORM_LINE }), p(r(''), { after: 1500 }), c(r(x.name || '', { bold: true, size: 28 }), { line: FORM_LINE })].join('');
+    out.push(table(row.length === 2 ? [{ w: half, content: col(row[0]) }, { w: TEXT_W - half, content: col(row[1]) }] : [{ w: half, content: col(row[0]) }, { w: TEXT_W - half, content: '' }]));
+  }
+  const sect = `<w:sectPr>${doc.pageNumbers ? '<w:headerReference w:type="default" r:id="rIdHdr1"/>' : ''}<w:pgSz w:w="${PAGE.w}" w:h="${PAGE.h}"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1701" w:header="425" w:footer="0" w:gutter="0"/>${doc.pageNumbers ? '<w:titlePg/>' : ''}</w:sectPr>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${out.join('')}${sect}</w:body></w:document>`;
+}
+
+const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+function footnotesXml(note) {
+  const sep = (type, id, tag) => `<w:footnote w:type="${type}" w:id="${id}"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:${tag}/></w:r></w:p></w:footnote>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:footnotes ${W_NS}>${sep('separator', -1, 'separator')}${sep('continuationSeparator', 0, 'continuationSeparator')}<w:footnote w:id="1"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="both"/></w:pPr><w:r><w:rPr><w:sz w:val="20"/><w:vertAlign w:val="superscript"/></w:rPr><w:t>(</w:t></w:r><w:r><w:rPr><w:sz w:val="20"/><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteRef/></w:r><w:r><w:rPr><w:sz w:val="20"/><w:vertAlign w:val="superscript"/></w:rPr><w:t>)</w:t></w:r><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve"> ${xmlEsc(note)}</w:t></w:r></w:p></w:footnote></w:footnotes>`;
+}
+const HEADER_PAGE = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:hdr ${W_NS}><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>2</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:hdr>`;
+
 export function buildDocumentXml(doc) {
+  if (doc.layout === 'form') return buildFormXml(doc);
   const h = doc.header;
   const out = [];
 
@@ -265,13 +309,25 @@ function coreXml(title) {
 
 /** Tạo tệp .docx (Uint8Array) từ doc model. */
 export function buildDocx(doc, title = 'Văn bản') {
+  const fn = doc.layout === 'form' && doc.title?.note;
+  const hdr = doc.layout === 'form' && doc.pageNumbers;
+  const types = CONTENT_TYPES.replace(
+    '</Types>',
+    `${fn ? '<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>' : ''}${hdr ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ''}</Types>`,
+  );
+  const rels = DOC_RELS.replace(
+    '</Relationships>',
+    `${fn ? '<Relationship Id="rIdFn" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/>' : ''}${hdr ? '<Relationship Id="rIdHdr1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>' : ''}</Relationships>`,
+  );
   return createZip([
-    { name: '[Content_Types].xml', data: CONTENT_TYPES },
+    { name: '[Content_Types].xml', data: types },
     { name: '_rels/.rels', data: ROOT_RELS },
     { name: 'docProps/core.xml', data: coreXml(title) },
-    { name: 'word/_rels/document.xml.rels', data: DOC_RELS },
+    { name: 'word/_rels/document.xml.rels', data: rels },
     { name: 'word/styles.xml', data: STYLES },
     { name: 'word/document.xml', data: buildDocumentXml(doc) },
+    ...(fn ? [{ name: 'word/footnotes.xml', data: footnotesXml(doc.title.note) }] : []),
+    ...(hdr ? [{ name: 'word/header1.xml', data: HEADER_PAGE }] : []),
   ]);
 }
 

@@ -30,7 +30,7 @@ export function render(ctx) {
         <button class="btn btn-ghost btn-icon" type="button" title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới" data-new>${icon('plus')}</button>
         <button class="btn btn-primary btn-icon" type="submit" aria-label="Gửi" data-send>${icon('send')}</button>
       </form>
-      <p class="composer-note">${ctx.hasAI() ? `Đang dùng <strong>${escapeHtml(ctx.ai().label)} · ${escapeHtml(ctx.ai().model)}</strong>. AI có thể sai sót — hãy rà soát trước khi ban hành.` : ctx.can('ai') ? 'Chế độ cơ bản — <a class="link" href="#settings">thêm API key</a> (ChatGPT, Gemini, Grok hoặc Claude) để trò chuyện tự do với AI.' : 'Chế độ cơ bản — tài khoản chưa được cấp quyền dùng AI trực tuyến.'}</p>
+      <p class="composer-note">${ctx.hasAI() ? `Đang dùng <strong>${escapeHtml(ctx.ai().label)} · ${escapeHtml(ctx.ai().model)}</strong>. AI có thể sai sót — hãy rà soát trước khi ban hành.` : ctx.can('ai') ? 'Chế độ cơ bản — <a class="link" href="#settings">thêm API key</a> (ChatGPT, Gemini, Grok, Groq hoặc Claude) để trò chuyện tự do với AI.' : 'Chế độ cơ bản — tài khoản chưa được cấp quyền dùng AI trực tuyến.'}</p>
     </div>
   </div>`;
 

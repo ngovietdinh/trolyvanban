@@ -15,7 +15,7 @@ const ITER = 310000;
 export const PERMS = [
   { id: 'docs', label: 'Văn bản hành chính', desc: 'Soạn văn bản, thư viện mẫu, tài liệu của tôi, trợ lý cơ bản' },
   { id: 'tools', label: 'Công cụ văn bản', desc: 'Kiểm tra chính tả, tóm tắt văn bản, đọc số thành chữ' },
-  { id: 'ai', label: 'AI trực tuyến cho văn bản', desc: 'Gửi nội dung tới ChatGPT, Gemini, Grok, Claude bằng API key của mình' },
+  { id: 'ai', label: 'AI trực tuyến cho văn bản', desc: 'Gửi nội dung tới ChatGPT, Gemini, Grok, Groq, Claude bằng API key của mình' },
   { id: 'legal', label: 'Phân hệ Tố tụng hình sự', desc: 'Cây hỏi đáp pháp luật, ghi lời khai, hồ sơ vụ án (chạy cục bộ)' },
   { id: 'legal.ai', label: 'AI trực tuyến trong Tố tụng', desc: 'Cho phép gửi nội dung lời khai, hồ sơ tới dịch vụ AI bên ngoài' },
   { id: 'users', label: 'Quản lý tài khoản & phân quyền', desc: 'Tạo, khóa, đặt lại mật khẩu, cấp quyền cho tài khoản khác' },

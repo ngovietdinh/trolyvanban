@@ -117,6 +117,7 @@ export async function mockProviders(page, reply = () => 'Xin chào từ AI') {
   };
   await page.route('https://api.openai.com/**', handler('openai'));
   await page.route('https://api.x.ai/**', handler('grok'));
+  await page.route('https://api.groq.com/**', handler('groq'));
   await page.route('https://generativelanguage.googleapis.com/**', handler('gemini'));
   return calls;
 }

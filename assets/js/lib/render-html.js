@@ -11,14 +11,35 @@ const tx = (s) => escapeHtml(s).replace(/\[([^\]\n]{1,80})\]/g, '<span class="vb
 const runsHtml = (runs) =>
   runs
     .map((r) => {
-      let t = tx(r.text);
+      let t = tx(r.text).replace(/\t+/g, '<span class="vb-tab"></span>');
       if (r.bold) t = `<strong>${t}</strong>`;
       if (r.italic) t = `<em>${t}</em>`;
       return t;
     })
     .join('');
 
+/** Biểu mẫu tố tụng (Mẫu số 140 — TT 128/2025/TT-BCA): ô mẫu số góc phải, quốc hiệu căn giữa, chú thích cuối trang. */
+function renderFormHtml(doc) {
+  const formNo = doc.formNo?.length ? `<div class="vb-form-no">${doc.formNo.map((l) => `<div>${tx(l)}</div>`).join('')}</div>` : '';
+  const body = doc.body
+    .map((p) => {
+      const cls = ['vb-p', `al-${p.align || 'justify'}`, p.indent ? 'ind' : '', p.spaceBefore ? 'sb' : '', p.spaceAfter ? 'sa' : '', p.cls || ''].filter(Boolean).join(' ');
+      return `<p class="${cls}">${runsHtml(p.runs)}</p>`;
+    })
+    .join('');
+  const rows = [];
+  for (let i = 0; i < (doc.signers || []).length; i += 2) rows.push(doc.signers.slice(i, i + 2));
+  const sign = rows.map((r) => `<table class="vb-sign vb-signers vb-form-sign" role="presentation"><tr>${r.map((c) => `<td><div class="vb-sign-pos">${tx(c.title)}</div><div class="vb-sign-space"></div><div class="vb-sign-name">${tx(c.name || '')}</div></td>`).join('')}${r.length === 1 ? '<td></td>' : ''}</tr></table>`).join('');
+  const note = doc.title.note ? '<span class="vb-fn-ref">(<sup>1</sup>)</span>' : '';
+  return `<article class="vb-page vb-form" lang="vi">${formNo}
+    <div class="vb-form-head"><div class="vb-qh">${QUOC_HIEU}</div><div class="vb-tn">${TIEU_NGU}</div><div class="vb-rule vb-rule-tn"></div></div>
+    <div class="vb-form-title">${tx(doc.title.name)} ${note}</div>${doc.title.subject ? `<div class="vb-form-title">${tx(doc.title.subject)}</div>` : ''}
+    <div class="vb-body">${body}</div>${sign}
+    ${doc.title.note ? `<div class="vb-footnote"><sup>(1)</sup> ${tx(doc.title.note)}</div>` : ''}</article>`;
+}
+
 export function renderDocumentHtml(doc) {
+  if (doc.layout === 'form') return renderFormHtml(doc);
   const h = doc.header;
   const formNo = doc.formNo?.length ? `<div class="vb-formno">${doc.formNo.map((l) => `<div>${tx(l)}</div>`).join('')}</div>` : '';
   const head = `${formNo}

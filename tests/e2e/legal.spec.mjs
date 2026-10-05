@@ -201,9 +201,9 @@ test.describe('Hồ sơ vụ án và ghi lời khai', () => {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-export]').click()]);
     const text = await docxToText(readFileSync(await dl.path()));
     expect(text).toContain('BIÊN BẢN HỎI CUNG BỊ CAN');
-    expect(text).toContain('NGUYỄN VĂN BÌNH');
-    expect(text).toContain('Trả lời: Tôi nhận 70 triệu đồng tại quán cà phê.');
-    expect(text).toContain('Điều 178, Điều 183 và Điều 184 Bộ luật Tố tụng hình sự năm 2015');
+    expect(text).toContain('Họ tên: Nguyễn Văn Bình');
+    expect(text).toContain('Đáp: Tôi nhận 70 triệu đồng tại quán cà phê.');
+    expect(text).toContain('Căn cứ Điều 178, Điều 183, Điều 184 Bộ luật Tố tụng hình sự, tiến hành hỏi cung bị can:');
 
     // Danh sách biên bản trong hồ sơ
     await page.goto('/app.html#cases');
@@ -262,8 +262,9 @@ test.describe('Hồ sơ vụ án và ghi lời khai', () => {
     await expect(doc).toContainText('BIÊN BẢN GHI LỜI KHAI');
     await expect(doc).toContainText('Điều 382 và Điều 383');
     await expect(doc).toContainText('NGƯỜI PHIÊN DỊCH');
-    await expect(doc).toContainText('Trần Minh Đức — Điều tra viên');
-    await expect(doc).toContainText('người khai xác nhận đã được nghe, hiểu rõ quyền và nghĩa vụ');
+    await expect(doc).toContainText('Tôi: Trần Minh Đức, Điều tra viên');
+    await expect(doc).toContainText('Người khai đã được giải thích quyền và nghĩa vụ của mình theo quy định tại Điều 66');
+    await expect(doc.locator('.vb-form-sign').first()).toContainText('NGƯỜI KHAI');
   });
 
   test('xóa hồ sơ xóa luôn biên bản', async ({ page }) => {

@@ -110,9 +110,9 @@ test.describe('Cây hỏi đáp: hành vi thủ công, gợi ý câu hỏi, phi�
     expect(dl.suggestedFilename()).toMatch(/^phieu-hoi-dieu-222/);
     const text = await docxToText(readFileSync(await dl.path()));
     expect(text).toContain('BIÊN BẢN HỎI CUNG BỊ CAN');
-    expect(text).toContain('Bộ luật Tố tụng hình sự năm 2015 (sửa đổi, bổ sung năm 2021, 2025)');
+    expect(text).toContain('Bộ luật Tố tụng hình sự, tiến hành hỏi cung bị can:');
     expect((text.match(/^Hỏi: /gm) || []).length).toBe(total);
-    expect(text).toMatch(/Trả lời: …{10,}/);
+    expect(text).toMatch(/Đáp: …{10,}/);
     expect(text).not.toContain('[Chưa có nội dung');
   });
 
@@ -145,8 +145,8 @@ test.describe('Cây hỏi đáp: hành vi thủ công, gợi ý câu hỏi, phi�
     await expect(page.locator('.iv-qa.pending')).toHaveCount(total - 2);
     const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-export]').click()]);
     const text = await docxToText(readFileSync(await dl.path()));
-    expect(text).toContain('Trả lời: Tôi tên là Nguyễn Văn Bình, sinh năm 1980.');
-    expect(text).toMatch(/Trả lời: …{10,}/);
+    expect(text).toContain('Đáp: Tôi tên là Nguyễn Văn Bình, sinh năm 1980.');
+    expect(text).toMatch(/Đáp: …{10,}/);
     t.assertClean();
   });
 
@@ -165,10 +165,10 @@ test.describe('Cây hỏi đáp: hành vi thủ công, gợi ý câu hỏi, phi�
     await expect(page.locator('.iv-qa.pending').first()).toBeVisible();
     await page.locator('[data-preview]').click();
     const doc = page.locator('.modal .vb-page');
-    await expect(doc.locator('.vb-formno')).toContainText('Mẫu số 140');
-    await expect(doc.locator('.vb-formno')).toContainText('Ban hành kèm theo Thông tư số 01/2025/TT-BCA');
-    await expect(doc).toContainText('(Người làm chứng)');
-    await expect(doc).toContainText('Điều 178, Điều 185, Điều 186 và Điều 187');
+    await expect(doc.locator('.vb-form-no')).toContainText('Mẫu số: 140');
+    await expect(doc.locator('.vb-form-no')).toContainText('BH theo Thông tư số 01/2025/TT-BCA');
+    await expect(doc).toContainText('Tư cách tham gia tố tụng: Người làm chứng');
+    await expect(doc).toContainText('Điều 178, Điều 185, Điều 186, Điều 187');
   });
 });
 
