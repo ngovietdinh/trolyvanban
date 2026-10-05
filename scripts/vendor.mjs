@@ -42,4 +42,9 @@ await build({
   outfile: join(root, 'assets/vendor/anthropic-sdk.mjs'),
   legalComments: 'eof',
 });
-console.log('Vendored fonts + Anthropic SDK.');
+// pdf.js — đọc chữ từ tệp PDF ngay trên trình duyệt (Kho hồ sơ).
+const pdfDir = join(root, 'assets/vendor/pdfjs');
+mkdirSync(pdfDir, { recursive: true });
+for (const f of ['pdf.min.mjs', 'pdf.worker.min.mjs']) copyFileSync(join(root, 'node_modules/pdfjs-dist/build', f), join(pdfDir, f));
+copyFileSync(join(root, 'node_modules/pdfjs-dist/LICENSE'), join(pdfDir, 'LICENSE'));
+console.log('Vendored fonts + Anthropic SDK + pdf.js.');

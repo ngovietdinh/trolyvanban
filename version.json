@@ -1,8 +1,8 @@
 {
-  "version": "2.5.0",
+  "version": "2.6.0",
   "date": "2026-10-05",
   "notes": [
-    "Biểu mẫu tố tụng hình sự: 125 mẫu quyết định, lệnh, biên bản, thông báo, giấy triệu tập, đề nghị, kết luận điều tra",
-    "Tự điền từ hồ sơ vụ án, AI soạn nội dung, xem trước, xuất Word, lưu vào hồ sơ"
+    "Kho hồ sơ & Trợ lý AI: tải lên Word/PDF/txt, hỏi đáp có trích dẫn, tìm mâu thuẫn",
+    "Lập biên bản lời khai mới từ các BBLK cũ, tạo văn bản tố tụng theo mẫu bằng lệnh"
   ]
 }

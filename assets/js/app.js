@@ -16,6 +16,7 @@ import * as number from './views/number.js';
 import * as templates from './views/templates.js';
 import * as tpl from './views/tpl.js';
 import * as forms from './views/forms.js';
+import * as kho from './views/kho.js';
 import * as docs from './views/docs.js';
 import * as settings from './views/settings.js';
 import * as legal from './views/legal.js';
@@ -32,6 +33,7 @@ const ROUTES = {
   interview: { mod: interview, title: 'Ghi lời khai', perm: 'legal' },
   cases: { mod: cases, title: 'Hồ sơ vụ án', perm: 'legal' },
   forms: { mod: forms, title: 'Biểu mẫu tố tụng', perm: 'legal' },
+  kho: { mod: kho, title: 'Kho hồ sơ & Trợ lý AI', perm: 'legal' },
   chat: { mod: chat, title: 'Trợ lý AI', perm: 'docs' },
   spell: { mod: spell, title: 'Kiểm tra chính tả', perm: 'tools' },
   summary: { mod: summary, title: 'Tóm tắt văn bản', perm: 'tools' },
@@ -464,7 +466,7 @@ function paletteCommands() {
   const can = (p) => accounts.can(p);
   const nav = Object.entries(ROUTES)
     .filter(([, r]) => !r.perm || can(r.perm))
-    .map(([k, r]) => ({ group: 'Điều hướng', label: r.title, icon: { dashboard: 'home', compose: 'file', legal: 'layers', interview: 'message', cases: 'folder', forms: 'file', chat: 'sparkles', spell: 'spell', summary: 'book', number: 'hash', templates: 'layers', docs: 'folder', admin: 'shield', settings: 'settings' }[k], run: () => ctx.navigate(`#${k}`) }));
+    .map(([k, r]) => ({ group: 'Điều hướng', label: r.title, icon: { dashboard: 'home', compose: 'file', legal: 'layers', interview: 'message', cases: 'folder', forms: 'file', kho: 'sparkles', chat: 'sparkles', spell: 'spell', summary: 'book', number: 'hash', templates: 'layers', docs: 'folder', admin: 'shield', settings: 'settings' }[k], run: () => ctx.navigate(`#${k}`) }));
   const crimes = (can('legal') ? ALL_CRIMES : []).map((c) => ({ group: 'Tội danh — cây hỏi đáp', label: `Điều ${c.dieu}. ${c.ten}`, icon: 'gavel', run: () => ctx.navigate(`#legal/${c.dieu}`) }));
   const types = (can('docs') ? DOC_TYPES : []).map((t) => ({ group: 'Soạn mới', label: `Soạn ${t.name.toLowerCase()}`, icon: t.icon, hint: t.abbr, run: () => ctx.navigate(`#compose/${t.id}`) }));
   const recent = (can('docs') ? docsRepo.list() : [])

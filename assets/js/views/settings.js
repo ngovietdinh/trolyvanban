@@ -3,6 +3,7 @@ import { $, $$, icon, toast, escapeHtml, setTheme, downloadBlob } from '../ui.js
 import { store, docsRepo, WIPE_KEYS } from '../lib/store.js';
 import { PROVIDERS, MODELS, testApiKey, listModels } from '../lib/ai.js';
 import { learnedBank } from '../legal/repo.js';
+import { khoDb } from '../lib/kho-db.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { audit } from '../lib/accounts.js';
 import { APP_VERSION } from '../version.js';
@@ -429,6 +430,7 @@ export function render(ctx) {
   $('[data-wipe]', root).addEventListener('click', async () => {
     if (!(await ctx.confirm('Toàn bộ văn bản, hồ sơ, biên bản và lịch sử của tài khoản này sẽ bị xóa vĩnh viễn. Tài khoản, API key và cài đặt được giữ lại.', { title: 'Xóa toàn bộ dữ liệu?', okText: 'Xóa vĩnh viễn', danger: true }))) return;
     WIPE_KEYS.forEach((k) => store.remove(k));
+    await khoDb.clear().catch(() => {});
     audit('Xóa toàn bộ dữ liệu', ctx.user()?.email || '');
     document.dispatchEvent(new CustomEvent('docs-changed'));
     toast('Đã xóa toàn bộ dữ liệu (tài khoản được giữ lại)');

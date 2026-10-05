@@ -1,0 +1,486 @@
+// Kho hồ sơ & Trợ lý AI: tải lên hồ sơ, tài liệu (Word, PDF, txt) → làm dữ liệu cho hỏi đáp AI có trích dẫn,
+// lập biên bản lời khai mới dựa vào các biên bản cũ, tạo văn bản tố tụng theo mẫu có sẵn.
+import { $, $$, icon, toast, escapeHtml, renderMarkdown, downloadBlob } from '../ui.js';
+import { khoDb } from '../lib/kho-db.js';
+import { extractText } from '../lib/extract.js';
+import { streamClaude, extractJson } from '../lib/ai.js';
+import { casesRepo, recordsRepo, legalDocsRepo } from '../legal/repo.js';
+import { qaToText, newRecord, prefillQa } from '../legal/record.js';
+import { getRole } from '../legal/roles.js';
+import { FORMS, FIELDS, findForm, formKeys } from '../legal/forms-catalog.js';
+import { buildFormDocument, prefillFromCase, nhanThanText } from '../legal/forms-build.js';
+import { LOAI_TL, analyzeDoc, searchDocs, buildContext, localInterviewPlan, planFromIssues, personFromOlds, localIntent, KHO_SYSTEM, answerPrompt, intentPrompt, interviewPrompt, formPrompt } from '../legal/kho.js';
+import { store, uid } from '../lib/store.js';
+import { audit } from '../lib/accounts.js';
+
+const MAX_FILE = 25 * 1024 * 1024;
+const ICON = { bblk: 'message', 'hoi-cung': 'message', 'doi-chat': 'message', qd: 'gavel', lenh: 'gavel', 'kl-giam-dinh': 'zap', 'kl-dinh-gia': 'zap', 'kl-dieu-tra': 'book', 'cao-trang': 'book', 'ban-an': 'book' };
+const STATEMENT = new Set(['bblk', 'hoi-cung', 'doi-chat']);
+
+/** Văn bản thuần từ doc model (văn bản tố tụng đã lập trong phần mềm). */
+function docModelText(doc) {
+  const out = [];
+  if (doc.title) out.push(doc.title.name, doc.title.subject || '');
+  for (const p of doc.body || []) out.push(p.runs.map((r) => r.text).join(''));
+  return out.filter(Boolean).join('\n');
+}
+
+export function render(ctx) {
+  let docs = []; // tài liệu tải lên (không kèm tệp gốc)
+  let filterCase = store.get('kho-case', '');
+  let includeApp = store.get('kho-app', true);
+  let selected = new Set(store.get('kho-sel', []));
+  let q = '';
+  let busy = false;
+  const messages = [];
+
+  ctx.view.innerHTML = `
+  <div class="kho">
+    <aside class="kho-lib" aria-label="Kho tài liệu">
+      <div class="kho-lib-head">
+        <h1>${icon('folder', 'ic-sm')}Kho hồ sơ</h1>
+        <select class="select select-sm" data-case aria-label="Lọc theo hồ sơ vụ án"></select>
+      </div>
+      <label class="dropzone kho-drop" data-drop>
+        <input type="file" multiple accept=".docx,.pdf,.txt,.md,.html" data-file aria-label="Tải lên hồ sơ, tài liệu" />
+        <span class="dz-icon">${icon('upload')}</span>
+        <span><strong>Tải lên hồ sơ, tài liệu</strong><small>Word (.docx), PDF có chữ, .txt · nhiều tệp cùng lúc · lưu trên máy</small></span>
+      </label>
+      <div class="kho-tools">
+        <div class="lg-search kho-search">${icon('search', 'ic-sm')}<input type="search" placeholder="Tìm trong kho…" data-q aria-label="Tìm trong kho" /></div>
+        <label class="check"><input type="checkbox" data-app ${includeApp ? 'checked' : ''} />Gồm biên bản, văn bản đã lập trong phần mềm</label>
+        <div class="kho-selbar"><label class="check"><input type="checkbox" data-sel-all />Chọn tất cả làm dữ liệu</label><span class="hint" data-sel-n></span></div>
+      </div>
+      <ul class="kho-list" data-list></ul>
+    </aside>
+    <section class="kho-ai" aria-label="Trợ lý AI hồ sơ">
+      <header class="kho-ai-head">
+        <div><strong>${icon('sparkles', 'ic-sm')}Trợ lý hồ sơ</strong><small data-scope></small></div>
+        <span class="badge" data-mode></span>
+      </header>
+      <div class="kho-msgs" data-msgs></div>
+      <div class="kho-quick" data-quick>
+        <button type="button" class="chip" data-tpl="Tóm tắt các tài liệu đã chọn: nội dung chính, người liên quan, mốc thời gian, số tiền.">Tóm tắt hồ sơ</button>
+        <button type="button" class="chip" data-tpl="Tạo biên bản lời khai mới dựa vào các biên bản lời khai cũ để làm rõ hơn ">Tạo biên bản lời khai mới từ BBLK cũ</button>
+        <button type="button" class="chip" data-tpl="Chỉ ra các điểm mâu thuẫn giữa các lời khai đã chọn.">Tìm mâu thuẫn</button>
+        <button type="button" class="chip" data-tpl="Tạo giấy triệu tập người làm chứng ">Tạo văn bản theo mẫu…</button>
+      </div>
+      <form class="kho-input" data-form>
+        <textarea rows="2" data-input placeholder="Hỏi về hồ sơ, hoặc ra lệnh: “Tạo biên bản lời khai mới cho Nguyễn Văn A để làm rõ việc nhận tiền”, “Tạo quyết định trưng cầu giám định chữ ký”…" aria-label="Yêu cầu cho trợ lý"></textarea>
+        <button class="btn btn-primary" type="submit" data-send>${icon('send', 'ic-sm')}Gửi</button>
+      </form>
+    </section>
+  </div>`;
+  const root = ctx.view;
+  const list = $('[data-list]', root);
+  const msgs = $('[data-msgs]', root);
+  const input = $('[data-input]', root);
+
+  /* ---------------- Nguồn dữ liệu ---------------- */
+  function appDocs() {
+    if (!includeApp) return [];
+    const inCase = (x) => !filterCase || (filterCase === '_none' ? !x.caseId : x.caseId === filterCase);
+    const recs = recordsRepo.list(inCase).filter((r) => (r.qa || []).some((x) => x.a));
+    const lds = legalDocsRepo.list(inCase);
+    const org = ctx.settings().legalOrg || {};
+    return [
+      ...recs.map((r) => {
+        const role = getRole(r.roleId);
+        const header = `${role.bienBan}\nHọ tên: ${r.nguoiKhai?.hoTen || ''}\n${nhanThanText(r.nguoiKhai || {})}\nTư cách tham gia tố tụng: ${role.ten.split('/')[0].trim()}\nNgày: ${r.ngay || ''}`;
+        return { id: `rec:${r.id}`, app: true, ten: `${role.bienBan.replace('BIÊN BẢN ', 'BB ')} — ${r.nguoiKhai?.hoTen || 'chưa ghi tên'} (lần ${r.lan || 1})`, loai: r.roleId === 'bi-can' ? 'hoi-cung' : 'bblk', caseId: r.caseId, ngay: r.ngay?.split('-').reverse().join('/'), nguoi: r.nguoiKhai || {}, roleId: r.roleId, qa: (r.qa || []).filter((x) => x.a), text: `${header}\n\nHỎI VÀ ĐÁP\n${qaToText(r).replace(/\[\d+\]\s*/g, '').replace(/Trả lời:/g, 'Đáp:')}` };
+      }),
+      ...lds.map((d) => {
+        const f = findForm(d.formId);
+        return { id: `ldoc:${d.id}`, app: true, ten: d.title, loai: f?.loai === 'qd' ? 'qd' : f?.loai === 'lenh' ? 'lenh' : 'bb-khac', caseId: d.caseId, ngay: '', nguoi: {}, qa: [], text: f ? docModelText(buildFormDocument(f, d.values, org)) : '' };
+      }),
+    ];
+  }
+  const visibleDocs = () => {
+    const inCase = (x) => !filterCase || (filterCase === '_none' ? !x.caseId : x.caseId === filterCase);
+    return [...docs.filter(inCase), ...appDocs()];
+  };
+  const contextDocs = () => {
+    const vis = visibleDocs();
+    const sel = vis.filter((d) => selected.has(d.id));
+    return sel.length ? sel : vis;
+  };
+
+  /* ---------------- Danh sách ---------------- */
+  function renderCaseSelect() {
+    const cases = casesRepo.list();
+    $('[data-case]', root).innerHTML = `<option value="">Tất cả hồ sơ</option>${cases.map((c) => `<option value="${c.id}" ${c.id === filterCase ? 'selected' : ''}>${escapeHtml(c.ten)}</option>`).join('')}<option value="_none" ${filterCase === '_none' ? 'selected' : ''}>Chưa gắn hồ sơ</option>`;
+  }
+  function renderList() {
+    const vis = visibleDocs();
+    const n = q.trim();
+    let shown = vis;
+    let snippets = {};
+    if (n) {
+      const hits = searchDocs(n, vis, { limit: 40 });
+      const ids = [...new Set(hits.map((h) => h.docId))];
+      shown = ids.map((id) => vis.find((d) => d.id === id)).filter(Boolean);
+      for (const h of hits) snippets[h.docId] ??= h.text;
+    }
+    list.innerHTML = shown.length
+      ? shown
+          .map((d) => {
+            const c = d.caseId ? casesRepo.get(d.caseId) : null;
+            const meta = [LOAI_TL[d.loai] || 'Tài liệu', d.nguoi?.hoTen, d.ngay, d.qa?.length ? `${d.qa.length} lượt hỏi – đáp` : '', d.pages ? `${d.pages} trang` : '', c?.ten].filter(Boolean).join(' · ');
+            return `<li class="kho-item ${selected.has(d.id) ? 'on' : ''}" data-id="${escapeHtml(d.id)}">
+              <input type="checkbox" class="rec-check" data-sel ${selected.has(d.id) ? 'checked' : ''} aria-label="Dùng làm dữ liệu: ${escapeHtml(d.ten)}" />
+              <span class="kho-ic">${icon(ICON[d.loai] || 'file', 'ic-sm')}</span>
+              <button type="button" class="kho-item-body" data-view><strong>${escapeHtml(d.ten)}</strong><small>${escapeHtml(meta)}${d.app ? ' · <em>trong phần mềm</em>' : ''}</small>${snippets[d.id] ? `<span class="kho-snip">${escapeHtml(snippets[d.id].slice(0, 160))}…</span>` : ''}</button>
+              ${d.app ? '' : `<button type="button" class="btn btn-ghost btn-sm btn-icon" data-del aria-label="Xóa ${escapeHtml(d.ten)}">${icon('trash', 'ic-sm')}</button>`}
+            </li>`;
+          })
+          .join('')
+      : `<li class="kho-empty">${n ? 'Không tìm thấy nội dung phù hợp.' : 'Chưa có tài liệu. Tải lên biên bản, quyết định, kết luận giám định… để làm dữ liệu cho trợ lý.'}</li>`;
+    const visIds = new Set(vis.map((d) => d.id));
+    const selN = [...selected].filter((id) => visIds.has(id)).length;
+    $('[data-sel-n]', root).textContent = selN ? `Đã chọn ${selN}/${vis.length}` : `${vis.length} tài liệu (dùng tất cả)`;
+    $('[data-sel-all]', root).checked = selN > 0 && selN === vis.length;
+    $('[data-scope]', root).textContent = `Dữ liệu: ${selN || vis.length} tài liệu${filterCase && filterCase !== '_none' ? ` · ${casesRepo.get(filterCase)?.ten || ''}` : ''}`;
+  }
+  const saveSel = () => store.set('kho-sel', [...selected]);
+
+  list.addEventListener('change', (e) => {
+    const li = e.target.closest('[data-id]');
+    if (!li || !e.target.matches('[data-sel]')) return;
+    e.target.checked ? selected.add(li.dataset.id) : selected.delete(li.dataset.id);
+    saveSel();
+    renderList();
+  });
+  list.addEventListener('click', async (e) => {
+    const li = e.target.closest('[data-id]');
+    if (!li) return;
+    const d = visibleDocs().find((x) => x.id === li.dataset.id);
+    if (!d) return;
+    if (e.target.closest('[data-del]')) {
+      if (!(await ctx.confirm(`Xóa “${d.ten}” khỏi kho?`, { title: 'Xóa tài liệu', okText: 'Xóa', danger: true }))) return;
+      await khoDb.remove(d.id);
+      selected.delete(d.id);
+      saveSel();
+      audit('Xóa tài liệu khỏi kho hồ sơ', d.ten);
+      await reload();
+      toast('Đã xóa tài liệu');
+    } else if (e.target.closest('[data-view]')) viewDoc(d);
+  });
+  $('[data-sel-all]', root).addEventListener('change', (e) => {
+    visibleDocs().forEach((d) => (e.target.checked ? selected.add(d.id) : selected.delete(d.id)));
+    saveSel();
+    renderList();
+  });
+  $('[data-case]', root).addEventListener('change', (e) => {
+    filterCase = e.target.value;
+    store.set('kho-case', filterCase);
+    renderList();
+  });
+  $('[data-app]', root).addEventListener('change', (e) => {
+    includeApp = e.target.checked;
+    store.set('kho-app', includeApp);
+    renderList();
+  });
+  $('[data-q]', root).addEventListener('input', (e) => {
+    q = e.target.value;
+    renderList();
+  });
+
+  async function reload() {
+    docs = (await khoDb.list()).map((d) => ({ ...d }));
+    renderList();
+  }
+
+  /* ---------------- Tải lên ---------------- */
+  async function upload(files) {
+    let ok = 0;
+    for (const f of files) {
+      if (f.size > MAX_FILE) {
+        toast(`“${f.name}” lớn hơn 25 MB`, { type: 'error' });
+        continue;
+      }
+      try {
+        const { text, pages } = await extractText(f);
+        const a = analyzeDoc(text);
+        const rec = await khoDb.put({
+          ten: f.name.replace(/\.[^.]+$/, ''),
+          fileName: f.name,
+          mime: f.type,
+          size: f.size,
+          blob: f,
+          text,
+          pages: pages || 0,
+          loai: a.loai,
+          tieuDe: a.tieuDe,
+          ngay: a.ngay,
+          nguoi: a.nguoi,
+          tuCach: a.tuCach,
+          roleId: a.roleId,
+          qa: a.qa,
+          caseId: filterCase && filterCase !== '_none' ? filterCase : null,
+        });
+        selected.add(rec.id);
+        ok++;
+      } catch (err) {
+        toast(err.message || `Không đọc được “${f.name}”`, { type: 'error', timeout: 6000 });
+      }
+    }
+    saveSel();
+    await reload();
+    if (ok) {
+      audit('Tải tài liệu lên kho hồ sơ', `${ok} tệp`);
+      toast(`Đã thêm ${ok} tài liệu vào kho`);
+    }
+  }
+  $('[data-file]', root).addEventListener('change', (e) => {
+    upload([...e.target.files]);
+    e.target.value = '';
+  });
+  const drop = $('[data-drop]', root);
+  drop.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    drop.classList.add('drag');
+  });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('drag');
+    upload([...e.dataTransfer.files]);
+  });
+
+  /* ---------------- Xem tài liệu ---------------- */
+  function viewDoc(d) {
+    const cases = casesRepo.list();
+    ctx.modal(
+      `<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button>
+      <h2 class="modal-title">${escapeHtml(d.ten)}</h2>
+      <div class="grid-2 kho-meta">
+        <div class="field"><label for="kv-loai">Loại tài liệu</label><select class="select" id="kv-loai" data-loai ${d.app ? 'disabled' : ''}>${Object.entries(LOAI_TL).map(([k, l]) => `<option value="${k}" ${k === d.loai ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="field"><label for="kv-case">Hồ sơ vụ án</label><select class="select" id="kv-case" data-kcase ${d.app ? 'disabled' : ''}><option value="">— Chưa gắn —</option>${cases.map((c) => `<option value="${c.id}" ${c.id === d.caseId ? 'selected' : ''}>${escapeHtml(c.ten)}</option>`).join('')}</select></div>
+      </div>
+      <p class="hint">${[d.nguoi?.hoTen && `Người liên quan: ${d.nguoi.hoTen}`, d.tuCach && `Tư cách: ${d.tuCach}`, d.ngay && `Ngày: ${d.ngay}`, d.qa?.length && `${d.qa.length} lượt hỏi – đáp nhận diện được`].filter(Boolean).map(escapeHtml).join(' · ') || 'Chưa nhận diện được thông tin người liên quan.'}</p>
+      <pre class="kho-text">${escapeHtml(d.text || '')}</pre>
+      <div class="modal-actions">${d.app ? '' : `<button class="btn btn-ghost" type="button" data-dl>${icon('download', 'ic-sm')}Tải tệp gốc</button>`}<span class="spacer"></span><button class="btn" type="button" data-close>Đóng</button>${d.app ? '' : `<button class="btn btn-primary" type="button" data-save>${icon('save', 'ic-sm')}Lưu</button>`}</div>`,
+      {
+        className: 'modal-wide',
+        label: d.ten,
+        onMount(box, close) {
+          box.querySelector('[data-dl]')?.addEventListener('click', async () => {
+            const full = await khoDb.get(d.id);
+            if (full?.blob) downloadBlob(full.blob, full.fileName, full.mime);
+          });
+          box.querySelector('[data-save]')?.addEventListener('click', async () => {
+            await khoDb.patch(d.id, { loai: box.querySelector('[data-loai]').value, caseId: box.querySelector('[data-kcase]').value || null });
+            close();
+            await reload();
+            toast('Đã lưu');
+          });
+        },
+      },
+    );
+  }
+
+  /* ---------------- Trợ lý ---------------- */
+  const aiOn = () => ctx.hasAI('legal');
+  function renderMode() {
+    const b = $('[data-mode]', root);
+    b.className = `badge ${aiOn() ? 'badge-success' : ''}`;
+    b.textContent = aiOn() ? `AI: ${ctx.ai('legal').label}` : 'Ngoại tuyến';
+    b.title = aiOn() ? 'Nội dung tài liệu liên quan sẽ được gửi tới dịch vụ AI' : 'Tìm kiếm, phân tích chạy trên máy; không gửi dữ liệu ra ngoài';
+  }
+  function renderMsgs() {
+    msgs.innerHTML = messages.length
+      ? messages
+          .map((m) => `<div class="kho-msg ${m.role}">${m.role === 'user' ? `<p>${escapeHtml(m.text)}</p>` : `<div class="msg-content">${m.html || renderMarkdown(m.text || '')}</div>${m.cites?.length ? `<details class="kho-cites"><summary>Nguồn trích dẫn (${m.cites.length})</summary><ol>${m.cites.map((c) => `<li><strong>${escapeHtml(c.ten)}</strong> — đoạn ${c.idx + 1}<br><span>${escapeHtml(c.text.slice(0, 260))}${c.text.length > 260 ? '…' : ''}</span></li>`).join('')}</ol></details>` : ''}${m.actions || ''}`}</div>`)
+          .join('')
+      : `<div class="kho-welcome">${icon('sparkles', 'ic-lg')}<h3>Trợ lý làm việc trên kho hồ sơ</h3><p>Tải tài liệu lên bên trái, chọn tài liệu làm dữ liệu (không chọn = dùng tất cả trong hồ sơ đang lọc). Sau đó hỏi đáp, tóm tắt, tìm mâu thuẫn, hoặc yêu cầu tạo biên bản lời khai mới, văn bản tố tụng theo mẫu.</p></div>`;
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+  const push = (m) => {
+    messages.push(m);
+    renderMsgs();
+    return m;
+  };
+
+  $$('[data-tpl]', root).forEach((b) =>
+    b.addEventListener('click', () => {
+      input.value = b.dataset.tpl;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }),
+  );
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      $('[data-form]', root).requestSubmit();
+    }
+  });
+  $('[data-form]', root).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text || busy) return;
+    input.value = '';
+    push({ role: 'user', text });
+    busy = true;
+    $('[data-send]', root).disabled = true;
+    const bot = push({ role: 'bot', html: '<span class="typing"><span></span><span></span><span></span></span>' });
+    try {
+      const intent = await detectIntent(text);
+      if (intent.action === 'bblk') await doInterview(bot, text, intent);
+      else if (intent.action === 'form' && findForm(intent.formId)) await doForm(bot, text, findForm(intent.formId));
+      else await doAnswer(bot, text);
+    } catch (err) {
+      bot.html = `<p class="note warn">${icon('alert', 'ic-sm')}<span>${escapeHtml(err.message)}</span></p>`;
+      toast(err.message, { type: 'error', timeout: 6000 });
+    } finally {
+      busy = false;
+      $('[data-send]', root).disabled = false;
+      renderMsgs();
+    }
+  });
+
+  async function detectIntent(text) {
+    const local = localIntent(text, FORMS);
+    if (!aiOn() || local.action !== 'answer') return local;
+    // Yêu cầu không rõ dạng → hỏi AI phân loại (có ghi nhớ kết quả).
+    if (!/(tạo|lập|soạn|làm|viết)\s/i.test(text)) return local;
+    try {
+      const out = await streamClaude({ ...ctx.ai('legal'), system: KHO_SYSTEM, cache: true, maxTokens: 400, messages: [{ role: 'user', content: intentPrompt(text, FORMS) }] });
+      const j = extractJson(out);
+      if (j?.action) return j;
+    } catch {
+      /* dùng phân loại cục bộ */
+    }
+    return local;
+  }
+
+  /* ----- Hỏi đáp ----- */
+  async function doAnswer(bot, question) {
+    const pool = contextDocs();
+    if (!pool.length) {
+      bot.html = '<p>Kho chưa có tài liệu. Hãy tải lên hồ sơ, tài liệu trước.</p>';
+      return;
+    }
+    const wantAll = /tóm tắt|tổng hợp|mâu thuẫn|so sánh|toàn bộ/i.test(question);
+    let hits = searchDocs(question, pool, { limit: 10 });
+    if (wantAll || hits.length < 3) {
+      // Lấy phần đầu mỗi tài liệu để bao quát hồ sơ.
+      const extra = pool.flatMap((d) => searchDocs(d.ten, [d], { limit: 2 }).concat(searchDocs('', [d], { limit: 2 })));
+      const seen = new Set(hits.map((h) => `${h.docId}:${h.idx}`));
+      for (const h of extra) if (!seen.has(`${h.docId}:${h.idx}`) && hits.length < 16) hits.push(h), seen.add(`${h.docId}:${h.idx}`);
+    }
+    if (!aiOn()) {
+      bot.text = hits.length ? `**Kết quả tìm kiếm trong ${pool.length} tài liệu** (chế độ ngoại tuyến — chưa có AI tổng hợp):` : 'Không tìm thấy đoạn nào phù hợp trong kho.';
+      bot.cites = hits;
+      bot.html = null;
+      return;
+    }
+    bot.cites = hits;
+    bot.html = null;
+    bot.text = '';
+    await streamClaude({
+      ...ctx.ai('legal'),
+      system: KHO_SYSTEM,
+      cache: true,
+      messages: [{ role: 'user', content: answerPrompt(question, buildContext(hits)) }],
+      onText: (_, all) => {
+        bot.text = all;
+        renderMsgs();
+      },
+    });
+  }
+
+  /* ----- Lập biên bản lời khai mới từ biên bản cũ ----- */
+  async function doInterview(bot, request, intent) {
+    const pool = contextDocs().filter((d) => STATEMENT.has(d.loai) && (d.qa?.length || d.text));
+    if (!pool.length) {
+      bot.html = '<p>Chưa có biên bản ghi lời khai/hỏi cung nào trong dữ liệu đã chọn. Tải lên các biên bản cũ (hoặc chọn biên bản đã ghi trong phần mềm) rồi thử lại.</p>';
+      return;
+    }
+    // Chọn người: theo tên trong yêu cầu, hoặc người xuất hiện nhiều nhất.
+    const want = String(intent.nguoi || '').trim().toLowerCase();
+    const byName = {};
+    for (const d of pool) {
+      const n = (d.nguoi?.hoTen || '').trim();
+      if (n) (byName[n] ||= []).push(d);
+    }
+    let name = Object.keys(byName).find((n) => want && (n.toLowerCase().includes(want) || want.includes(n.toLowerCase()))) || Object.keys(byName).find((n) => request.toLowerCase().includes(n.toLowerCase()));
+    if (!name) name = Object.keys(byName).sort((a, b) => byName[b].length - byName[a].length)[0] || '';
+    const olds = name ? byName[name] : pool;
+    const roleId = olds.find((d) => d.roleId)?.roleId || (olds.some((d) => d.loai === 'hoi-cung') ? 'bi-can' : 'lam-chung');
+    const focus = String(intent.focus || '').replace(/^(tạo|lập).*?(cũ|trước)\s*/i, '').trim();
+    let plan;
+    let via = 'ngoại tuyến';
+    if (aiOn()) {
+      try {
+        const out = await streamClaude({ ...ctx.ai('legal'), system: KHO_SYSTEM, cache: true, messages: [{ role: 'user', content: interviewPrompt(olds, { focus, nguoi: name, roleName: getRole(roleId).ten }) }] });
+        const j = extractJson(out);
+        if (j?.vanDe?.length) {
+          plan = { tomTat: j.tomTat || '', issues: j.vanDe.map((v) => ({ tieuDe: v.tieuDe, canCu: v.canCu, cauHoi: (v.cauHoi || []).filter((x) => typeof x === 'string') })) };
+          via = ctx.ai('legal').label;
+        }
+      } catch (err) {
+        toast(`${err.message} — dùng phân tích ngoại tuyến`, { type: 'info', timeout: 5000 });
+      }
+    }
+    plan ||= localInterviewPlan(olds, { focus, roleId });
+    const caseId = olds.find((d) => d.caseId)?.caseId || (filterCase && filterCase !== '_none' ? filterCase : null);
+    const caseItem = caseId ? casesRepo.get(caseId) : null;
+    const rec = newRecord({ caseItem, roleId, settings: ctx.settings() });
+    rec.nguoiKhai = { ...rec.nguoiKhai, ...personFromOlds(olds) };
+    if (name) rec.nguoiKhai.hoTen = name;
+    rec.lan = olds.length + 1;
+    rec.plan = planFromIssues(plan.issues, uid);
+    prefillQa(rec, uid);
+    rec.nguon = olds.map((d) => d.ten);
+    const saved = recordsRepo.save(rec);
+    audit('Lập biên bản lời khai từ kho hồ sơ', `${name || 'chưa rõ tên'} — dựa trên ${olds.length} biên bản`);
+    const nQ = rec.qa.length;
+    bot.html = null;
+    bot.text = `Đã lập **biên bản ${roleId === 'bi-can' ? 'hỏi cung' : 'ghi lời khai'} lần ${rec.lan}${name ? ` — ${name}` : ''}** theo Mẫu 140, dựa trên ${olds.length} biên bản cũ (${via}).\n\n${plan.tomTat ? `*${plan.tomTat}*\n\n` : ''}${plan.issues.map((is) => `- **${is.tieuDe}** (${is.cauHoi.length} câu)`).join('\n')}\n\nTổng cộng ${nQ} câu hỏi đã đưa sẵn vào biên bản (chưa trả lời) — mở để ghi lời khai hoặc xuất phiếu hỏi Word.`;
+    bot.actions = `<div class="kho-actions"><a class="btn btn-primary btn-sm" href="#interview/${saved.id}">${icon('message', 'ic-sm')}Mở biên bản để ghi lời khai</a></div>`;
+  }
+
+  /* ----- Tạo văn bản theo mẫu ----- */
+  async function doForm(bot, request, form) {
+    const pool = contextDocs();
+    const keys = formKeys(form).filter((k) => k !== 'so');
+    const caseId = pool.find((d) => d.caseId)?.caseId || (filterCase && filterCase !== '_none' ? filterCase : '');
+    const caseItem = caseId ? casesRepo.get(caseId) : null;
+    // Người liên quan: theo tên trong yêu cầu hoặc người trong hồ sơ.
+    const person = caseItem?.persons?.find((p) => request.toLowerCase().includes(String(p.hoTen).toLowerCase())) || null;
+    const values = { ...prefillFromCase({ caseItem, person, org: ctx.settings().legalOrg || {} }) };
+    if (!person) {
+      const d = pool.find((x) => x.nguoi?.hoTen && request.toLowerCase().includes(x.nguoi.hoTen.toLowerCase()));
+      if (d) {
+        values.hoTen = d.nguoi.hoTen;
+        values.nhanThan = nhanThanText(d.nguoi);
+      }
+    }
+    let via = 'ngoại tuyến (điền từ hồ sơ)';
+    if (aiOn() && pool.length) {
+      const hits = searchDocs(`${request} ${form.ten}`, pool, { limit: 10 });
+      try {
+        const labels = Object.fromEntries(keys.map((k) => [k, FIELDS[k].label]));
+        const out = await streamClaude({ ...ctx.ai('legal'), system: KHO_SYSTEM, cache: true, messages: [{ role: 'user', content: formPrompt(form, keys, labels, buildContext(hits), request) }] });
+        const j = extractJson(out);
+        for (const [k, v] of Object.entries(j?.values || {})) if (keys.includes(k) && String(v || '').trim()) values[k] = String(v).trim();
+        via = ctx.ai('legal').label;
+        bot.cites = hits;
+      } catch (err) {
+        toast(`${err.message} — điền từ hồ sơ`, { type: 'info', timeout: 5000 });
+      }
+    }
+    values.mauSo = ctx.settings().legalOrg?.formNos?.[form.id] || '';
+    const saved = legalDocsRepo.save({ formId: form.id, caseId: caseItem?.id || null, personId: person?.id || null, values, title: `${form.ten}${values.hoTen ? ' — ' + values.hoTen : ''}` });
+    audit('Tạo văn bản tố tụng từ kho hồ sơ', form.ten);
+    const filled = keys.filter((k) => String(values[k] || '').trim()).length;
+    bot.html = null;
+    bot.text = `Đã tạo **${form.ten}** theo mẫu (${via}): điền ${filled}/${keys.length} trường. Mở văn bản để rà soát, bổ sung chỗ trống rồi xuất Word.`;
+    bot.actions = `<div class="kho-actions"><a class="btn btn-primary btn-sm" href="#forms/doc/${saved.id}">${icon('file', 'ic-sm')}Mở văn bản</a></div>`;
+  }
+
+  renderCaseSelect();
+  renderMode();
+  renderMsgs();
+  reload();
+}

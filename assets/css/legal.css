@@ -2043,3 +2043,261 @@ div.tt-stage-h:hover {
     max-height: 34vh;
   }
 }
+
+/* ---------- Kho hồ sơ & Trợ lý AI ---------- */
+.kho {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+}
+.kho-lib {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--bg-elev);
+}
+.kho-lib-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 8px;
+}
+.kho-lib-head h1 {
+  font-size: 17px;
+  margin: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.kho-lib-head .select {
+  max-width: 200px;
+}
+.select-sm {
+  min-height: 34px;
+  padding: 4px 30px 4px 10px;
+  font-size: 13px;
+}
+.kho-drop {
+  margin: 4px 16px 8px;
+  padding: 14px;
+}
+.kho-tools {
+  display: grid;
+  gap: 8px;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.kho-search {
+  padding: 0;
+  border: 0;
+}
+.kho-selbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kho-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+.kho-item {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 9px 10px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+}
+.kho-item:hover {
+  background: var(--surface-2);
+}
+.kho-item.on {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.kho-item .rec-check {
+  margin-top: 3px;
+}
+.kho-ic {
+  color: var(--text-3);
+  margin-top: 1px;
+}
+.kho-item-body {
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  color: var(--text);
+}
+.kho-item-body strong {
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+.kho-item-body small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.kho-snip {
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 4px 6px;
+  margin-top: 2px;
+}
+.kho-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.kho-ai {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.kho-ai-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.kho-ai-head > div {
+  display: grid;
+  gap: 2px;
+}
+.kho-ai-head small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.kho-msgs {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 20px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+.kho-msg {
+  max-width: 860px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.kho-msg.user {
+  justify-self: end;
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.kho-msg p {
+  margin: 0;
+}
+.kho-cites {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.kho-cites summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.kho-cites ol {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+}
+.kho-cites span {
+  color: var(--text-3);
+}
+.kho-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.kho-welcome {
+  text-align: center;
+  color: var(--text-3);
+  padding: 40px 16px;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.kho-welcome h3 {
+  color: var(--text);
+  margin: 10px 0 6px;
+}
+.kho-quick {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0 20px 8px;
+}
+.kho-input {
+  display: flex;
+  gap: 10px;
+  padding: 10px 20px 18px;
+  border-top: 1px solid var(--line);
+  align-items: flex-end;
+}
+.kho-input textarea {
+  flex: 1;
+  resize: vertical;
+  min-height: 48px;
+  max-height: 200px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  background: var(--surface);
+  color: var(--text);
+}
+.kho-text {
+  white-space: pre-wrap;
+  font-family: var(--font-doc);
+  font-size: 14px;
+  line-height: 1.5;
+  max-height: 50vh;
+  overflow: auto;
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 8px 0 0;
+}
+@media (max-width: 980px) {
+  .kho {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .kho-lib {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    max-height: 45vh;
+  }
+}
+.kho-search .ic {
+  left: 12px;
+}
