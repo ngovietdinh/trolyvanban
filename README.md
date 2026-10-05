@@ -20,6 +20,7 @@ Nền tảng soạn thảo văn bản hành chính tiếng Việt, trình bày �
 ## Độ tin cậy AI & bộ nhớ cục bộ
 
 - **Chọn mô hình** bằng danh sách cho từng nhà cung cấp; nút “Tải danh sách” lấy đúng các mô hình mà API key được dùng; có thể tự nhập tên mô hình. Đổi mô hình được lưu ngay.
+- **Quá tải tạm thời (503, 429, 5xx)**: tự thử lại 2 lần (sau 1,5 và 4 giây), sau đó chuyển sang mô hình dự phòng của cùng nhà cung cấp (vd: Gemini 2.5 Flash → 2.0 Flash → 2.5 Flash-Lite) — chỉ có một API key vẫn chạy được.
 - **Tự chuyển nhà cung cấp**: khi AI lỗi (sai key, hết hạn mức, máy chủ lỗi, không phản hồi sau 90 giây) hệ thống tự chuyển sang nhà cung cấp khác đã nhập key và báo cho người dùng; nếu tất cả đều lỗi, thông báo gộp nêu rõ lỗi của từng nhà cung cấp. Trong phân hệ Tố tụng, AI lỗi thì tự dùng phân tích/gợi ý ngoại tuyến.
 - **Nhật ký AI** trong Cài đặt: các lỗi và lần tự chuyển gần đây.
 - **Ghi nhớ kết quả AI** trên máy: yêu cầu giống hệt lần trước dùng lại kết quả, không gửi lại (có nút “Hỏi lại AI”).

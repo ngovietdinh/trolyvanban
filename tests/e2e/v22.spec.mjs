@@ -49,6 +49,29 @@ test.describe('Cài đặt AI: chọn mô hình, tự chuyển nhà cung cấp, 
     await expect(page.locator('.ai-log')).toContainText('chuyển sang ChatGPT');
   });
 
+  test('Gemini 503 (quá tải): tự thử lại rồi chuyển mô hình Gemini dự phòng, vẫn ra kết quả', async ({ page }) => {
+    const urls = [];
+    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
+    await page.route('https://generativelanguage.googleapis.com/**', (route) => {
+      const url = route.request().url();
+      if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+      urls.push(url);
+      if (url.includes('gemini-2.5-flash:')) return route.fulfill({ status: 503, headers: { ...cors, 'content-type': 'application/json' }, body: '{"error":{"code":503,"message":"The model is overloaded. Please try again later.","status":"UNAVAILABLE"}}' });
+      return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'text/event-stream' }, body: `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: '- Ý chính từ Gemini dự phòng' }] } }] })}\r\n\r\n` });
+    });
+    await freshApp(page);
+    await setApiKey(page, 'gemini', 'AIza-test');
+    await page.goto('/app.html#summary');
+    await page.locator('[data-sample]').click();
+    await page.locator('[data-ai]').click();
+    await expect(page.locator('[data-ai-out]')).toContainText('Ý chính từ Gemini dự phòng', { timeout: 20000 });
+    expect(urls.filter((u) => u.includes('gemini-2.5-flash:')).length).toBe(3);
+    expect(urls.some((u) => u.includes('gemini-2.0-flash:'))).toBe(true);
+    await page.goto('/app.html#settings');
+    await expect(page.locator('.ai-log')).toContainText('quá tải (503');
+    await expect(page.locator('.ai-log')).toContainText('thử gemini-2.0-flash');
+  });
+
   test('tắt tự chuyển → báo lỗi rõ ràng, không im lặng', async ({ page }) => {
     await mockClaude(page, () => 'x');
     await mockProviders(page);

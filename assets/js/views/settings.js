@@ -323,7 +323,7 @@ export function render(ctx) {
     const logHost = $('[data-ai-log]', root);
     const log = store.get('ai-log', []).slice(0, 12);
     logHost.innerHTML = log.length
-      ? `<ul class="ai-log">${log.map((l) => `<li class="${l.type}"><span class="badge ${l.type === 'error' ? 'badge-warning' : ''}">${l.type === 'error' ? 'Lỗi' : 'Chuyển'}</span><span><strong>${escapeHtml(PROVIDERS[l.provider]?.label || l.provider || '')}</strong> — ${escapeHtml(l.message || '')}</span><small>${relativeTime(l.at)}</small></li>`).join('')}</ul><button class="btn btn-sm btn-ghost" type="button" data-clear-log>${icon('trash', 'ic-sm')}Xóa nhật ký</button>`
+      ? `<ul class="ai-log">${log.map((l) => `<li class="${l.type}"><span class="badge ${l.type === 'error' ? 'badge-warning' : ''}">${{ error: 'Lỗi', retry: 'Thử lại' }[l.type] || 'Chuyển'}</span><span><strong>${escapeHtml(PROVIDERS[l.provider]?.label || l.provider || '')}</strong> — ${escapeHtml(l.message || '')}</span><small>${relativeTime(l.at)}</small></li>`).join('')}</ul><button class="btn btn-sm btn-ghost" type="button" data-clear-log>${icon('trash', 'ic-sm')}Xóa nhật ký</button>`
       : `<p class="hint">Chưa ghi nhận lỗi AI nào.</p>`;
     $('[data-clear-log]', logHost)?.addEventListener('click', () => {
       store.remove('ai-log');

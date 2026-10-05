@@ -73,7 +73,14 @@ setAIHooks({
   event(e) {
     const name = (p) => PROVIDERS[p]?.label || p;
     if (e.type === 'error') aiLog({ type: 'error', provider: e.provider, message: e.message });
-    if (e.type === 'switch') {
+    if (e.type === 'retry') {
+      aiLog({ type: 'retry', provider: e.provider, message: e.message });
+      toast(`${name(e.provider)}: ${e.message}…`, { type: 'info', timeout: 3500 });
+    }
+    if (e.type === 'switch' && e.from === e.to) {
+      aiLog({ type: 'switch', provider: e.to, message: `Đổi mô hình: ${e.message}` });
+      toast(`${name(e.to)}: ${e.message}`, { type: 'info', timeout: 5000 });
+    } else if (e.type === 'switch') {
       aiLog({ type: 'switch', provider: e.to, message: `${name(e.from)} lỗi → chuyển sang ${name(e.to)}` });
       toast(`${name(e.from)} lỗi (${e.message}) — tự chuyển sang ${name(e.to)}`, { type: 'info', timeout: 6000 });
     }

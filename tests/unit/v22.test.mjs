@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { generatePlan } from '../../assets/js/legal/engine.js';
 import { newRecord, prefillQa, parsePastedQa, planPastedQa, applyPastedQa } from '../../assets/js/legal/record.js';
 import { learnedBank } from '../../assets/js/legal/repo.js';
-import { streamClaude, setAIHooks, hashText, AI_TIMEOUT } from '../../assets/js/lib/ai.js';
+import { streamClaude, setAIHooks, hashText, AI_TIMEOUT, AI_RETRY } from '../../assets/js/lib/ai.js';
+
+AI_RETRY.delays = [5, 5];
 
 test('dán văn bản có dấu hiệu Hỏi/Trả lời → cặp hỏi – đáp, nhiều dòng', () => {
   const r = parsePastedQa('Hỏi: Anh tên gì?\nTrả lời: Tôi tên Bình.\nSinh năm 1980.\n\nH: Anh làm nghề gì?\nĐ: Kế toán.\nCâu hỏi 3: Anh có nhận tiền không?\nTL: Không.');
@@ -95,7 +97,7 @@ test('AI tự chuyển nhà cung cấp khi lỗi, báo sự kiện; ghi nhớ k�
     assert.ok(calls.length > n);
     // Tất cả lỗi → thông báo gộp rõ ràng
     globalThis.fetch = async () => new Response('', { status: 500 });
-    await assert.rejects(streamClaude({ provider: 'openai', apiKey: 'sk-a', messages: [{ role: 'user', content: 'X' }] }), /Tất cả nhà cung cấp AI đều lỗi.*ChatGPT.*Grok/);
+    await assert.rejects(streamClaude({ provider: 'openai', apiKey: 'sk-a', messages: [{ role: 'user', content: 'X' }] }), /AI đều lỗi sau khi thử lại.*ChatGPT.*Grok/);
   } finally {
     globalThis.fetch = origFetch;
     setAIHooks({ chain: () => [], options: () => ({ fallback: true, cache: false }) });
@@ -125,6 +127,42 @@ test('dán hỗn hợp: đoạn trả lời rời phía trước + cặp Hỏi/T
   assert.deepEqual(parsed.paragraphs, ['em tên bình', 'em làm kế toán']);
   const items = planPastedQa(rec, parsed);
   assert.deepEqual(items.map((x) => x.index), [0, 1, -1]);
+});
+
+test('Gemini 503: tự thử lại, rồi chuyển mô hình Gemini dự phòng — chỉ có một key vẫn chạy được', async () => {
+  const origFetch = globalThis.fetch;
+  const urls = [];
+  const events = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    if (String(url).includes('gemini-2.5-flash:')) return new Response('{"error":{"code":503,"message":"The model is overloaded.","status":"UNAVAILABLE"}}', { status: 503 });
+    const body = `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Trả lời từ gemini-2.0-flash' }] } }] })}\r\n\r\n`;
+    return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+  };
+  setAIHooks({ chain: () => [{ provider: 'gemini', apiKey: 'AIza-1', model: 'gemini-2.5-flash' }], options: () => ({ fallback: true, cache: false }), event: (e) => events.push(e) });
+  try {
+    const meta = {};
+    const out = await streamClaude({ provider: 'gemini', apiKey: 'AIza-1', model: 'gemini-2.5-flash', messages: [{ role: 'user', content: 'X' }], meta });
+    assert.equal(out, 'Trả lời từ gemini-2.0-flash');
+    assert.equal(meta.model, 'gemini-2.0-flash');
+    assert.equal(urls.filter((u) => u.includes('gemini-2.5-flash:')).length, 3, '1 lần + 2 lần thử lại');
+    assert.equal(events.filter((e) => e.type === 'retry').length, 2);
+    assert.ok(events.some((e) => e.type === 'switch' && /gemini-2\.5-flash lỗi → thử gemini-2\.0-flash/.test(e.message)));
+    assert.ok(events.some((e) => e.type === 'error' && /quá tải \(503/.test(e.message)));
+    // Lỗi 503 nằm trong luồng SSE cũng được nhận diện
+    globalThis.fetch = async () => new Response(`data: ${JSON.stringify({ error: { code: 503, status: 'UNAVAILABLE' } })}\r\n\r\n`, { status: 200 });
+    setAIHooks({ options: () => ({ fallback: false, cache: false }) });
+    await assert.rejects(streamClaude({ provider: 'gemini', apiKey: 'AIza-1', messages: [{ role: 'user', content: 'X' }] }), /Gemini đang quá tải \(503/);
+    // 401: không thử lại, không đổi mô hình
+    urls.length = 0;
+    globalThis.fetch = async (url) => (urls.push(String(url)), new Response('{"error":{"status":"PERMISSION_DENIED"}}', { status: 403 }));
+    setAIHooks({ options: () => ({ fallback: true, cache: false }) });
+    await assert.rejects(streamClaude({ provider: 'gemini', apiKey: 'AIza-1', messages: [{ role: 'user', content: 'X' }] }), /API key Gemini không hợp lệ/);
+    assert.equal(urls.length, 1);
+  } finally {
+    globalThis.fetch = origFetch;
+    setAIHooks({ chain: () => [], options: () => ({ fallback: true, cache: false }), event: () => {} });
+  }
 });
 
 test('hashText ổn định', () => {

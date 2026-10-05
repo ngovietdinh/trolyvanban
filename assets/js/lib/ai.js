@@ -15,10 +15,10 @@ export const DEFAULT_MODEL = 'claude-opus-5-5';
 
 /** Nhà cung cấp AI. Tên mô hình của OpenAI/Google/xAI thay đổi thường xuyên nên cho phép nhập tự do. */
 export const PROVIDERS = {
-  anthropic: { label: 'Claude', vendor: 'Anthropic', keyHint: 'sk-ant-…', keyPrefix: /^sk-ant-/, console: 'console.anthropic.com', defaultModel: DEFAULT_MODEL, models: MODELS.map((m) => m.id) },
-  openai: { label: 'ChatGPT', vendor: 'OpenAI', keyHint: 'sk-…', keyPrefix: /^sk-/, console: 'platform.openai.com', defaultModel: 'gpt-4o', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini', 'o4-mini'], base: 'https://api.openai.com/v1' },
-  gemini: { label: 'Gemini', vendor: 'Google', keyHint: 'AIza…', keyPrefix: /^AIza/, console: 'aistudio.google.com', defaultModel: 'gemini-2.5-flash', models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'], base: 'https://generativelanguage.googleapis.com/v1beta' },
-  grok: { label: 'Grok', vendor: 'xAI', keyHint: 'xai-…', keyPrefix: /^xai-/, console: 'console.x.ai', defaultModel: 'grok-3', models: ['grok-3', 'grok-3-mini', 'grok-4'], base: 'https://api.x.ai/v1' },
+  anthropic: { label: 'Claude', vendor: 'Anthropic', keyHint: 'sk-ant-…', keyPrefix: /^sk-ant-/, console: 'console.anthropic.com', defaultModel: DEFAULT_MODEL, models: MODELS.map((m) => m.id), backup: ['claude-sonnet-5-5', 'claude-haiku-4-5'] },
+  openai: { label: 'ChatGPT', vendor: 'OpenAI', keyHint: 'sk-…', keyPrefix: /^sk-/, console: 'platform.openai.com', backup: ['gpt-4o-mini', 'gpt-4.1-mini'], defaultModel: 'gpt-4o', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini', 'o4-mini'], base: 'https://api.openai.com/v1' },
+  gemini: { label: 'Gemini', vendor: 'Google', keyHint: 'AIza…', keyPrefix: /^AIza/, console: 'aistudio.google.com', defaultModel: 'gemini-2.5-flash', models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'], backup: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash-lite'], base: 'https://generativelanguage.googleapis.com/v1beta' },
+  grok: { label: 'Grok', vendor: 'xAI', keyHint: 'xai-…', keyPrefix: /^xai-/, console: 'console.x.ai', backup: ['grok-3-mini'], defaultModel: 'grok-3', models: ['grok-3', 'grok-3-mini', 'grok-4'], base: 'https://api.x.ai/v1' },
 };
 
 export const SYSTEM_PROMPT = `Bạn là "Trợ Lý Văn Bản", chuyên gia văn thư - hành chính nhà nước Việt Nam với nhiều năm kinh nghiệm.
@@ -111,7 +111,7 @@ async function streamWithTimeout(opts, timeout = AI_TIMEOUT) {
       },
     });
   } catch (err) {
-    if (timedOut) throw new Error(`${PROVIDERS[opts.provider || 'anthropic']?.label || 'AI'} không phản hồi sau ${Math.round(timeout.first / 1000)} giây.`);
+    if (timedOut) throw aiError(`${PROVIDERS[opts.provider || 'anthropic']?.label || 'AI'} không phản hồi sau ${Math.round(timeout.first / 1000)} giây.`, -2);
     throw err;
   } finally {
     clearTimeout(timer);
@@ -138,35 +138,83 @@ export async function streamClaude(opts) {
       return hit.text;
     }
   }
-  const first = { provider: opts.provider || 'anthropic', apiKey: opts.apiKey, model: opts.model };
-  const others = opts.noFallback || o.fallback === false ? [] : (hooks.chain?.() || []).filter((c) => c.provider !== first.provider && c.apiKey);
-  const chain = [first, ...others];
+  const first = { provider: opts.provider || 'anthropic', apiKey: opts.apiKey, model: opts.model || PROVIDERS[opts.provider || 'anthropic']?.defaultModel };
+  const allowFallback = !opts.noFallback && o.fallback !== false;
+  const others = allowFallback ? (hooks.chain?.() || []).filter((c) => c.provider !== first.provider && c.apiKey) : [];
   const errors = [];
-  for (let i = 0; i < chain.length; i++) {
-    const c = chain[i];
-    try {
-      const text = await streamWithTimeout({ ...opts, provider: c.provider, apiKey: c.apiKey, model: c.model });
-      Object.assign(meta, { provider: c.provider, cached: false, switched: i > 0 });
-      if (cacheKey && text && text.trim()) hooks.cacheSet?.(cacheKey, { text, provider: c.provider, at: Date.now() });
-      return text;
-    } catch (err) {
+  const label = (p) => PROVIDERS[p]?.label || p;
+  // Lần lượt: nhà cung cấp đang chọn → mô hình dự phòng cùng nhà cung cấp → nhà cung cấp khác.
+  for (const c of [first, ...others]) {
+    const models = [c.model, ...(allowFallback ? (PROVIDERS[c.provider]?.backup || []).filter((m) => m !== c.model) : [])];
+    for (let mi = 0; mi < models.length; mi++) {
+      const model = models[mi];
+      const r = await tryWithRetry({ ...opts, provider: c.provider, apiKey: c.apiKey, model });
+      if (r.ok) {
+        Object.assign(meta, { provider: c.provider, model, cached: false, switched: c !== first || mi > 0 });
+        if (cacheKey && r.text && r.text.trim()) hooks.cacheSet?.(cacheKey, { text: r.text, provider: c.provider, at: Date.now() });
+        return r.text;
+      }
+      const err = r.err;
       const msg = err?.message || String(err);
-      const userAbort = opts.signal?.aborted || /^Đã dừng/.test(msg);
-      const refusal = /không thể xử lý/.test(msg);
-      hooks.event?.({ type: 'error', provider: c.provider, message: msg });
-      if (userAbort) throw new Error('Đã dừng tạo nội dung.');
-      errors.push(`${PROVIDERS[c.provider]?.label || c.provider}: ${msg}`);
-      const next = chain[i + 1];
-      if (refusal || !next) break;
-      hooks.event?.({ type: 'switch', from: c.provider, to: next.provider, message: msg });
-      opts.onSwitch?.(c.provider, next.provider, msg);
-      opts.onText?.('', ''); // xóa phần đã hiện của lần gọi lỗi
+      if (opts.signal?.aborted || /^Đã dừng/.test(msg)) throw new Error('Đã dừng tạo nội dung.');
+      hooks.event?.({ type: 'error', provider: c.provider, message: `${model}: ${msg}` });
+      errors.push(`${label(c.provider)} (${model}): ${msg}`);
+      if (/không thể xử lý/.test(msg)) break; // từ chối nội dung: không thử tiếp
+      // Quá tải / lỗi máy chủ / sai tên mô hình → thử mô hình dự phòng của cùng nhà cung cấp.
+      const capacity = [404, 429, 500, 502, 503, 504, -2].includes(err?.status);
+      const nextModel = capacity ? models[mi + 1] : undefined;
+      if (nextModel) {
+        hooks.event?.({ type: 'switch', from: c.provider, to: c.provider, message: `${model} lỗi → thử ${nextModel}` });
+        opts.onText?.('', '');
+        continue;
+      }
+      break;
+    }
+    const next = others[others.indexOf(c) + 1]; // first không nằm trong others → indexOf = -1 → others[0]
+    if (next) {
+      hooks.event?.({ type: 'switch', from: c.provider, to: next.provider, message: errors.at(-1) });
+      opts.onSwitch?.(c.provider, next.provider, errors.at(-1));
+      opts.onText?.('', '');
     }
   }
-  const e = new Error(errors.length > 1 ? `Tất cả nhà cung cấp AI đều lỗi — ${errors.join(' | ')}` : errors[0] || 'AI không phản hồi.');
+  const e = new Error(errors.length > 1 ? `AI đều lỗi sau khi thử lại — ${errors.join(' | ')}` : errors[0] || 'AI không phản hồi.');
   e.aiErrors = errors;
   throw e;
 }
+
+export const AI_RETRY = { delays: [1500, 4000] };
+const sleep = (ms, signal) =>
+  new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => (clearTimeout(t), resolve()), { once: true });
+  });
+
+/** Gọi một mô hình; tự thử lại khi quá tải tạm thời (429/5xx/mạng/hết giờ) nếu chưa có chữ nào hiện ra. */
+async function tryWithRetry(opts) {
+  let lastErr;
+  for (let attempt = 0; attempt <= AI_RETRY.delays.length; attempt++) {
+    let gotText = false;
+    try {
+      const text = await streamWithTimeout({
+        ...opts,
+        onText: (d, all) => {
+          if (d) gotText = true;
+          opts.onText?.(d, all);
+        },
+      });
+      return { ok: true, text };
+    } catch (err) {
+      lastErr = err;
+      if (opts.signal?.aborted) break;
+      const transient = [429, 500, 502, 503, 504, -1, -2].includes(err?.status);
+      if (!transient || gotText || attempt === AI_RETRY.delays.length) break;
+      hooks.event?.({ type: 'retry', provider: opts.provider, message: `${err.message} — thử lại lần ${attempt + 1}` });
+      await sleep(AI_RETRY.delays[attempt], opts.signal);
+    }
+  }
+  return { ok: false, err: lastErr };
+}
+
 /** Tên trung tính cho mọi nhà cung cấp. */
 export const streamAI = streamClaude;
 
@@ -192,14 +240,23 @@ async function streamAnthropic({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_
     if (final.stop_reason === 'max_tokens') text += '\n\n[Nội dung đã đạt giới hạn độ dài.]';
     return text;
   } catch (err) {
-    throw new Error(friendlyError(err, Anthropic));
+    const st = err?.status === 529 ? 503 : err?.status || 0;
+    throw aiError(st === 503 ? 'Claude đang quá tải (529/503). Hệ thống sẽ tự thử lại hoặc chuyển mô hình.' : friendlyError(err, Anthropic), st);
   }
 }
 
 /* ---------------- OpenAI / xAI (giao thức tương thích OpenAI) và Google Gemini ---------------- */
 
+/** Lỗi AI kèm mã trạng thái HTTP để quyết định thử lại / chuyển mô hình / chuyển nhà cung cấp. */
+export function aiError(message, status = 0) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+
 function httpError(status, provider, bodyText = '') {
   const label = PROVIDERS[provider]?.label || 'AI';
+  if (status === 503 || /UNAVAILABLE|overloaded/i.test(bodyText)) return `${label} đang quá tải (503 — máy chủ tạm thời không phục vụ). Hệ thống sẽ tự thử lại hoặc chuyển mô hình.`;
   if (status === 401 || status === 403 || /API_KEY_INVALID|invalid api key|incorrect api key/i.test(bodyText)) return `API key ${label} không hợp lệ hoặc không có quyền. Vui lòng kiểm tra trong Cài đặt.`;
   if (status === 404) return `Không tìm thấy mô hình ${label} đã chọn. Kiểm tra lại tên mô hình trong Cài đặt.`;
   if (status === 429) return `${label} đang quá tải hoặc vượt hạn mức sử dụng. Vui lòng thử lại sau.`;
@@ -232,9 +289,12 @@ async function doFetch(url, init, provider, signal) {
     res = await fetch(url, { ...init, signal });
   } catch (err) {
     if (err?.name === 'AbortError') throw new Error('Đã dừng tạo nội dung.');
-    throw new Error(`Không kết nối được tới ${PROVIDERS[provider].label}. Kiểm tra mạng hoặc dịch vụ có cho phép gọi từ trình duyệt không.`);
+    throw aiError(`Không kết nối được tới ${PROVIDERS[provider].label}. Kiểm tra mạng hoặc dịch vụ có cho phép gọi từ trình duyệt không.`, -1);
   }
-  if (!res.ok) throw new Error(httpError(res.status, provider, await res.text().catch(() => '')));
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw aiError(httpError(res.status, provider, body), res.status);
+  }
   return res;
 }
 
@@ -255,6 +315,7 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
     await readSSE(res, (data) => {
       if (!data || data === '[DONE]') return;
       const j = JSON.parse(data);
+      if (j.error) throw aiError(httpError(+j.error.code || +j.error.status || 500, provider, JSON.stringify(j.error)), +j.error.code || 500);
       const d = j.choices?.[0]?.delta?.content;
       if (d) {
         text += d;
@@ -286,6 +347,7 @@ async function streamGemini({ apiKey, model, system = SYSTEM_PROMPT, messages, o
     await readSSE(res, (data) => {
       if (!data) return;
       const j = JSON.parse(data);
+      if (j.error) throw aiError(httpError(+j.error.code || 500, 'gemini', JSON.stringify(j.error)), +j.error.code || 500);
       const d = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
       if (d) {
         text += d;

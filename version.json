@@ -1,11 +1,7 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "date": "2026-10-05",
   "notes": [
-    "Chọn mô hình AI bằng danh sách, tải danh sách mô hình theo API key",
-    "Tự chuyển nhà cung cấp AI khi lỗi, giới hạn thời gian chờ, nhật ký AI",
-    "Dán & chuyển đổi ghi chép thành hỏi – đáp theo mẫu biên bản",
-    "Đăng ký không gắn sẵn email; tài khoản mới chờ quản trị cấp quyền",
-    "Tự học câu hỏi đã hỏi, ghi nhớ kết quả AI trên máy"
+    "Xử lý lỗi 503 (quá tải): tự thử lại, chuyển mô hình dự phòng cùng nhà cung cấp, rồi mới chuyển nhà cung cấp khác"
   ]
 }
