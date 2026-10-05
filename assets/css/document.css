@@ -319,3 +319,15 @@
   width: 35%;
   border-top: 1px solid #000;
 }
+.vb-phe-chuan {
+  text-align: center;
+  font-size: 12pt;
+  line-height: 1.3;
+  margin-bottom: 40pt;
+}
+.vb-phe-chuan .b {
+  font-weight: 700;
+}
+.vb-phe-chuan .i {
+  font-style: italic;
+}

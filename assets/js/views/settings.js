@@ -26,6 +26,13 @@ const LEGAL_FIELDS = [
   ['dieuTraVien', 'Họ tên điều tra viên', 'Trần Minh Đức'],
   ['chucDanh', 'Chức danh', 'Điều tra viên'],
   ['diaDiem', 'Địa điểm làm việc thường xuyên', 'Trụ sở Cơ quan Cảnh sát điều tra'],
+  ['kyHieu', 'Ký hiệu cơ quan trong số văn bản (Số: …/QĐ-…)', 'VD: CSĐT'],
+  ['diaDanh', 'Địa danh (ghi ngày tháng văn bản)', 'VD: Ninh Bình'],
+  ['quyenKy', 'Quyền hạn ký (nếu ký thay)', 'VD: KT. THỦ TRƯỞNG'],
+  ['chucVuKy', 'Chức vụ người ký quyết định, lệnh', 'VD: PHÓ THỦ TRƯỞNG'],
+  ['nguoiKy', 'Họ tên người ký quyết định, lệnh', 'VD: Nguyễn Văn Nam'],
+  ['thamQuyen', 'Thẩm quyền ban hành (dòng dưới tiêu đề quyết định)', 'Để trống: THỦ TRƯỞNG + tên cơ quan'],
+  ['vks', 'Viện kiểm sát nhân dân cùng cấp', 'VD: tỉnh Ninh Bình'],
   ['mauSo', 'Mẫu số — biên bản ghi lời khai (gõ “-” để ẩn)', '140 (mặc định)'],
   ['mauSoHoiCung', 'Mẫu số — biên bản hỏi cung bị can (gõ “-” để ẩn)', 'Theo TT 128/2025/TT-BCA'],
   ['thongTu', 'Ban hành theo (in trong ô mẫu số)', 'TT số 128/2025/TT-BCA ngày 19/12/2025 (mặc định)'],
@@ -353,7 +360,7 @@ export function render(ctx) {
 
   $('[data-legal-org]', root)?.addEventListener('submit', (e) => {
     e.preventDefault();
-    ctx.saveSettings({ legalOrg: Object.fromEntries(new FormData(e.target)) });
+    ctx.saveSettings({ legalOrg: { ...(ctx.settings().legalOrg || {}), ...Object.fromEntries(new FormData(e.target)) } });
     toast('Đã lưu thông tin cơ quan điều tra');
   });
 
@@ -375,6 +382,7 @@ export function render(ctx) {
     data.templates = store.get('tpl-custom', []);
     if (ctx.can('legal')) {
       for (const k of ['cases', 'records', 'plans']) data[k] = store.get(BACKUP_KEYS[k], []);
+      data.legalDocs = store.get('legal-docs', []);
       data.customActs = store.get('legal-custom-acts', {});
     }
     downloadBlob(JSON.stringify(data, null, 2), `tro-ly-van-ban-sao-luu-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
@@ -398,6 +406,7 @@ export function render(ctx) {
         merge('cases', data.cases, () => true);
         merge('records', data.records || [], () => true);
         merge('plans', data.plans || [], () => true);
+        merge('legal-docs', data.legalDocs || [], (d) => d.formId);
         if (data.customActs && typeof data.customActs === 'object') {
           const acts = store.get('legal-custom-acts', {});
           for (const [dieu, list] of Object.entries(data.customActs)) {

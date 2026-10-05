@@ -1817,3 +1817,229 @@ a.kw:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ---------- Biểu mẫu tố tụng ---------- */
+.tt {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+}
+.tt-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--bg-elev);
+}
+.tt-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 8px 24px;
+}
+.tt-stage-h {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: left;
+  border-radius: 10px;
+  cursor: pointer;
+}
+div.tt-stage-h {
+  cursor: default;
+  color: var(--text-3);
+}
+.tt-stage-h:hover {
+  background: var(--surface-2);
+}
+div.tt-stage-h:hover {
+  background: none;
+}
+.tt-stage-h span {
+  flex: 1;
+}
+.tt-stage-h small {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.tt-stage .lg-chev {
+  transform: rotate(-90deg);
+  transition: transform 0.2s;
+}
+.tt-stage.open .lg-chev {
+  transform: none;
+}
+.tt-forms {
+  display: grid;
+  gap: 2px;
+  padding: 2px 0 8px 18px;
+}
+.tt-form-item {
+  display: grid;
+  gap: 2px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  color: var(--text-2);
+  text-decoration: none;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.tt-form-item:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.tt-form-item.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.tt-loai {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  font-weight: 600;
+}
+.tt-loai.l-qd {
+  color: #b42318;
+}
+.tt-loai.l-lenh {
+  color: #9a3412;
+}
+.tt-loai.l-bb {
+  color: #1d4ed8;
+}
+.tt-main {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.tt-overview {
+  padding-top: 26px;
+}
+.tt-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.tt-stage-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s, border-color 0.2s;
+}
+.tt-stage-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--line-strong);
+}
+.tt-stage-card strong {
+  font-size: 14.5px;
+  line-height: 1.35;
+}
+.tt-stage-card em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.tt-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.tt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-elev);
+  flex-wrap: wrap;
+}
+.tt-head h1 {
+  font-size: 18px;
+  margin: 2px 0 0;
+}
+.tt-crumb {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.tt-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+}
+.tt-fields {
+  overflow-y: auto;
+  padding: 14px 16px 40px;
+  border-right: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.tt-fields .fieldset {
+  display: grid;
+  gap: 10px;
+}
+.tt-fields label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tt-ai {
+  margin-left: auto;
+  padding: 2px 8px;
+  min-height: 0;
+  font-size: 12px;
+}
+.tt-preview {
+  overflow: auto;
+  padding: 24px 16px 60px;
+  background: var(--surface-2);
+}
+@media (max-width: 1180px) {
+  .tt-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+  .tt-fields {
+    border-right: 0;
+    overflow: visible;
+  }
+  .tt-preview {
+    overflow: visible;
+  }
+}
+@media (max-width: 980px) {
+  .tt {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .tt-side {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    max-height: 34vh;
+  }
+}

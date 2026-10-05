@@ -90,6 +90,7 @@ export function renderDocumentHtml(doc) {
     sign = `
     <table class="vb-sign" role="presentation"><tr>
       <td class="vb-sign-left">
+        ${doc.sign.leftTop ? `<div class="vb-phe-chuan">${doc.sign.leftTop.map((l) => `<div class="${l.bold ? 'b' : ''} ${l.italic ? 'i' : ''}">${tx(l.text)}</div>`).join('')}</div>` : ''}
         <div class="vb-nn-label">Nơi nhận:</div>
         ${formatNoiNhan(doc.sign.noiNhan)
           .map((l) => `<div class="vb-nn">${tx(l)}</div>`)

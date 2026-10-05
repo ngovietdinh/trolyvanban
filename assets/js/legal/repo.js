@@ -38,6 +38,8 @@ function collection(key) {
 export const casesRepo = collection('cases');
 export const recordsRepo = collection('records');
 export const plansRepo = collection('plans');
+/** Văn bản tố tụng đã lập từ biểu mẫu (quyết định, lệnh, biên bản…). */
+export const legalDocsRepo = collection('legal-docs');
 
 /** Câu hỏi người dùng lưu vào “bộ câu hỏi của tôi”, khóa theo `${dieu}|${issueKey}`. */
 export const customBank = {
@@ -71,6 +73,7 @@ export function restoreRecords(list) {
 export function deleteCase(id) {
   recordsRepo.list((r) => r.caseId === id).forEach((r) => recordsRepo.remove(r.id));
   plansRepo.list((p) => p.caseId === id).forEach((p) => plansRepo.remove(p.id));
+  legalDocsRepo.list((d) => d.caseId === id).forEach((d) => legalDocsRepo.remove(d.id));
   casesRepo.remove(id);
 }
 

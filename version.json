@@ -1,9 +1,8 @@
 {
-  "version": "2.4.0",
+  "version": "2.5.0",
   "date": "2026-10-05",
   "notes": [
-    "Toàn bộ Phần các tội phạm Bộ luật Hình sự (Chương XIII–XXVI) trong cây hỏi đáp, chia 17 lĩnh vực",
-    "Cập nhật Bộ luật từ văn bản chính thức (Word / dán toàn văn): nguyên văn điều, định khung theo khoản",
-    "Xóa biên bản lời khai: từng biên bản, chọn nhiều, có hoàn tác"
+    "Biểu mẫu tố tụng hình sự: 125 mẫu quyết định, lệnh, biên bản, thông báo, giấy triệu tập, đề nghị, kết luận điều tra",
+    "Tự điền từ hồ sơ vụ án, AI soạn nội dung, xem trước, xuất Word, lưu vào hồ sơ"
   ]
 }

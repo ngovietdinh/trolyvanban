@@ -1,6 +1,7 @@
 // Hồ sơ vụ án: thông tin vụ án, người tham gia tố tụng, kế hoạch hỏi, biên bản, đối chiếu lời khai.
 import { $, $$, icon, toast, escapeHtml } from '../ui.js';
-import { casesRepo, recordsRepo, plansRepo, deleteCase } from '../legal/repo.js';
+import { casesRepo, recordsRepo, plansRepo, deleteCase, legalDocsRepo } from '../legal/repo.js';
+import { findForm, LOAI } from '../legal/forms-catalog.js';
 import { confirmDeleteRecords } from './interview.js';
 import { PERSON_FIELDS, newRecord } from '../legal/record.js';
 import { ROLES, getRole } from '../legal/roles.js';
@@ -144,6 +145,7 @@ export function render(ctx, params = []) {
     c = casesRepo.get(c.id);
     const recs = recordsRepo.list((r) => r.caseId === c.id);
     const plans = plansRepo.list((p) => p.caseId === c.id);
+    const ldocs = legalDocsRepo.list((d) => d.caseId === c.id);
     ctx.view.innerHTML = `
     <div class="page">
       <a class="btn btn-ghost btn-sm" href="#cases" style="margin-bottom:10px">${icon('chevron-left', 'ic-sm')}Hồ sơ vụ án</a>
@@ -164,6 +166,7 @@ export function render(ctx, params = []) {
         <button class="tab" role="tab" data-tab="persons" aria-selected="${tab === 'persons'}">Người tham gia (${(c.persons || []).length})</button>
         <button class="tab" role="tab" data-tab="records" aria-selected="${tab === 'records'}">Biên bản (${recs.length})</button>
         <button class="tab" role="tab" data-tab="plans" aria-selected="${tab === 'plans'}">Kế hoạch hỏi (${plans.length})</button>
+        <button class="tab" role="tab" data-tab="ldocs" aria-selected="${tab === 'ldocs'}">Văn bản tố tụng (${ldocs.length})</button>
         <button class="tab" role="tab" data-tab="cross" aria-selected="${tab === 'cross'}">Đối chiếu lời khai</button>
       </div>
       <section class="panel" data-body></section>
@@ -196,6 +199,12 @@ export function render(ctx, params = []) {
               .map((r) => `<li class="doc-item"><span class="doc-icon">${r.roleId === 'bi-can' ? 'HC' : 'LK'}</span><div class="doc-meta"><a href="#interview/${r.id}">${escapeHtml(r.nguoiKhai?.hoTen || 'Chưa ghi tên')} — lần ${r.lan || 1}</a><small>${escapeHtml(getRole(r.roleId).ten.split('/')[0])} · ${r.ngay ? r.ngay.split('-').reverse().join('/') : ''} · ${(r.qa || []).length} lượt hỏi – đáp</small></div><span class="badge ${r.status === 'hoan-thanh' ? 'badge-success' : 'badge-warning'}">${r.status === 'hoan-thanh' ? 'Hoàn thành' : 'Đang ghi'}</span><button class="btn btn-ghost btn-sm btn-icon" type="button" data-del-rec="${r.id}" aria-label="Xóa biên bản ${escapeHtml(r.nguoiKhai?.hoTen || '')}" title="Xóa biên bản">${icon('trash', 'ic-sm')}</button></li>`)
               .join('')}</ul>`
           : `<div class="empty"><p>Chưa có biên bản. Chọn “Ghi lời khai” ở tab Người tham gia.</p></div>`
+      }`;
+    } else if (tab === 'ldocs') {
+      body.innerHTML = `<div class="panel-head"><h2>${icon('file', 'ic-sm')}Văn bản tố tụng</h2><a class="btn btn-sm" href="#forms">${icon('plus', 'ic-sm')}Lập văn bản</a></div>${
+        ldocs.length
+          ? `<ul class="doc-list">${ldocs.map((d) => `<li class="doc-item"><span class="doc-icon">${escapeHtml((LOAI[findForm(d.formId)?.loai] || 'VB').slice(0, 2).toUpperCase())}</span><div class="doc-meta"><a href="#forms/doc/${d.id}">${escapeHtml(d.title)}</a><small>${escapeHtml(findForm(d.formId)?.ten || '')}</small></div></li>`).join('')}</ul>`
+          : `<div class="empty"><p>Chưa có văn bản. Mở “Biểu mẫu tố tụng”, chọn mẫu, chọn hồ sơ này để tự điền rồi lưu.</p></div>`
       }`;
     } else if (tab === 'plans') {
       body.innerHTML = `<div class="panel-head"><h2>${icon('layers', 'ic-sm')}Kế hoạch hỏi</h2><a class="btn btn-sm" href="#legal${c.toiDanh?.[0] ? '/' + c.toiDanh[0] : ''}">${icon('plus', 'ic-sm')}Lập kế hoạch</a></div>${plans.length ? `<ul class="doc-list">${plans.map(planRow).join('')}</ul>` : `<div class="empty"><p>Chưa có kế hoạch hỏi gắn với hồ sơ này.</p></div>`}`;

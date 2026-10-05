@@ -271,7 +271,11 @@ export function buildDocumentXml(doc) {
 
   if (doc.sign) {
     const s = doc.sign;
-    const leftC = [p(r('Nơi nhận:', { bold: true, italic: true, size: 24 }), { align: 'left', before: 120, after: 0, line: 240 }), ...formatNoiNhan(s.noiNhan).map((l) => p(r(l, { size: 22 }), { align: 'left', after: 0, line: 240 }))].join('');
+    const leftC = [
+      ...(s.leftTop || []).map((l, i) => p(r(l.text, { bold: l.bold, italic: l.italic, size: 24 }), { align: 'center', before: i ? 0 : 120, after: 0, line: 240 })),
+      p(r('Nơi nhận:', { bold: true, italic: true, size: 24 }), { align: 'left', before: s.leftTop ? 360 : 120, after: 0, line: 240 }),
+      ...formatNoiNhan(s.noiNhan).map((l) => p(r(l, { size: 22 }), { align: 'left', after: 0, line: 240 })),
+    ].join('');
     const rightC = [s.authority ? c(r(s.authority, { bold: true, size: 28 }), { before: 120 }) : '', c(r(s.position, { bold: true, size: 28 }), { before: s.authority ? 0 : 120 }), p(r(''), { after: 1400 }), c(r(s.name, { bold: true, size: 28 }))].join('');
     out.push(table([{ w: Math.round(TEXT_W * 0.45), content: leftC }, { w: TEXT_W - Math.round(TEXT_W * 0.45), content: rightC }]));
   } else if (doc.dualSign) {
