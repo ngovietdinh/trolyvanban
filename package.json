@@ -1,0 +1,23 @@
+{
+  "name": "trolyvanban",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Trợ Lý Văn Bản AI — nền tảng soạn thảo văn bản hành chính chuẩn Nghị định 30/2020/NĐ-CP",
+  "scripts": {
+    "start": "http-server . -p 4173 -c-1 --silent",
+    "test": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "playwright test",
+    "test:all": "npm test && npm run test:e2e",
+    "vendor": "node scripts/vendor.mjs"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "@fontsource/be-vietnam-pro": "^5.3.0",
+    "@fontsource/newsreader": "^5.3.0",
+    "@fontsource/tinos": "^5.3.0",
+    "@playwright/test": "^1.56.1",
+    "esbuild": "^0.28.2",
+    "http-server": "^14.1.1"
+  }
+}
