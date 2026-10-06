@@ -188,6 +188,8 @@ function route() {
     console.error(err);
     view.innerHTML = `<div class="page"><div class="empty"><div class="empty-icon">${icon('alert')}</div><h3>Đã xảy ra lỗi</h3><p>${escapeHtml(err.message)}</p></div></div>`;
   }
+  // Màn hình hẹp: dùng chữ gợi ý ngắn để không bị cắt trong ô nhập.
+  if (window.matchMedia('(max-width: 760px)').matches) $$('[data-ph-short]', view).forEach((el) => (el.placeholder = el.dataset.phShort));
   // Ví dụ “Thử ngay” từ hướng dẫn: điền sẵn vào ô nhập của màn hình đích.
   if (ctx.handoff?.prefill) {
     const box = $('[data-input]', view);
@@ -276,6 +278,30 @@ function refreshChrome() {
   st.querySelector('strong').textContent = ai ? `AI ${ai.label} đã bật` : user.permSet.has('ai') ? 'Chế độ cơ bản' : 'AI trực tuyến bị tắt';
   st.querySelector('small').textContent = ai ? ai.model : user.permSet.has('ai') ? 'Thêm API key để bật AI' : 'Chưa được cấp quyền';
   renderUserMenu();
+  renderBottomNav();
+}
+
+/* ---------- Thanh điều hướng dưới (điện thoại) ---------- */
+function renderBottomNav() {
+  const host = $('[data-bottom-nav]');
+  const user = accounts.current();
+  if (!host || !user) return;
+  const has = (p) => user.permSet.has(p);
+  const items = has('legal')
+    ? [['dashboard', 'home', 'Tổng quan'], ['cases', 'folder', 'Hồ sơ'], ['interview', 'message', 'Lời khai'], ['kho', 'sparkles', 'Trợ lý hồ sơ']]
+    : [['dashboard', 'home', 'Tổng quan'], ['compose', 'file', 'Soạn thảo'], ['chat', 'sparkles', 'Trợ lý AI'], ['docs', 'folder', 'Tài liệu']];
+  const shown = items.filter(([k]) => !ROUTES[k].perm || has(ROUTES[k].perm));
+  const main = new Set(shown.map(([k]) => k));
+  host.style.gridTemplateColumns = `repeat(${shown.length + 1}, minmax(0, 1fr))`;
+  host.innerHTML =
+    shown.map(([k, ic, label]) => `<a href="#${k}" data-bn="${k}"${currentRoute === k ? ' aria-current="page"' : ''}>${icon(ic)}<span>${label}</span></a>`).join('') +
+    `<button type="button" data-bn-more aria-label="Mở menu đầy đủ"${currentRoute && !main.has(currentRoute) ? ' aria-current="page"' : ''}>${icon('menu')}<span>Thêm</span></button>`;
+  host.querySelector('[data-bn-more]').addEventListener('click', () => sidebar.classList.add('open'));
+}
+// Bàn phím ảo mở (chiều cao vùng nhìn giảm mạnh) → ẩn thanh dưới để rộng chỗ nhập liệu.
+if (window.visualViewport) {
+  const onVV = () => document.body.classList.toggle('kb-open', window.visualViewport.height < window.innerHeight * 0.72);
+  window.visualViewport.addEventListener('resize', onVV);
 }
 
 function renderUserMenu() {
@@ -295,6 +321,8 @@ function renderUserMenu() {
       ${user.permSet.has('docs') ? `<a href="#docs" role="menuitem">${icon('folder')}Tài liệu của tôi</a>` : ''}
       ${user.permSet.has('users') ? `<a href="#admin" role="menuitem">${icon('shield')}Quản trị tài khoản</a>` : ''}
       <a href="#settings" role="menuitem">${icon('settings')}Cài đặt</a>
+      <a href="#help" role="menuitem">${icon('help')}Hướng dẫn sử dụng</a>
+      <button type="button" role="menuitem" data-theme-menu>${icon('moon')}Giao diện sáng / tối</button>
       <button type="button" role="menuitem" data-change-pw>${icon('key')}Đổi mật khẩu</button>
       <button type="button" role="menuitem" data-logout>${icon('logout')}Đăng xuất</button>
     </div>`;
@@ -322,6 +350,7 @@ function renderUserMenu() {
     showGate();
   });
   host.querySelector('[data-change-pw]').addEventListener('click', changePasswordDialog);
+  host.querySelector('[data-theme-menu]').addEventListener('click', () => $('[data-theme-toggle]').click());
 }
 
 function changePasswordDialog() {

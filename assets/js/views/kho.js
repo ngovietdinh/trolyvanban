@@ -1,6 +1,7 @@
 // Kho hồ sơ & Trợ lý AI: tải lên hồ sơ, tài liệu (Word, PDF, txt) → làm dữ liệu cho hỏi đáp AI có trích dẫn,
 // lập biên bản lời khai mới dựa vào các biên bản cũ, tạo văn bản tố tụng theo mẫu có sẵn.
 import { $, $$, icon, toast, escapeHtml, renderMarkdown, downloadBlob } from '../ui.js';
+import { mobilePanes } from '../lib/panes.js';
 import { khoDb } from '../lib/kho-db.js';
 import { extractText } from '../lib/extract.js';
 import { streamClaude, extractJson } from '../lib/ai.js';
@@ -66,7 +67,7 @@ export function render(ctx) {
         <button type="button" class="chip" data-tpl="Tạo giấy triệu tập người làm chứng ">Tạo văn bản theo mẫu…</button>
       </div>
       <form class="kho-input" data-form>
-        <textarea rows="2" data-input placeholder="Hỏi về hồ sơ, hoặc ra lệnh: “Tạo biên bản lời khai mới cho Nguyễn Văn A để làm rõ việc nhận tiền”, “Tạo quyết định trưng cầu giám định chữ ký”…" aria-label="Yêu cầu cho trợ lý"></textarea>
+        <textarea rows="2" data-input data-ph-short="Hỏi về hồ sơ, hoặc ra lệnh tạo biên bản, văn bản…" placeholder="Hỏi về hồ sơ, hoặc ra lệnh: “Tạo biên bản lời khai mới cho Nguyễn Văn A để làm rõ việc nhận tiền”, “Tạo quyết định trưng cầu giám định chữ ký”…" aria-label="Yêu cầu cho trợ lý"></textarea>
         <button class="btn btn-primary" type="submit" data-send>${icon('send', 'ic-sm')}Gửi</button>
       </form>
     </section>
@@ -75,6 +76,10 @@ export function render(ctx) {
   const list = $('[data-list]', root);
   const msgs = $('[data-msgs]', root);
   const input = $('[data-input]', root);
+  const panes = mobilePanes($('.kho', root), [
+    { id: 'lib', el: $('.kho-lib', root), label: 'Tài liệu', icon: 'folder' },
+    { id: 'ai', el: $('.kho-ai', root), label: 'Trợ lý', icon: 'sparkles' },
+  ], { initial: ctx.handoff?.prefill ? 'ai' : 'lib' });
 
   /* ---------------- Nguồn dữ liệu ---------------- */
   function appDocs() {
@@ -137,6 +142,7 @@ export function render(ctx) {
       : `<li class="kho-empty">${n ? 'Không tìm thấy nội dung phù hợp.' : 'Chưa có tài liệu. Tải lên biên bản, quyết định, kết luận giám định… để làm dữ liệu cho trợ lý. <a href="#help/kho">Xem hướng dẫn và ví dụ câu lệnh</a>'}</li>`;
     const visIds = new Set(vis.map((d) => d.id));
     const selN = [...selected].filter((id) => visIds.has(id)).length;
+    panes.badge('lib', vis.length);
     $('[data-sel-n]', root).textContent = selN ? `Đã chọn ${selN}/${vis.length}` : `${vis.length} tài liệu (dùng tất cả)`;
     $('[data-sel-all]', root).checked = selN > 0 && selN === vis.length;
     $('[data-scope]', root).textContent = `Dữ liệu: ${selN || vis.length} tài liệu${filterCase && filterCase !== '_none' ? ` · ${casesRepo.get(filterCase)?.ten || ''}` : ''}`;

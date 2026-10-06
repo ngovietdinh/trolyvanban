@@ -26,7 +26,7 @@ export function render(ctx) {
     <div class="chat-scroll" data-scroll><div class="chat-inner" data-list></div></div>
     <div class="chat-composer">
       <form class="composer-box" data-composer>
-        <textarea rows="1" placeholder="Nhập yêu cầu… (Enter để gửi, Shift + Enter xuống dòng)" aria-label="Tin nhắn" data-input></textarea>
+        <textarea rows="1" data-ph-short="Nhập yêu cầu…" placeholder="Nhập yêu cầu… (Enter để gửi, Shift + Enter xuống dòng)" aria-label="Tin nhắn" data-input></textarea>
         <button class="btn btn-ghost btn-icon" type="button" title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới" data-new>${icon('plus')}</button>
         <button class="btn btn-primary btn-icon" type="submit" aria-label="Gửi" data-send>${icon('send')}</button>
       </form>

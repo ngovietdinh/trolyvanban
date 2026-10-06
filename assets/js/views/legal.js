@@ -13,6 +13,7 @@ import { buildDocx, safeFileName } from '../lib/docx.js';
 import { streamClaude, extractJson, PROVIDERS } from '../lib/ai.js';
 import { INVESTIGATOR_SYSTEM } from '../legal/assist.js';
 import { store, uid } from '../lib/store.js';
+import { mobilePanes } from '../lib/panes.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -53,6 +54,10 @@ export function render(ctx, params = []) {
   const root = ctx.view;
   const tree = $('[data-tree]', root);
   const main = $('[data-main]', root);
+  const panes = mobilePanes($('.legal', root), [
+    { id: 'tree', el: $('.lg-side', root), label: 'Danh mục tội danh', icon: 'layers' },
+    { id: 'main', el: main, label: sel.dieu ? `Điều ${sel.dieu}` : 'Tổng quan', icon: 'book' },
+  ], { initial: params[0] ? 'main' : 'tree' });
 
   /* ---------------- Cây bên trái ---------------- */
   function renderTree(q = '') {
@@ -110,6 +115,8 @@ export function render(ctx, params = []) {
     history.replaceState(null, '', `#legal/${dieu}`);
     renderTree($('[data-q]', root).value);
     renderMain();
+    panes.label('main', `Điều ${dieu}`);
+    panes.go('main');
     main.scrollTop = 0;
   }
 
@@ -173,6 +180,7 @@ export function render(ctx, params = []) {
         openTree.add(b.dataset.openDomain);
         store.set('legal-open', [...openTree]);
         renderTree();
+        panes.go('tree');
         tree.querySelector(`[data-toggle="${b.dataset.openDomain}"]`)?.focus();
       }),
     );

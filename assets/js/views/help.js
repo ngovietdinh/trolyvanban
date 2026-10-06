@@ -1,6 +1,7 @@
 // Trung tâm hướng dẫn: danh mục theo nhóm, tìm kiếm, lộ trình làm quen và trang hướng dẫn chi tiết từng mục.
 import { $, $$, icon, escapeHtml, debounce } from '../ui.js';
 import { GROUPS, findGuide, visibleGuides, searchGuides, inline } from '../guide/guides.js';
+import { mobilePanes } from '../lib/panes.js';
 import { guideBodyHtml, bindGuide, isSeen, setSeen, seenMap } from '../guide/render.js';
 
 // Thứ tự gợi ý cho người mới.
@@ -23,6 +24,10 @@ export function render(ctx, params = []) {
   const root = ctx.view;
   const nav = $('[data-nav]', root);
   const main = $('[data-main]', root);
+  mobilePanes($('.help', root), [
+    { id: 'side', el: $('.help-side', root), label: 'Danh mục', icon: 'layers' },
+    { id: 'main', el: main, label: current ? 'Nội dung' : 'Trang chủ', icon: 'book' },
+  ], { initial: 'main' });
 
   function renderProgress() {
     const seen = seenMap();
@@ -120,7 +125,6 @@ export function render(ctx, params = []) {
   }
 
   function show() {
-    $('.help', root).classList.toggle('has-guide', !!current);
     renderNav();
     renderProgress();
     if (current) renderGuide(current);
@@ -131,7 +135,6 @@ export function render(ctx, params = []) {
     'input',
     debounce((e) => {
       q = e.target.value.trim();
-      $('.help', root).classList.toggle('searching', !!q);
       renderNav();
     }, 120),
   );

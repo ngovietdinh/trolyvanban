@@ -70,9 +70,64 @@ test('ghi lời khai trên điện thoại: kế hoạch, ghi hỏi – đáp, k
   await page.fill('#st-name', 'Lê Văn Cường');
   await page.locator('.modal button[type="submit"]').click();
   await expect(page).toHaveURL(/#interview\//);
+  // Điện thoại: biên bản mở ở thẻ “Biên bản”; chuyển sang thẻ “Kế hoạch” để chọn câu hỏi, chọn xong tự quay lại.
+  await page.locator('[data-mp-tab="plan"]').click();
   await page.locator('.iv-issue[open] [data-pq]').first().click();
+  await expect(page.locator('[data-mp-tab="main"]')).toHaveAttribute('aria-selected', 'true');
   await page.fill('[data-a]', 'Tôi không nhận tiền của ai.');
   await page.locator('[data-submit]').click();
   await expect(page.locator('.iv-qa')).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
+
+test.describe('Điều hướng và bố cục điện thoại', () => {
+  test('thanh điều hướng dưới: đúng mục theo quyền, đánh dấu màn hình đang mở, nút Thêm mở menu', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#cases');
+    const nav = page.locator('[data-bottom-nav]');
+    await expect(nav).toBeVisible();
+    await expect(nav.locator('[data-bn]')).toHaveText(['Tổng quan', 'Hồ sơ', 'Lời khai', 'Trợ lý hồ sơ']);
+    await expect(nav.locator('[data-bn="cases"]')).toHaveAttribute('aria-current', 'page');
+    await nav.locator('[data-bn="interview"]').click();
+    await expect(page).toHaveURL(/#interview$/);
+    await expect(nav.locator('[data-bn="interview"]')).toHaveAttribute('aria-current', 'page');
+    await page.goto('/app.html#spell');
+    await expect(nav.locator('[data-bn-more]')).toHaveAttribute('aria-current', 'page');
+    await nav.locator('[data-bn-more]').click();
+    await expect(page.locator('#sidebar')).toHaveClass(/open/);
+    t.assertClean();
+  });
+
+  test('màn hình nhiều cột chia thẻ: cây hỏi đáp tự chuyển sang nội dung khi chọn tội danh', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#legal');
+    const tabs = page.locator('.legal .pane-tabs');
+    await expect(tabs).toBeVisible();
+    await expect(page.locator('.lg-side')).toBeVisible();
+    await expect(page.locator('.lg-main')).toBeHidden();
+    await page.fill('.lg-side [data-q]', '353');
+    await page.locator('[data-crime="353"]').click();
+    await expect(page.locator('.lg-main')).toBeVisible();
+    await expect(page.locator('.lg-side')).toBeHidden();
+    await expect(tabs.locator('[data-mp-tab="main"]')).toContainText('Điều 353');
+    // Kho hồ sơ: hai thẻ Tài liệu / Trợ lý.
+    await page.goto('/app.html#kho');
+    await page.locator('[data-mp-tab="ai"]').click();
+    await expect(page.locator('.kho-ai [data-input]')).toBeVisible();
+    await expect(page.locator('.kho-lib')).toBeHidden();
+    t.assertClean();
+  });
+
+  test('hộp thoại hiện dạng tấm trượt từ dưới lên, nút thao tác vừa tay', async ({ page }) => {
+    await freshApp(page, '#cases');
+    await page.locator('[data-new]').first().click();
+    await page.waitForTimeout(500); // chờ hiệu ứng trượt lên kết thúc
+    const box = await page.locator('.modal').boundingBox();
+    const vp = page.viewportSize();
+    expect(Math.round(box.x)).toBe(0);
+    expect(Math.round(box.width)).toBe(vp.width);
+    expect(Math.abs(box.y + box.height - vp.height)).toBeLessThan(2);
+    const btn = await page.locator('.modal .modal-actions .btn').first().boundingBox();
+    expect(btn.height).toBeGreaterThanOrEqual(40);
+  });
 });

@@ -11,6 +11,7 @@ import { renderDocumentHtml } from '../lib/render-html.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { uid } from '../lib/store.js';
+import { mobilePanes } from '../lib/panes.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const COV = { ro: ['Đã rõ', 'ok'], 'mot-phan': ['Một phần', 'part'], chua: ['Chưa rõ', 'no'] };
@@ -176,6 +177,11 @@ export function render(ctx, params = []) {
   </div>`;
 
   const root = ctx.view;
+  const panes = mobilePanes($('[data-iv]', root), [
+    { id: 'plan', el: $('.iv-plan', root), label: 'Kế hoạch', icon: 'layers' },
+    { id: 'main', el: $('.iv-main', root), label: 'Biên bản', icon: 'message' },
+    { id: 'ai', el: $('.iv-ai', root), label: 'Trợ lý', icon: 'sparkles' },
+  ], { initial: 'main' });
   const qBox = $('[data-q]', root);
   const aBox = $('[data-a]', root);
 
@@ -208,6 +214,7 @@ export function render(ctx, params = []) {
     const done = issues.filter((i) => cov[i.id] === 'ro').length;
     const pct = Math.round((done / issues.length) * 100);
     const pending = issues.reduce((n, is) => n + is.cauHoi.filter((c) => !(rec.qa || []).some((x) => x.planQ === c.id)).length, 0);
+    panes.badge('plan', pending);
     $('[data-progress]', root).innerHTML = `<div class="bar"><span style="width:${pct}%"></span></div><small>${done}/${issues.length} vấn đề đã rõ</small>${pending ? `<button type="button" class="btn btn-ghost btn-sm iv-prefill" data-prefill title="Đưa toàn bộ câu hỏi kế hoạch vào biên bản, phần trả lời để trống — xuất Word làm phiếu hỏi">${icon('plus', 'ic-sm')}Thêm tất cả ${pending} câu hỏi vào biên bản</button>` : ''}`;
     host.innerHTML = issues
       .map((is, i) => {
@@ -257,6 +264,7 @@ export function render(ctx, params = []) {
   });
 
   function setQuestion(text, issueId = null, planQ = null) {
+    panes.go('main');
     const pi = pendingIndex(planQ);
     if (pi >= 0) return editQa(pi);
     cancelEdit();

@@ -8,6 +8,7 @@ import { buildDocx, safeFileName } from '../lib/docx.js';
 import { streamClaude } from '../lib/ai.js';
 import { INVESTIGATOR_SYSTEM } from '../legal/assist.js';
 import { store } from '../lib/store.js';
+import { mobilePanes } from '../lib/panes.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const norm = (s) =>
@@ -56,6 +57,10 @@ export function render(ctx, params = []) {
   const root = ctx.view;
   const list = $('[data-list]', root);
   const main = $('[data-main]', root);
+  const panes = mobilePanes($('.tt', root), [
+    { id: 'side', el: $('.tt-side', root), label: 'Danh mục mẫu', icon: 'layers' },
+    { id: 'main', el: main, label: form ? 'Biểu mẫu' : 'Giai đoạn', icon: 'file' },
+  ], { initial: form ? 'main' : 'side' });
 
   /* ---------------- Danh mục ---------------- */
   function renderList() {
@@ -106,6 +111,7 @@ export function render(ctx, params = []) {
         openStages.add(b.dataset.openStage);
         store.set('forms-open', [...openStages]);
         renderList();
+        panes.go('side');
         list.querySelector(`[data-stage="${b.dataset.openStage}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
       }),
     );

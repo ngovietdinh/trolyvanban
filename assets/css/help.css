@@ -34,6 +34,10 @@
   display: none;
 }
 .help-hint button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -725,13 +729,6 @@
   }
   .help-side {
     border-right: 0;
-    border-bottom: 1px solid var(--line);
-    max-height: 34vh;
-  }
-  /* Đang xem một hướng dẫn: chỉ giữ ô tìm kiếm, danh mục hiện lại khi gõ tìm. */
-  .help.has-guide:not(.searching) .help-nav,
-  .help.has-guide .help-progress {
-    display: none;
   }
 }
 @media (max-width: 760px) {
