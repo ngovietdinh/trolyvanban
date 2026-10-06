@@ -1,8 +1,9 @@
 // Chuẩn bị bản cài đặt máy tính: chép mã web vào desktop/web và đồng bộ số phiên bản.
 // Dùng: node scripts/desktop.mjs   (sau đó: cd desktop && npm install && npm run dist:win | dist:mac)
 import { cpSync, rmSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const root = new URL('..', import.meta.url).pathname;
+const root = fileURLToPath(new URL('..', import.meta.url));
 const out = `${root}desktop/web`;
 const FILES = ['app.html', 'index.html', 'manifest.webmanifest', 'version.json', 'assets'];
 
