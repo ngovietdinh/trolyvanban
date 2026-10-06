@@ -1883,6 +1883,22 @@ div.tt-stage-h:hover {
   gap: 2px;
   padding: 2px 0 8px 18px;
 }
+.tt-doc-row {
+  display: flex;
+  align-items: center;
+}
+.tt-doc-row .tt-form-item {
+  flex: 1;
+  min-width: 0;
+}
+.tt-doc-row .btn {
+  opacity: 0.55;
+  flex: none;
+}
+.tt-doc-row:hover .btn,
+.tt-doc-row .btn:focus-visible {
+  opacity: 1;
+}
 .tt-form-item {
   display: grid;
   gap: 2px;

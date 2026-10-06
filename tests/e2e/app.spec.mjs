@@ -261,9 +261,10 @@ test.describe('Không gian làm việc', () => {
     // Lịch sử hội thoại được lưu
     await page.goto('/app.html#chat');
     await expect(page.locator('.msg')).toHaveCount(4);
-    await page.locator('[data-new]').click();
-    await page.getByRole('button', { name: 'Bắt đầu mới' }).click();
+    // Cuộc trò chuyện mới: cuộc cũ vẫn nằm trong lịch sử.
+    await page.locator('.chat-composer [data-new]').click();
     await expect(page.locator('.chat-welcome')).toBeVisible();
+    await expect(page.locator('.chat-history .ch-item')).toHaveCount(1);
     t.assertClean();
   });
 

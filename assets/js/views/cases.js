@@ -1,5 +1,6 @@
 // Hồ sơ vụ án: thông tin vụ án, người tham gia tố tụng, kế hoạch hỏi, biên bản, đối chiếu lời khai.
 import { $, $$, icon, toast, escapeHtml } from '../ui.js';
+import { deleteWithUndo, repoOps } from '../lib/undo-delete.js';
 import { casesRepo, recordsRepo, plansRepo, deleteCase, legalDocsRepo } from '../legal/repo.js';
 import { findForm, LOAI } from '../legal/forms-catalog.js';
 import { confirmDeleteRecords } from './interview.js';
@@ -96,6 +97,22 @@ function personForm(ctx, caseItem, existing, onSaved) {
   );
 }
 
+/** Nút xóa kế hoạch hỏi và văn bản tố tụng (có hoàn tác). */
+function bindDeletes(ctx, after) {
+  $$('[data-del-plan]', ctx.view).forEach((b) =>
+    b.addEventListener('click', () => {
+      const p = plansRepo.get(b.dataset.delPlan);
+      deleteWithUndo(ctx, { title: 'Xóa kế hoạch hỏi', message: `Xóa kế hoạch “${p?.title}”? Các biên bản đã ghi theo kế hoạch vẫn được giữ lại.`, items: [{ item: p, ...repoOps(plansRepo) }], log: 'Xóa kế hoạch hỏi', after });
+    }),
+  );
+  $$('[data-del-ldoc]', ctx.view).forEach((b) =>
+    b.addEventListener('click', () => {
+      const d = legalDocsRepo.get(b.dataset.delLdoc);
+      deleteWithUndo(ctx, { title: 'Xóa văn bản tố tụng', message: `Xóa văn bản “${d?.title}”? Có thể hoàn tác ngay sau khi xóa.`, items: [{ item: d, ...repoOps(legalDocsRepo) }], log: 'Xóa văn bản tố tụng', after });
+    }),
+  );
+}
+
 function renderList(ctx) {
   const cases = casesRepo.list();
   const loosePlans = plansRepo.list((p) => !p.caseId);
@@ -123,13 +140,14 @@ function renderList(ctx) {
     ${loosePlans.length ? `<section class="panel" style="margin-top:18px"><div class="panel-head"><h2>${icon('layers', 'ic-sm')}Kế hoạch hỏi chưa gắn hồ sơ</h2></div><ul class="doc-list">${loosePlans.map(planRow).join('')}</ul></section>` : ''}
   </div>`;
   const open = () => caseForm(ctx, null, (c) => ctx.navigate(`#cases/${c.id}`));
+  bindDeletes(ctx, () => renderList(ctx));
   $('[data-new]', ctx.view).addEventListener('click', open);
   $('[data-new2]', ctx.view)?.addEventListener('click', open);
 }
 
 function planRow(p) {
   const crime = findCrime(p.dieu);
-  return `<li class="doc-item"><span class="doc-icon">KH</span><div class="doc-meta"><a href="#legal/plan/${p.id}">${escapeHtml(p.title)}</a><small>Điều ${p.dieu} — ${escapeHtml(crime?.ten || '')} · ${escapeHtml(getRole(p.roleId).ten.split('/')[0])} · ${p.stats?.questions || '?'} câu hỏi · ${relativeTime(p.updatedAt)}</small></div></li>`;
+  return `<li class="doc-item"><span class="doc-icon">KH</span><div class="doc-meta"><a href="#legal/plan/${p.id}">${escapeHtml(p.title)}</a><small>Điều ${p.dieu} — ${escapeHtml(crime?.ten || '')} · ${escapeHtml(getRole(p.roleId).ten.split('/')[0])} · ${p.stats?.questions || '?'} câu hỏi · ${relativeTime(p.updatedAt)}</small></div><button class="btn btn-ghost btn-sm btn-icon" type="button" data-del-plan="${p.id}" aria-label="Xóa kế hoạch “${escapeHtml(p.title)}”" title="Xóa kế hoạch">${icon('trash', 'ic-sm')}</button></li>`;
 }
 
 export function render(ctx, params = []) {
@@ -203,7 +221,7 @@ export function render(ctx, params = []) {
     } else if (tab === 'ldocs') {
       body.innerHTML = `<div class="panel-head"><h2>${icon('file', 'ic-sm')}Văn bản tố tụng</h2><a class="btn btn-sm" href="#forms">${icon('plus', 'ic-sm')}Lập văn bản</a></div>${
         ldocs.length
-          ? `<ul class="doc-list">${ldocs.map((d) => `<li class="doc-item"><span class="doc-icon">${escapeHtml((LOAI[findForm(d.formId)?.loai] || 'VB').slice(0, 2).toUpperCase())}</span><div class="doc-meta"><a href="#forms/doc/${d.id}">${escapeHtml(d.title)}</a><small>${escapeHtml(findForm(d.formId)?.ten || '')}</small></div></li>`).join('')}</ul>`
+          ? `<ul class="doc-list">${ldocs.map((d) => `<li class="doc-item"><span class="doc-icon">${escapeHtml((LOAI[findForm(d.formId)?.loai] || 'VB').slice(0, 2).toUpperCase())}</span><div class="doc-meta"><a href="#forms/doc/${d.id}">${escapeHtml(d.title)}</a><small>${escapeHtml(findForm(d.formId)?.ten || '')}</small></div><button class="btn btn-ghost btn-sm btn-icon" type="button" data-del-ldoc="${d.id}" aria-label="Xóa văn bản “${escapeHtml(d.title)}”" title="Xóa văn bản">${icon('trash', 'ic-sm')}</button></li>`).join('')}</ul>`
           : `<div class="empty"><p>Chưa có văn bản. Mở “Biểu mẫu tố tụng”, chọn mẫu, chọn hồ sơ này để tự điền rồi lưu.</p></div>`
       }`;
     } else if (tab === 'plans') {
@@ -224,6 +242,7 @@ export function render(ctx, params = []) {
     );
     $('[data-edit]', v).addEventListener('click', () => caseForm(ctx, c, () => draw()));
     $$('[data-del-rec]', v).forEach((b) => b.addEventListener('click', () => confirmDeleteRecords(ctx, [b.dataset.delRec], () => draw())));
+    bindDeletes(ctx, () => draw());
     $('[data-del]', v).addEventListener('click', async () => {
       if (!(await ctx.confirm(`Xóa hồ sơ “${c.ten}” cùng toàn bộ biên bản và kế hoạch hỏi?`, { title: 'Xóa hồ sơ', okText: 'Xóa vĩnh viễn', danger: true }))) return;
       deleteCase(c.id);

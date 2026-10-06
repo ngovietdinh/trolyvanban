@@ -2,6 +2,7 @@ import { icon, escapeHtml } from '../ui.js';
 import { docsRepo, usage } from '../lib/store.js';
 import { getDocType } from '../lib/doc-types.js';
 import { relativeTime } from '../lib/vn-date.js';
+import { deleteWithUndo, repoOps } from '../lib/undo-delete.js';
 
 function greeting() {
   const h = new Date().getHours();
@@ -19,6 +20,7 @@ export function docRow(d) {
       <a href="#compose/doc/${d.id}">${escapeHtml(d.title)}</a>
       <small>${escapeHtml(type?.name || 'Văn bản')} · ${relativeTime(d.updatedAt)}</small>
     </div>
+    <button class="btn btn-ghost btn-sm btn-icon" type="button" data-del-doc="${d.id}" aria-label="Xóa “${escapeHtml(d.title)}”" title="Xóa">${icon('trash', 'ic-sm')}</button>
   </li>`;
 }
 
@@ -72,6 +74,21 @@ export function render(ctx) {
       </section>
     </div>
   </div>`;
+
+  ctx.view.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-del-doc]');
+    if (!b) return;
+    const d = docsRepo.get(b.dataset.delDoc);
+    deleteWithUndo(ctx, {
+      title: 'Xóa văn bản',
+      message: `Xóa “${d?.title}” khỏi Tài liệu của tôi? Có thể hoàn tác ngay sau khi xóa.`,
+      items: [{ item: d, ...repoOps(docsRepo) }],
+      after: () => {
+        document.dispatchEvent(new CustomEvent('docs-changed'));
+        render(ctx);
+      },
+    });
+  });
 
   ctx.view.querySelector('[data-hello]').addEventListener('submit', (e) => {
     e.preventDefault();

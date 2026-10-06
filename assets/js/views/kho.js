@@ -1,6 +1,7 @@
 // Kho hồ sơ & Trợ lý AI: tải lên hồ sơ, tài liệu (Word, PDF, txt) → làm dữ liệu cho hỏi đáp AI có trích dẫn,
 // lập biên bản lời khai mới dựa vào các biên bản cũ, tạo văn bản tố tụng theo mẫu có sẵn.
-import { $, $$, icon, toast, escapeHtml, renderMarkdown, downloadBlob } from '../ui.js';
+import { $, $$, icon, toast, escapeHtml, renderMarkdown, downloadBlob, copyText } from '../ui.js';
+import { openMakeDoc, mdToPlain } from './make-doc.js';
 import { mobilePanes } from '../lib/panes.js';
 import { khoDb } from '../lib/kho-db.js';
 import { extractText } from '../lib/extract.js';
@@ -33,7 +34,8 @@ export function render(ctx) {
   let selected = new Set(store.get('kho-sel', []));
   let q = '';
   let busy = false;
-  const messages = [];
+  // Cuộc trò chuyện với trợ lý hồ sơ được lưu trên máy theo tài khoản (xóa được).
+  const messages = store.get('kho-chat', []);
 
   ctx.view.innerHTML = `
   <div class="kho">
@@ -58,6 +60,7 @@ export function render(ctx) {
       <header class="kho-ai-head">
         <div><strong>${icon('sparkles', 'ic-sm')}Trợ lý hồ sơ</strong><small data-scope></small></div>
         <span class="badge" data-mode></span>
+        <button class="btn btn-ghost btn-sm btn-icon" type="button" data-clear-chat aria-label="Xóa cuộc trò chuyện" title="Xóa cuộc trò chuyện">${icon('trash', 'ic-sm')}</button>
       </header>
       <div class="kho-msgs" data-msgs></div>
       <div class="kho-quick" data-quick>
@@ -296,7 +299,7 @@ export function render(ctx) {
   function renderMsgs() {
     msgs.innerHTML = messages.length
       ? messages
-          .map((m) => `<div class="kho-msg ${m.role}">${m.role === 'user' ? `<p>${escapeHtml(m.text)}</p>` : `<div class="msg-content">${m.html || renderMarkdown(m.text || '')}</div>${m.cites?.length ? `<details class="kho-cites"><summary>Nguồn trích dẫn (${m.cites.length})</summary><ol>${m.cites.map((c) => `<li><strong>${escapeHtml(c.ten)}</strong> — đoạn ${c.idx + 1}<br><span>${escapeHtml(c.text.slice(0, 260))}${c.text.length > 260 ? '…' : ''}</span></li>`).join('')}</ol></details>` : ''}${m.actions || ''}`}</div>`)
+          .map((m, i) => `<div class="kho-msg ${m.role}">${m.role === 'user' ? `<p>${escapeHtml(m.text)}</p>` : `<div class="msg-content">${m.html || renderMarkdown(m.text || '')}</div>${m.cites?.length ? `<details class="kho-cites"><summary>Nguồn trích dẫn (${m.cites.length})</summary><ol>${m.cites.map((c) => `<li><strong>${escapeHtml(c.ten)}</strong> — đoạn ${c.idx + 1}<br><span>${escapeHtml(c.text.slice(0, 260))}${c.text.length > 260 ? '…' : ''}</span></li>`).join('')}</ol></details>` : ''}${m.actions || ''}${toolsHtml(m, i)}`}</div>`)
           .join('')
       : `<div class="kho-welcome">${icon('sparkles', 'ic-lg')}<h3>Trợ lý làm việc trên kho hồ sơ</h3><p>Tải tài liệu lên bên trái, chọn tài liệu làm dữ liệu (không chọn = dùng tất cả trong hồ sơ đang lọc). Sau đó hỏi đáp, tóm tắt, tìm mâu thuẫn, hoặc yêu cầu tạo biên bản lời khai mới, văn bản tố tụng theo mẫu.</p></div>`;
     msgs.scrollTop = msgs.scrollHeight;
@@ -306,6 +309,67 @@ export function render(ctx) {
     renderMsgs();
     return m;
   };
+  const msgText = (m) => (m.text ? mdToPlain(m.text) : (m.html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+  /** Nút cho câu trả lời: sao chép, tạo văn bản chuẩn, xóa. */
+  function toolsHtml(m, i) {
+    if (m.role === 'user' || (busy && i === messages.length - 1)) return '';
+    const make = ctx.can('docs') && m.text && !m.actions ? `<button class="btn btn-sm" type="button" data-make="${i}">${icon('file', 'ic-sm')}Tạo văn bản chuẩn</button>` : '';
+    return `<div class="msg-tools">${make}<button class="btn btn-ghost btn-sm" type="button" data-copy="${i}">${icon('copy', 'ic-sm')}Sao chép</button><button class="btn btn-ghost btn-sm btn-icon" type="button" data-del-msg="${i}" aria-label="Xóa câu trả lời" title="Xóa">${icon('trash', 'ic-sm')}</button></div>`;
+  }
+  const saveChat = () => store.set('kho-chat', messages.filter((m) => !/class="typing"/.test(m.html || '')).slice(-60));
+  msgs.addEventListener('click', async (e) => {
+    const cp = e.target.closest('[data-copy]');
+    if (cp) {
+      const m = messages[+cp.dataset.copy];
+      const cites = m.cites?.length ? '\n\nNguồn:\n' + m.cites.map((c) => `- ${c.ten} (đoạn ${c.idx + 1})`).join('\n') : '';
+      await copyText(msgText(m) + cites);
+      return toast('Đã sao chép câu trả lời');
+    }
+    const mk = e.target.closest('[data-make]');
+    if (mk) {
+      const i = +mk.dataset.make;
+      const question = [...messages.slice(0, i)].reverse().find((x) => x.role === 'user')?.text || '';
+      return openMakeDoc(ctx, messages[i].text, { question });
+    }
+    const dm = e.target.closest('[data-del-msg]');
+    if (dm) {
+      const i = +dm.dataset.delMsg;
+      // Xóa câu trả lời cùng câu hỏi ngay trước nó.
+      const start = i > 0 && messages[i - 1].role === 'user' ? i - 1 : i;
+      const removed = messages.splice(start, i - start + 1);
+      saveChat();
+      renderMsgs();
+      toast('Đã xóa', {
+        timeout: 6000,
+        action: {
+          label: 'Hoàn tác',
+          onClick: () => {
+            messages.splice(start, 0, ...removed);
+            saveChat();
+            renderMsgs();
+          },
+        },
+      });
+    }
+  });
+  $('[data-clear-chat]', root).addEventListener('click', async () => {
+    if (!messages.length || busy) return;
+    if (!(await ctx.confirm('Xóa toàn bộ cuộc trò chuyện với trợ lý hồ sơ? Tài liệu trong kho và văn bản đã tạo vẫn giữ nguyên.', { title: 'Xóa cuộc trò chuyện', okText: 'Xóa', danger: true }))) return;
+    const removed = messages.splice(0);
+    saveChat();
+    renderMsgs();
+    toast('Đã xóa cuộc trò chuyện', {
+      timeout: 8000,
+      action: {
+        label: 'Hoàn tác',
+        onClick: () => {
+          messages.splice(0, 0, ...removed);
+          saveChat();
+          renderMsgs();
+        },
+      },
+    });
+  });
 
   $$('[data-tpl]', root).forEach((b) =>
     b.addEventListener('click', () => {
@@ -341,6 +405,7 @@ export function render(ctx) {
       busy = false;
       $('[data-send]', root).disabled = false;
       renderMsgs();
+      saveChat();
     }
   });
 

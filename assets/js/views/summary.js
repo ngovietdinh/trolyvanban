@@ -4,6 +4,7 @@ import { summarize, textStats } from '../lib/summarize.js';
 import { docxToText } from '../lib/docx.js';
 import { store, usage } from '../lib/store.js';
 import { streamClaude } from '../lib/ai.js';
+import { openMakeDoc } from './make-doc.js';
 
 const SAMPLE = `Thực hiện Kế hoạch số 45/KH-UBND ngày 12/02/2026 của Ủy ban nhân dân phường về triển khai chuyển đổi số năm 2026, trong quý III, Ủy ban nhân dân phường đã tập trung chỉ đạo quyết liệt các nhiệm vụ trọng tâm. Bộ phận Một cửa tiếp nhận 1.245 hồ sơ thủ tục hành chính, giải quyết đúng hạn 1.240 hồ sơ, đạt tỷ lệ 99,6%. Tỷ lệ hồ sơ trực tuyến toàn trình đạt 78%, tăng 12% so với quý II. Phường đã tổ chức 06 đợt hướng dẫn người dân cài đặt và kích hoạt tài khoản định danh điện tử mức độ 2 với hơn 2.000 lượt người tham gia. Hệ thống camera an ninh được lắp đặt bổ sung tại 15 tuyến phố, góp phần giữ gìn trật tự an toàn xã hội.
 Tuy nhiên, công tác cập nhật dữ liệu dân cư tại một số tổ dân phố còn chậm; trang thiết bị công nghệ thông tin tại Bộ phận Một cửa đã xuống cấp, ảnh hưởng đến tiến độ giải quyết hồ sơ. Một bộ phận người dân cao tuổi còn gặp khó khăn khi sử dụng dịch vụ công trực tuyến.
@@ -113,6 +114,16 @@ export function render(ctx) {
         onText: (_, s) => (target.innerHTML = renderMarkdown(s)),
       });
       target.innerHTML = renderMarkdown(all);
+      // Câu trả lời của AI: sao chép, tạo văn bản chuẩn (báo cáo tóm tắt…).
+      const tools = document.createElement('div');
+      tools.className = 'msg-tools ai-out-tools';
+      tools.innerHTML = `${ctx.can('docs') ? `<button class="btn btn-sm" type="button" data-make>${icon('file', 'ic-sm')}Tạo văn bản chuẩn</button>` : ''}<button class="btn btn-ghost btn-sm" type="button" data-copy-ai>${icon('copy', 'ic-sm')}Sao chép</button>`;
+      target.after(tools);
+      tools.querySelector('[data-copy-ai]').addEventListener('click', async () => {
+        await copyText(all);
+        toast('Đã sao chép bản tóm tắt');
+      });
+      tools.querySelector('[data-make]')?.addEventListener('click', () => openMakeDoc(ctx, all, { question: 'Báo cáo tóm tắt' }));
     } catch (err) {
       target.innerHTML = `<p style="color:var(--danger)">${escapeHtml(err.message)}</p>`;
     } finally {

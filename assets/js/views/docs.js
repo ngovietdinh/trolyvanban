@@ -4,6 +4,7 @@ import { docsRepo } from '../lib/store.js';
 import { DOC_TYPES, getDocType, buildDocument } from '../lib/doc-types.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { relativeTime } from '../lib/vn-date.js';
+import { deleteWithUndo, repoOps } from '../lib/undo-delete.js';
 
 const norm = (s) =>
   String(s || '')
@@ -110,11 +111,12 @@ export function render(ctx) {
         toast('Đã xuất tệp Word');
         break;
       case 'del':
-        if (await ctx.confirm(`Xóa vĩnh viễn “${d.title}”?`, { title: 'Xóa tài liệu', okText: 'Xóa', danger: true })) {
-          docsRepo.remove(id);
-          changed();
-          toast('Đã xóa tài liệu');
-        }
+        await deleteWithUndo(ctx, {
+          title: 'Xóa tài liệu',
+          message: `Xóa “${d.title}”? Có thể hoàn tác ngay sau khi xóa.`,
+          items: [{ item: d, ...repoOps(docsRepo) }],
+          after: changed,
+        });
         break;
     }
   });

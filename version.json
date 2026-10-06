@@ -1,8 +1,8 @@
 {
-  "version": "2.9.1",
+  "version": "2.10.0",
   "date": "2026-10-06",
   "notes": [
-    "Sửa lỗi thông báo cập nhật lặp lại: cập nhật một lần là lên bản mới",
-    "Bấm “Để sau” sẽ không nhắc lại bản đó trong 12 giờ"
+    "Lịch sử trò chuyện: lưu nhiều cuộc, xóa từng cuộc/tin nhắn/tất cả (có hoàn tác); mọi văn bản đã tạo đều có nút xóa",
+    "Câu trả lời AI có nút Sao chép và Tạo văn bản chuẩn theo NĐ 30/2020"
   ]
 }

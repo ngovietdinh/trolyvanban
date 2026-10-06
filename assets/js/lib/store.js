@@ -21,7 +21,7 @@ const ls = typeof window !== 'undefined' ? backend() : null;
 export const SCOPED_KEYS = [
   'docs', 'chat', 'settings', 'compose-draft', 'usage', 'spell-text', 'summary-text', 'summary-ratio',
   'number-history', 'number-last', 'number-opts', 'cases', 'records', 'plans', 'legal-custom',
-  'legal-selection', 'legal-open', 'zoom', 'legal-custom-acts', 'tpl-custom', 'legal-learned', 'ai-cache', 'ai-log', 'legal-docs', 'forms-open', 'kho-sel', 'kho-case', 'kho-app', 'help-seen', 'help-opened', 'help-hint-off', 'spell-dict',
+  'legal-selection', 'legal-open', 'zoom', 'legal-custom-acts', 'tpl-custom', 'legal-learned', 'ai-cache', 'ai-log', 'legal-docs', 'forms-open', 'kho-sel', 'kho-case', 'kho-app', 'help-seen', 'help-opened', 'help-hint-off', 'spell-dict', 'chat-threads', 'chat-current', 'kho-chat',
 ];
 /** Dữ liệu bị xóa khi “Xóa toàn bộ dữ liệu” (giữ lại tài khoản, API key, cài đặt). */
 export const WIPE_KEYS = SCOPED_KEYS.filter((k) => k !== 'settings' && k !== 'zoom');
@@ -151,6 +151,10 @@ export const docsRepo = {
       'docs',
       store.get('docs', []).filter((d) => d.id !== id),
     );
+  },
+  /** Khôi phục nguyên trạng tài liệu đã xóa (hoàn tác). */
+  restore(doc) {
+    store.set('docs', [...store.get('docs', []).filter((d) => d.id !== doc.id), doc]);
   },
   toggleStar(id) {
     const all = store.get('docs', []);

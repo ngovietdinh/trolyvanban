@@ -6,6 +6,7 @@ import { buildDocx, safeFileName } from '../lib/docx.js';
 import { isoToday } from '../lib/vn-date.js';
 import { store, docsRepo, usage } from '../lib/store.js';
 import { streamClaude, composePrompt, extractJson, localCompose } from '../lib/ai.js';
+import { deleteWithUndo, repoOps } from '../lib/undo-delete.js';
 
 const HEAD_KEYS = ['coQuanChuQuan', 'coQuan', 'vietTat', 'so', 'diaDanh', 'ngay'];
 const SIGN_KEYS = ['quyenHan', 'tapThe', 'chucVu', 'nguoiKy', 'noiNhan'];
@@ -87,6 +88,7 @@ export function render(ctx, params = []) {
       <div class="cf-foot">
         <button class="btn btn-icon" type="button" title="Điền dữ liệu mẫu" aria-label="Điền dữ liệu mẫu" data-sample>${icon('wand')}</button>
         <button class="btn btn-icon" type="button" title="Văn bản mới" aria-label="Văn bản mới" data-reset>${icon('refresh')}</button>
+        <button class="btn btn-icon" type="button" title="Xóa văn bản đã lưu" aria-label="Xóa văn bản đã lưu" data-del-doc hidden>${icon('trash')}</button>
         <button class="btn btn-primary" type="button" data-save>${icon('save')}Lưu văn bản <kbd class="kbd" style="background:rgba(255,255,255,.15);color:#fff;border-color:transparent">Ctrl S</kbd></button>
       </div>
     </section>
@@ -310,7 +312,26 @@ export function render(ctx, params = []) {
     history.replaceState(null, '', `#compose/doc/${rec.id}`);
     document.dispatchEvent(new CustomEvent('docs-changed'));
     toast('Đã lưu vào Tài liệu của tôi');
+    syncDelBtn();
   }
+
+  // Nút xóa chỉ hiện khi đang mở văn bản đã lưu.
+  const delBtn = $('[data-del-doc]', root);
+  const syncDelBtn = () => (delBtn.hidden = !(state.docId && docsRepo.get(state.docId)));
+  delBtn.addEventListener('click', async () => {
+    const d = docsRepo.get(state.docId);
+    if (!d) return syncDelBtn();
+    const ok = await deleteWithUndo(ctx, {
+      title: 'Xóa văn bản',
+      message: `Xóa “${d.title}” khỏi Tài liệu của tôi? Có thể hoàn tác ngay sau khi xóa.`,
+      items: [{ item: d, ...repoOps(docsRepo) }],
+      after: () => document.dispatchEvent(new CustomEvent('docs-changed')),
+    });
+    if (!ok) return;
+    store.remove('compose-draft');
+    ctx.navigate('#docs');
+  });
+  syncDelBtn();
 
   $('[data-save]', root).addEventListener('click', save);
 
@@ -348,6 +369,7 @@ export function render(ctx, params = []) {
     readForm();
     const shared = Object.fromEntries(SHARED_KEYS.map((k) => [k, state.values[k]]));
     state = { typeId: state.typeId, values: { ...shared, ngay: isoToday(), so: '' }, docId: null };
+    syncDelBtn();
     renderForm();
     renderPreview();
     saveDraft();

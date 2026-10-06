@@ -9,6 +9,7 @@ import { streamClaude } from '../lib/ai.js';
 import { INVESTIGATOR_SYSTEM } from '../legal/assist.js';
 import { store } from '../lib/store.js';
 import { mobilePanes } from '../lib/panes.js';
+import { deleteWithUndo, repoOps } from '../lib/undo-delete.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const norm = (s) =>
@@ -69,7 +70,7 @@ export function render(ctx, params = []) {
     let html = '';
     if (!n && docs.length) {
       html += `<div class="tt-stage open"><div class="tt-stage-h">${icon('clock', 'ic-sm')}<span>Văn bản đã lập gần đây</span></div><div class="tt-forms">${docs
-        .map((d) => `<a class="tt-form-item ${d.id === docId ? 'active' : ''}" href="#forms/doc/${d.id}"><span class="tt-loai">${escapeHtml(LOAI[findForm(d.formId)?.loai] || '')}</span><span>${escapeHtml(d.title)}</span></a>`)
+        .map((d) => `<div class="tt-doc-row"><a class="tt-form-item ${d.id === docId ? 'active' : ''}" href="#forms/doc/${d.id}"><span class="tt-loai">${escapeHtml(LOAI[findForm(d.formId)?.loai] || '')}</span><span>${escapeHtml(d.title)}</span></a><button type="button" class="btn btn-ghost btn-sm btn-icon" data-del-ldoc="${d.id}" aria-label="Xóa văn bản “${escapeHtml(d.title)}”" title="Xóa">${icon('trash', 'ic-sm')}</button></div>`)
         .join('')}</div></div>`;
     }
     html += `<div class="tt-stage ${n || openStages.has('interview') ? 'open' : ''}"><button type="button" class="tt-stage-h" data-stage="interview">${icon('chevron-down', 'ic-sm lg-chev')}${icon('message', 'ic-sm')}<span>Biên bản ghi lời khai, hỏi cung (Mẫu 140)</span></button>${
@@ -85,7 +86,23 @@ export function render(ctx, params = []) {
     }
     list.innerHTML = html || '<p class="lg-empty">Không tìm thấy biểu mẫu.</p>';
   }
+  /** Xóa văn bản đã lập (có hoàn tác); đang mở văn bản đó thì quay về danh mục. */
+  function delDoc(id) {
+    const d = legalDocsRepo.get(id);
+    deleteWithUndo(ctx, {
+      title: 'Xóa văn bản tố tụng',
+      message: `Xóa văn bản “${d?.title}”? Có thể hoàn tác ngay sau khi xóa.`,
+      items: [{ item: d, ...repoOps(legalDocsRepo) }],
+      log: 'Xóa văn bản tố tụng',
+      after: (undone) => {
+        if (!undone && id === docId) return ctx.navigate(form ? `#forms/${form.id}` : '#forms');
+        renderList();
+      },
+    });
+  }
   list.addEventListener('click', (e) => {
+    const del = e.target.closest('[data-del-ldoc]');
+    if (del) return delDoc(del.dataset.delLdoc);
     const s = e.target.closest('[data-stage]');
     if (s) {
       const id = s.dataset.stage;
@@ -141,6 +158,7 @@ export function render(ctx, params = []) {
           <div><div class="tt-crumb">${escapeHtml(STAGES.find((s) => s.id === form.giaiDoan)?.ten || '')}</div><h1>${escapeHtml(form.ten)}</h1></div>
           <div class="inline">
             <button class="btn btn-sm btn-ghost" type="button" data-print>${icon('printer', 'ic-sm')}In</button>
+            <button class="btn btn-sm btn-ghost" type="button" data-del-this ${docId ? '' : 'hidden'}>${icon('trash', 'ic-sm')}Xóa</button>
             <button class="btn btn-sm" type="button" data-save>${icon('save', 'ic-sm')}${docId ? 'Lưu thay đổi' : 'Lưu vào hồ sơ'}</button>
             <button class="btn btn-sm btn-primary" type="button" data-export>${icon('download', 'ic-sm')}Xuất Word</button>
           </div>
@@ -214,6 +232,7 @@ export function render(ctx, params = []) {
       toast('Đã xuất tệp Word');
     });
     $('[data-print]', main).addEventListener('click', () => window.print());
+    $('[data-del-this]', main).addEventListener('click', () => docId && delDoc(docId));
     $('[data-save]', main).addEventListener('click', () => {
       readValues();
       const c = caseId ? casesRepo.get(caseId) : null;
@@ -222,6 +241,7 @@ export function render(ctx, params = []) {
       docId = rec.id;
       if (first) history.replaceState(null, '', `#forms/doc/${rec.id}`);
       $('[data-save]', main).innerHTML = `${icon('save', 'ic-sm')}Lưu thay đổi`;
+      $('[data-del-this]', main).hidden = false;
       renderList();
       toast(first ? 'Đã lưu văn bản' : 'Đã lưu thay đổi');
     });

@@ -140,6 +140,10 @@ export function render(ctx) {
             <label class="btn btn-sm" style="position:relative;overflow:hidden">${icon('upload', 'ic-sm')}Khôi phục<input type="file" accept="application/json,.json" data-restore style="position:absolute;inset:0;opacity:0;cursor:pointer" aria-label="Chọn tệp sao lưu" /></label>
           </div></div>
         </div>
+        <div class="setting-row">
+          <div><h3>Lịch sử trò chuyện</h3><p>Các cuộc trò chuyện với Trợ lý AI${ctx.can('legal') ? ' và Trợ lý hồ sơ' : ''} được lưu trên máy, riêng tài khoản này. Có thể xóa từng cuộc ngay trong màn hình trò chuyện.</p></div>
+          <div class="setting-ctl"><div><button class="btn btn-sm" type="button" data-clear-chats>${icon('trash', 'ic-sm')}Xóa lịch sử trò chuyện</button><span class="hint" data-chat-n></span></div></div>
+        </div>
         <div class="setting-row danger-zone">
           <div><h3>Xóa dữ liệu</h3><p>Xóa toàn bộ văn bản, hồ sơ, biên bản, lịch sử trò chuyện của tài khoản này. <strong>Tài khoản, API key và cài đặt được giữ lại.</strong></p></div>
           <div class="setting-ctl"><div><button class="btn btn-sm" type="button" data-wipe>${icon('trash', 'ic-sm')}Xóa toàn bộ dữ liệu</button></div></div>
@@ -426,6 +430,19 @@ export function render(ctx) {
       toast(err.message || 'Không đọc được tệp', { type: 'error' });
     }
     e.target.value = '';
+  });
+  const chatCount = () => (store.get('chat-threads', []) || []).length + (store.get('chat', []).length ? 1 : 0) + (store.get('kho-chat', []).length ? 1 : 0);
+  const syncChatN = () => {
+    const n = chatCount();
+    $('[data-chat-n]', root).textContent = n ? ` ${n} cuộc trò chuyện` : ' Chưa có';
+    $('[data-clear-chats]', root).disabled = !n;
+  };
+  syncChatN();
+  $('[data-clear-chats]', root).addEventListener('click', async () => {
+    if (!(await ctx.confirm(`Xóa toàn bộ ${chatCount()} cuộc trò chuyện? Văn bản, biên bản đã tạo vẫn giữ nguyên.`, { title: 'Xóa lịch sử trò chuyện', okText: 'Xóa', danger: true }))) return;
+    ['chat-threads', 'chat', 'chat-current', 'kho-chat'].forEach((k) => store.remove(k));
+    syncChatN();
+    toast('Đã xóa lịch sử trò chuyện');
   });
   $('[data-wipe]', root).addEventListener('click', async () => {
     if (!(await ctx.confirm('Toàn bộ văn bản, hồ sơ, biên bản và lịch sử của tài khoản này sẽ bị xóa vĩnh viễn. Tài khoản, API key và cài đặt được giữ lại.', { title: 'Xóa toàn bộ dữ liệu?', okText: 'Xóa vĩnh viễn', danger: true }))) return;
