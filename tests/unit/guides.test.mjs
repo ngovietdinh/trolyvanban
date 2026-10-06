@@ -19,7 +19,7 @@ test('cấu trúc hướng dẫn hợp lệ', () => {
     for (const s of g.steps) assert.ok(s.t && s.d, `${g.id}: bước thiếu nội dung`);
     for (const e of g.examples) {
       assert.ok(e.title && e.text, `${g.id}: ví dụ thiếu nội dung`);
-      if (e.fill) assert.ok(['#kho', '#chat'].includes(e.fill), `${g.id}: “Thử ngay” chỉ dùng cho màn hình có ô nhập`);
+      if (e.fill) assert.ok(['#kho', '#chat', '#spell'].includes(e.fill), `${g.id}: “Thử ngay” chỉ dùng cho màn hình có ô nhập`);
     }
     for (const r of g.related || []) assert.ok(findGuide(r), `${g.id}: liên kết tới hướng dẫn không tồn tại ${r}`);
     assert.ok(/^#[a-z]+$/.test(g.route), `${g.id}: route không hợp lệ`);

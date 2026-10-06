@@ -195,8 +195,12 @@ test.describe('Không gian làm việc', () => {
     await page.locator('.issue', { hasText: 'sai chính tả' }).first().locator('[data-fix]').click();
     await expect(issues).toHaveCount(n - 1);
     await page.locator('[data-fixall]').click();
+    // Còn lại các từ có nhiều cách sửa (viềc → việc/viếc…): người dùng chọn.
+    const left = page.locator('.issue[data-issue]');
+    while ((await left.count()) > 0) await left.first().locator('[data-fix]').first().click();
     await expect(issues).toHaveCount(0);
     await expect(page.locator('[data-input]')).toHaveValue(/xử lý hồ sơ tồn đọng và bổ sung tài liệu còn thiếu\. Kết quả/);
+    await expect(page.locator('[data-input]')).toHaveValue(/Người đứng đầu chịu trách nhiệm về việc tổ chức thực hiện của đơn vị/);
 
     const dir = mkdtempSync(join(tmpdir(), 'tlvb-'));
     const file = join(dir, 'van-ban.docx');

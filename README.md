@@ -10,7 +10,7 @@ Nền tảng soạn thảo văn bản hành chính tiếng Việt, trình bày �
 | **Soạn bằng AI** | Mô tả một câu → AI điền trích yếu và nội dung. Dùng Claude khi có API key; nếu chưa có, dùng trợ lý mẫu chạy cục bộ. |
 | **Xuất bản** | Xuất **Word (.docx)** chuẩn A4, lề 20/15/20/30 mm, Times New Roman; in / lưu PDF; sao chép văn bản. |
 | **Trợ lý AI** | Hội thoại streaming với Claude; chuyển bản nháp sang trình soạn thảo bằng một chạm. |
-| **Kiểm tra chính tả** | Lỗi s/x, ch/tr, dấu câu, khoảng trắng, viết hoa, lặp từ, thể thức ngày tháng / quốc hiệu; sửa từng lỗi hoặc tất cả; điểm chất lượng; đọc tệp .docx/.txt. |
+| **Kiểm tra chính tả** | Lỗi s/x, ch/tr, d/gi/r, l/n, hỏi/ngã, dấu câu, khoảng trắng, viết hoa, lặp từ, thể thức ngày tháng / quốc hiệu. **Từ không có nghĩa** (kiểm tra cấu tạo âm tiết tiếng Việt trên máy: gõ nhầm, sót Telex/VNI, sai quy tắc c/k, g/gh, ng/ngh, iê/yê, vần p/t/c/ch sai thanh), dấu thanh đặt sai vị trí, **dùng từ thừa/sai** (tái diễn lại, được diễn ra…); gợi ý nhiều cách sửa; từ điển cá nhân; **Kiểm tra bằng AI** (ngữ pháp, dùng từ sai ngữ cảnh, nhận xét chung, tách đoạn văn bản dài, ghi nhớ kết quả); điểm chất lượng; đọc tệp .docx/.txt. |
 | **Tóm tắt văn bản** | Tóm tắt trích xuất cục bộ (từ khóa, thống kê) hoặc tóm tắt bằng Claude. |
 | **Số thành chữ** | Đọc số tiền chuẩn chứng từ (mốt, lăm, tư, linh…) tới hàng tỷ tỷ, có lịch sử. |
 | **Mẫu từ file Word** (`#tpl/new`) | Tải lên tệp .docx có sẵn → nhận diện tự động các phần cần điền (số ký hiệu, địa danh – ngày tháng, kính gửi, họ tên, địa chỉ, số tiền, ô `[..]`) hoặc **AI chắt lọc mẫu**; bôi đen chữ trong bản xem trước để tạo trường; xem trước, lưu vào “Mẫu của tôi”, điền nội dung và xuất Word giữ nguyên định dạng gốc (bảng, đầu/cuối trang). |
