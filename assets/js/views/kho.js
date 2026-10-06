@@ -6,7 +6,7 @@ import { mobilePanes } from '../lib/panes.js';
 import { khoDb } from '../lib/kho-db.js';
 import { extractText } from '../lib/extract.js';
 import { streamClaude, extractJson } from '../lib/ai.js';
-import { casesRepo, recordsRepo, legalDocsRepo } from '../legal/repo.js';
+import { casesRepo, recordsRepo, legalDocsRepo, deleteRecords, restoreRecords } from '../legal/repo.js';
 import { qaToText, newRecord, prefillQa } from '../legal/record.js';
 import { getRole } from '../legal/roles.js';
 import { FORMS, FIELDS, findForm, formKeys } from '../legal/forms-catalog.js';
@@ -14,6 +14,7 @@ import { buildFormDocument, prefillFromCase, nhanThanText } from '../legal/forms
 import { LOAI_TL, analyzeDoc, searchDocs, buildContext, localInterviewPlan, planFromIssues, personFromOlds, localIntent, KHO_SYSTEM, answerPrompt, intentPrompt, interviewPrompt, formPrompt } from '../legal/kho.js';
 import { store, uid } from '../lib/store.js';
 import { audit } from '../lib/accounts.js';
+import { relativeTime } from '../lib/vn-date.js';
 
 const MAX_FILE = 25 * 1024 * 1024;
 const ICON = { bblk: 'message', 'hoi-cung': 'message', 'doi-chat': 'message', qd: 'gavel', lenh: 'gavel', 'kl-giam-dinh': 'zap', 'kl-dinh-gia': 'zap', 'kl-dieu-tra': 'book', 'cao-trang': 'book', 'ban-an': 'book' };
@@ -27,6 +28,11 @@ function docModelText(doc) {
   return out.filter(Boolean).join('\n');
 }
 
+function threadTitle(msgs) {
+  const first = msgs.find((m) => m.role === 'user')?.text || 'Cuộc trò chuyện mới';
+  return first.length > 60 ? first.slice(0, 57) + '…' : first;
+}
+
 export function render(ctx) {
   let docs = []; // tài liệu tải lên (không kèm tệp gốc)
   let filterCase = store.get('kho-case', '');
@@ -34,8 +40,18 @@ export function render(ctx) {
   let selected = new Set(store.get('kho-sel', []));
   let q = '';
   let busy = false;
-  // Cuộc trò chuyện với trợ lý hồ sơ được lưu trên máy theo tài khoản (xóa được).
-  const messages = store.get('kho-chat', []);
+  // Lịch sử trò chuyện với trợ lý hồ sơ: nhiều cuộc, lưu trên máy theo tài khoản (xóa được).
+  let threads = store.get('kho-threads', null);
+  if (!threads) {
+    const legacy = store.get('kho-chat', []);
+    threads = legacy.length ? [{ id: uid(), title: threadTitle(legacy), createdAt: Date.now(), updatedAt: Date.now(), messages: legacy }] : [];
+    store.set('kho-threads', threads);
+    store.remove('kho-chat');
+  }
+  threads.sort((a, b) => b.updatedAt - a.updatedAt);
+  let currentId = store.get('kho-current', null);
+  if (!threads.some((t) => t.id === currentId)) currentId = threads[0]?.id || null;
+  let messages = threads.find((t) => t.id === currentId)?.messages || [];
 
   ctx.view.innerHTML = `
   <div class="kho">
@@ -60,7 +76,11 @@ export function render(ctx) {
       <header class="kho-ai-head">
         <div><strong>${icon('sparkles', 'ic-sm')}Trợ lý hồ sơ</strong><small data-scope></small></div>
         <span class="badge" data-mode></span>
-        <button class="btn btn-ghost btn-sm btn-icon" type="button" data-clear-chat aria-label="Xóa cuộc trò chuyện" title="Xóa cuộc trò chuyện">${icon('trash', 'ic-sm')}</button>
+        <div class="kho-chat-tools">
+          <button class="btn btn-ghost btn-sm" type="button" data-history title="Lịch sử trò chuyện">${icon('clock', 'ic-sm')}<span>Lịch sử</span> <span class="sb-count" data-thread-n></span></button>
+          <button class="btn btn-ghost btn-sm btn-icon" type="button" data-new-chat aria-label="Cuộc trò chuyện mới" title="Cuộc trò chuyện mới">${icon('plus', 'ic-sm')}</button>
+          <button class="btn btn-ghost btn-sm btn-icon" type="button" data-clear-chat aria-label="Xóa cuộc trò chuyện này" title="Xóa cuộc trò chuyện này">${icon('trash', 'ic-sm')}</button>
+        </div>
       </header>
       <div class="kho-msgs" data-msgs></div>
       <div class="kho-quick" data-quick>
@@ -138,7 +158,7 @@ export function render(ctx) {
               <input type="checkbox" class="rec-check" data-sel ${selected.has(d.id) ? 'checked' : ''} aria-label="Dùng làm dữ liệu: ${escapeHtml(d.ten)}" />
               <span class="kho-ic">${icon(ICON[d.loai] || 'file', 'ic-sm')}</span>
               <button type="button" class="kho-item-body" data-view><strong>${escapeHtml(d.ten)}</strong><small>${escapeHtml(meta)}${d.app ? ' · <em>trong phần mềm</em>' : ''}</small>${snippets[d.id] ? `<span class="kho-snip">${escapeHtml(snippets[d.id].slice(0, 160))}…</span>` : ''}</button>
-              ${d.app ? '' : `<button type="button" class="btn btn-ghost btn-sm btn-icon" data-del aria-label="Xóa ${escapeHtml(d.ten)}">${icon('trash', 'ic-sm')}</button>`}
+              <button type="button" class="btn btn-ghost btn-sm btn-icon" data-del aria-label="Xóa ${escapeHtml(d.ten)}" title="${d.app ? 'Xóa văn bản này khỏi phần mềm' : 'Xóa khỏi kho'}">${icon('trash', 'ic-sm')}</button>
             </li>`;
           })
           .join('')
@@ -164,16 +184,47 @@ export function render(ctx) {
     if (!li) return;
     const d = visibleDocs().find((x) => x.id === li.dataset.id);
     if (!d) return;
-    if (e.target.closest('[data-del]')) {
-      if (!(await ctx.confirm(`Xóa “${d.ten}” khỏi kho?`, { title: 'Xóa tài liệu', okText: 'Xóa', danger: true }))) return;
-      await khoDb.remove(d.id);
-      selected.delete(d.id);
-      saveSel();
-      audit('Xóa tài liệu khỏi kho hồ sơ', d.ten);
-      await reload();
-      toast('Đã xóa tài liệu');
-    } else if (e.target.closest('[data-view]')) viewDoc(d);
+    if (e.target.closest('[data-del]')) delDoc(d);
+    else if (e.target.closest('[data-view]')) viewDoc(d);
   });
+  /**
+   * Xóa một tài liệu (có hoàn tác): tệp tải lên → xóa khỏi kho; biên bản / văn bản tố tụng lập trong phần mềm →
+   * xóa chính văn bản đó (khỏi Ghi lời khai, Biểu mẫu tố tụng, hồ sơ vụ án).
+   */
+  async function delDoc(d) {
+    const [kind, realId] = d.app ? d.id.split(':') : ['kho', d.id];
+    const where = kind === 'rec' ? ' Biên bản sẽ bị xóa khỏi mục Ghi lời khai và hồ sơ vụ án.' : kind === 'ldoc' ? ' Văn bản sẽ bị xóa khỏi Biểu mẫu tố tụng và hồ sơ vụ án.' : '';
+    if (!(await ctx.confirm(`Xóa “${d.ten}”?${where} Có thể hoàn tác ngay sau khi xóa.`, { title: d.app ? 'Xóa văn bản' : 'Xóa tài liệu', okText: 'Xóa', danger: true }))) return;
+    let undo;
+    if (kind === 'rec') {
+      const removed = deleteRecords([realId]);
+      undo = () => restoreRecords(removed);
+    } else if (kind === 'ldoc') {
+      const item = legalDocsRepo.get(realId);
+      legalDocsRepo.remove(realId);
+      undo = () => item && legalDocsRepo.restore(item);
+    } else {
+      const full = await khoDb.get(realId);
+      await khoDb.remove(realId);
+      undo = () => full && khoDb.put(full);
+    }
+    selected.delete(d.id);
+    saveSel();
+    audit(d.app ? 'Xóa văn bản (từ Kho hồ sơ)' : 'Xóa tài liệu khỏi kho hồ sơ', d.ten);
+    await reload();
+    toast(d.app ? 'Đã xóa văn bản' : 'Đã xóa tài liệu', {
+      timeout: 8000,
+      action: {
+        label: 'Hoàn tác',
+        onClick: async () => {
+          await undo();
+          await reload();
+          toast('Đã khôi phục');
+        },
+      },
+    });
+  }
+
   $('[data-sel-all]', root).addEventListener('change', (e) => {
     visibleDocs().forEach((d) => (e.target.checked ? selected.add(d.id) : selected.delete(d.id)));
     saveSel();
@@ -268,11 +319,15 @@ export function render(ctx) {
       </div>
       <p class="hint">${[d.nguoi?.hoTen && `Người liên quan: ${d.nguoi.hoTen}`, d.tuCach && `Tư cách: ${d.tuCach}`, d.ngay && `Ngày: ${d.ngay}`, d.qa?.length && `${d.qa.length} lượt hỏi – đáp nhận diện được`].filter(Boolean).map(escapeHtml).join(' · ') || 'Chưa nhận diện được thông tin người liên quan.'}</p>
       <pre class="kho-text">${escapeHtml(d.text || '')}</pre>
-      <div class="modal-actions">${d.app ? '' : `<button class="btn btn-ghost" type="button" data-dl>${icon('download', 'ic-sm')}Tải tệp gốc</button>`}<span class="spacer"></span><button class="btn" type="button" data-close>Đóng</button>${d.app ? '' : `<button class="btn btn-primary" type="button" data-save>${icon('save', 'ic-sm')}Lưu</button>`}</div>`,
+      <div class="modal-actions"><button class="btn btn-ghost" type="button" data-mdel>${icon('trash', 'ic-sm')}Xóa</button>${d.app ? `<a class="btn btn-ghost" href="${d.id.startsWith('rec:') ? `#interview/${d.id.slice(4)}` : `#forms/doc/${d.id.slice(5)}`}" data-close>${icon('arrow-right', 'ic-sm')}Mở văn bản</a>` : `<button class="btn btn-ghost" type="button" data-dl>${icon('download', 'ic-sm')}Tải tệp gốc</button>`}<span class="spacer"></span><button class="btn" type="button" data-close>Đóng</button>${d.app ? '' : `<button class="btn btn-primary" type="button" data-save>${icon('save', 'ic-sm')}Lưu</button>`}</div>`,
       {
         className: 'modal-wide',
         label: d.ten,
         onMount(box, close) {
+          box.querySelector('[data-mdel]').addEventListener('click', () => {
+            close();
+            delDoc(d);
+          });
           box.querySelector('[data-dl]')?.addEventListener('click', async () => {
             const full = await khoDb.get(d.id);
             if (full?.blob) downloadBlob(full.blob, full.fileName, full.mime);
@@ -316,7 +371,110 @@ export function render(ctx) {
     const make = ctx.can('docs') && m.text && !m.actions ? `<button class="btn btn-sm" type="button" data-make="${i}">${icon('file', 'ic-sm')}Tạo văn bản chuẩn</button>` : '';
     return `<div class="msg-tools">${make}<button class="btn btn-ghost btn-sm" type="button" data-copy="${i}">${icon('copy', 'ic-sm')}Sao chép</button><button class="btn btn-ghost btn-sm btn-icon" type="button" data-del-msg="${i}" aria-label="Xóa câu trả lời" title="Xóa">${icon('trash', 'ic-sm')}</button></div>`;
   }
-  const saveChat = () => store.set('kho-chat', messages.filter((m) => !/class="typing"/.test(m.html || '')).slice(-60));
+  const notTyping = (m) => !/class="typing"/.test(m.html || '');
+  const saveChat = () => {
+    const cur = threads.find((t) => t.id === currentId);
+    if (cur) cur.updatedAt = Date.now();
+    store.set('kho-threads', threads.slice(0, 30).map((t) => ({ ...t, messages: t.messages.filter(notTyping).slice(-60) })));
+    store.set('kho-current', currentId);
+    renderThreadInfo();
+  };
+  /** Bắt đầu cuộc trò chuyện mới khi gửi câu hỏi đầu tiên. */
+  function ensureThread(firstText) {
+    if (threads.some((t) => t.id === currentId)) return;
+    const t = { id: uid(), title: threadTitle([{ role: 'user', text: firstText }]), createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
+    threads.unshift(t);
+    currentId = t.id;
+    messages = t.messages;
+  }
+  function openThread(id) {
+    if (busy) return toast('Đợi trợ lý trả lời xong rồi chuyển cuộc trò chuyện', { type: 'info' });
+    currentId = id;
+    messages = threads.find((t) => t.id === id)?.messages || [];
+    saveChat();
+    renderMsgs();
+  }
+  function newThread() {
+    if (busy) return;
+    currentId = null;
+    messages = [];
+    saveChat();
+    renderMsgs();
+    input.focus();
+  }
+  function renderThreadInfo() {
+    $('[data-thread-n]', root).textContent = threads.length || '';
+    $('[data-clear-chat]', root).hidden = !threads.some((t) => t.id === currentId);
+  }
+  async function deleteThreads(ids, all = false) {
+    if (busy) return toast('Đợi trợ lý trả lời xong rồi xóa', { type: 'info' });
+    const removed = threads.filter((t) => ids.includes(t.id));
+    if (!removed.length) return;
+    if (!(await ctx.confirm(all ? `Xóa toàn bộ ${removed.length} cuộc trò chuyện với trợ lý hồ sơ? Tài liệu trong kho và văn bản đã tạo vẫn giữ nguyên.` : `Xóa cuộc trò chuyện “${removed[0].title}”? Tài liệu trong kho và văn bản đã tạo vẫn giữ nguyên.`, { title: all ? 'Xóa toàn bộ lịch sử' : 'Xóa cuộc trò chuyện', okText: 'Xóa', danger: true }))) return;
+    const before = currentId;
+    threads = threads.filter((t) => !ids.includes(t.id));
+    if (ids.includes(currentId)) {
+      currentId = threads[0]?.id || null;
+      messages = threads[0]?.messages || [];
+    }
+    saveChat();
+    renderMsgs();
+    toast(all ? 'Đã xóa toàn bộ lịch sử' : 'Đã xóa cuộc trò chuyện', {
+      timeout: 8000,
+      action: {
+        label: 'Hoàn tác',
+        onClick: () => {
+          threads = [...threads, ...removed].sort((a, b) => b.updatedAt - a.updatedAt);
+          currentId = before;
+          messages = threads.find((t) => t.id === before)?.messages || [];
+          saveChat();
+          renderMsgs();
+          toast('Đã khôi phục');
+        },
+      },
+    });
+  }
+  function historyDialog() {
+    const listHtml = () =>
+      threads.length
+        ? threads
+            .map((t) => `<div class="ch-item ${t.id === currentId ? 'active' : ''}"><button type="button" class="ch-open" data-open-thread="${t.id}"><strong>${escapeHtml(t.title)}</strong><small>${relativeTime(t.updatedAt)} · ${t.messages.filter((m) => m.role === 'user').length} câu hỏi</small></button><button type="button" class="btn btn-ghost btn-sm btn-icon ch-del" data-del-thread="${t.id}" aria-label="Xóa cuộc trò chuyện “${escapeHtml(t.title)}”" title="Xóa">${icon('trash', 'ic-sm')}</button></div>`)
+            .join('')
+        : '<p class="ch-empty">Chưa có cuộc trò chuyện nào.</p>';
+    ctx.modal(
+      `<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button>
+       <h2 class="modal-title">Lịch sử trò chuyện — Trợ lý hồ sơ</h2>
+       <div class="ch-list ch-list-sheet" data-hlist>${listHtml()}</div>
+       <div class="modal-actions">${threads.length ? `<button class="btn" type="button" data-h-clear>${icon('trash', 'ic-sm')}Xóa tất cả</button>` : ''}<button class="btn btn-primary" type="button" data-h-new>${icon('plus', 'ic-sm')}Cuộc trò chuyện mới</button></div>`,
+      {
+        label: 'Lịch sử trò chuyện',
+        onMount(box, close) {
+          box.querySelector('[data-hlist]').addEventListener('click', (e) => {
+            const o = e.target.closest('[data-open-thread]');
+            if (o) {
+              close();
+              return openThread(o.dataset.openThread);
+            }
+            const d = e.target.closest('[data-del-thread]');
+            if (d) {
+              close();
+              deleteThreads([d.dataset.delThread]);
+            }
+          });
+          box.querySelector('[data-h-new]').addEventListener('click', () => {
+            close();
+            newThread();
+          });
+          box.querySelector('[data-h-clear]')?.addEventListener('click', () => {
+            close();
+            deleteThreads(threads.map((t) => t.id), true);
+          });
+        },
+      },
+    );
+  }
+  $('[data-history]', root).addEventListener('click', historyDialog);
+  $('[data-new-chat]', root).addEventListener('click', newThread);
   msgs.addEventListener('click', async (e) => {
     const cp = e.target.closest('[data-copy]');
     if (cp) {
@@ -352,24 +510,7 @@ export function render(ctx) {
       });
     }
   });
-  $('[data-clear-chat]', root).addEventListener('click', async () => {
-    if (!messages.length || busy) return;
-    if (!(await ctx.confirm('Xóa toàn bộ cuộc trò chuyện với trợ lý hồ sơ? Tài liệu trong kho và văn bản đã tạo vẫn giữ nguyên.', { title: 'Xóa cuộc trò chuyện', okText: 'Xóa', danger: true }))) return;
-    const removed = messages.splice(0);
-    saveChat();
-    renderMsgs();
-    toast('Đã xóa cuộc trò chuyện', {
-      timeout: 8000,
-      action: {
-        label: 'Hoàn tác',
-        onClick: () => {
-          messages.splice(0, 0, ...removed);
-          saveChat();
-          renderMsgs();
-        },
-      },
-    });
-  });
+  $('[data-clear-chat]', root).addEventListener('click', () => currentId && deleteThreads([currentId]));
 
   $$('[data-tpl]', root).forEach((b) =>
     b.addEventListener('click', () => {
@@ -389,6 +530,7 @@ export function render(ctx) {
     const text = input.value.trim();
     if (!text || busy) return;
     input.value = '';
+    ensureThread(text);
     push({ role: 'user', text });
     busy = true;
     $('[data-send]', root).disabled = true;
@@ -553,5 +695,6 @@ export function render(ctx) {
   renderCaseSelect();
   renderMode();
   renderMsgs();
+  renderThreadInfo();
   reload();
 }

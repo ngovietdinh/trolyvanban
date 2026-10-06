@@ -144,4 +144,48 @@ test.describe('Lịch sử trò chuyện, xóa, sao chép, tạo văn bản chu�
     await expect(page.locator('.kho-welcome')).toBeVisible();
     t.assertClean();
   });
+
+  test('Kho: lịch sử nhiều cuộc trò chuyện, xóa văn bản lập trong phần mềm và tài liệu tải lên (hoàn tác)', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#kho');
+    const ask = async (q) => {
+      await page.fill('.kho [data-input]', q);
+      await page.keyboard.press('Enter');
+      await expect(page.locator('.kho-msg.bot .msg-tools').last()).toBeVisible();
+    };
+    await ask('Tóm tắt hồ sơ');
+    await page.locator('[data-new-chat]').click();
+    await expect(page.locator('.kho-welcome')).toBeVisible();
+    await ask('Tìm mâu thuẫn');
+    await expect(page.locator('[data-thread-n]')).toHaveText('2');
+    await page.locator('[data-history]').click();
+    await expect(page.locator('.modal .ch-item')).toHaveCount(2);
+    await page.locator('.modal [data-open-thread]').nth(1).click();
+    await expect(page.locator('.kho-msg.user')).toHaveText('Tóm tắt hồ sơ');
+    await page.locator('[data-clear-chat]').click();
+    await page.locator('.modal [data-yes]').click();
+    await expect(page.locator('[data-thread-n]')).toHaveText('1');
+    await page.locator('.toast', { hasText: 'Đã xóa cuộc trò chuyện' }).getByRole('button', { name: 'Hoàn tác' }).click();
+    await expect(page.locator('[data-thread-n]')).toHaveText('2');
+    await page.reload();
+    await expect(page.locator('[data-thread-n]')).toHaveText('2');
+
+    // Văn bản lập trong phần mềm (văn bản tố tụng) hiện trong kho và xóa được.
+    await page.goto('/app.html#forms');
+    await page.locator('.tt-form-item[data-form]').first().click();
+    await page.locator('[data-save]').click();
+    await page.goto('/app.html#kho');
+    const item = page.locator('.kho-item', { hasText: 'trong phần mềm' });
+    await expect(item).toHaveCount(1);
+    await item.locator('[data-del]').click();
+    await page.locator('.modal [data-yes]').click();
+    await expect(item).toHaveCount(0);
+    await page.locator('.toast', { hasText: 'Đã xóa văn bản' }).getByRole('button', { name: 'Hoàn tác' }).click();
+    await expect(item).toHaveCount(1);
+    await item.locator('[data-del]').click();
+    await page.locator('.modal [data-yes]').click();
+    await page.goto('/app.html#forms');
+    await expect(page.locator('.tt-doc-row')).toHaveCount(0);
+    t.assertClean();
+  });
 });

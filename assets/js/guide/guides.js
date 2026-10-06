@@ -349,6 +349,8 @@ export const GUIDES = [
       'Trợ lý **không tự bịa**: câu trả lời luôn dựa trên tài liệu trong kho; nếu không tìm thấy, trợ lý sẽ nói không có dữ liệu.',
       'Huy hiệu [[AI]] / [[Ngoại tuyến]] cho biết nội dung có được gửi tới dịch vụ AI hay không.',
       'Biên bản, văn bản do trợ lý tạo luôn là **bản nháp** — kiểm tra, chỉnh sửa trước khi in ký.',
+      'Lịch sử: nút [[Lịch sử]] trên đầu khung trợ lý liệt kê các cuộc trò chuyện — mở lại, xóa từng cuộc hoặc [[Xóa tất cả]]; nút ＋ để bắt đầu cuộc mới. Mỗi câu trả lời có [[Sao chép]], [[Tạo văn bản chuẩn]] và 🗑 xóa.',
+      'Mọi tài liệu trong danh sách đều có 🗑: tệp tải lên bị xóa khỏi kho; biên bản, văn bản “trong phần mềm” bị xóa khỏi Ghi lời khai / Biểu mẫu tố tụng. Xóa nhầm → bấm [[Hoàn tác]].',
     ],
     mistakes: [
       ['Tải PDF dạng ảnh scan', 'Cần chuyển chữ (OCR) hoặc chuyển sang Word trước. Hệ thống sẽ báo nếu PDF không có lớp chữ.'],

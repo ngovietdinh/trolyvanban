@@ -431,7 +431,7 @@ export function render(ctx) {
     }
     e.target.value = '';
   });
-  const chatCount = () => (store.get('chat-threads', []) || []).length + (store.get('chat', []).length ? 1 : 0) + (store.get('kho-chat', []).length ? 1 : 0);
+  const chatCount = () => (store.get('chat-threads', []) || []).length + (store.get('chat', []).length ? 1 : 0) + (store.get('kho-chat', []).length ? 1 : 0) + (store.get('kho-threads', []) || []).length;
   const syncChatN = () => {
     const n = chatCount();
     $('[data-chat-n]', root).textContent = n ? ` ${n} cuộc trò chuyện` : ' Chưa có';
@@ -440,7 +440,7 @@ export function render(ctx) {
   syncChatN();
   $('[data-clear-chats]', root).addEventListener('click', async () => {
     if (!(await ctx.confirm(`Xóa toàn bộ ${chatCount()} cuộc trò chuyện? Văn bản, biên bản đã tạo vẫn giữ nguyên.`, { title: 'Xóa lịch sử trò chuyện', okText: 'Xóa', danger: true }))) return;
-    ['chat-threads', 'chat', 'chat-current', 'kho-chat'].forEach((k) => store.remove(k));
+    ['chat-threads', 'chat', 'chat-current', 'kho-chat', 'kho-threads', 'kho-current'].forEach((k) => store.remove(k));
     syncChatN();
     toast('Đã xóa lịch sử trò chuyện');
   });

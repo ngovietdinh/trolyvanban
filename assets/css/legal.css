@@ -2202,6 +2202,20 @@ div.tt-stage-h:hover {
   display: grid;
   gap: 2px;
 }
+.kho-ai-head > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.kho-ai-head > .kho-chat-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+@media (max-width: 480px) {
+  .kho-chat-tools [data-history] > span:not(.sb-count) {
+    display: none;
+  }
+}
 .kho-ai-head small {
   font-size: 12px;
   color: var(--text-3);
