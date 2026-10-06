@@ -88,8 +88,33 @@ jobs:
             desktop/dist/*.dmg
           if-no-files-found: error
 
-  release:
+  # Mở thử bản Intel (x64) trên máy Mac chip Intel trước khi phát hành.
+  test-mac-intel:
     needs: build
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tlvb-mac
+          path: out
+      - name: Cài từ .dmg và mở thử
+        run: |
+          sw_vers; uname -m
+          DMG="$(ls out/*-mac-x64.dmg)"
+          MNT="$(hdiutil attach -nobrowse "$DMG" | awk -F'\t' '/\/Volumes\//{print $NF}')"
+          cp -R "$MNT"/*.app /Applications/
+          hdiutil detach "$MNT"
+          APP="$(ls -d /Applications/Tro\ Ly\ Van\ Ban\ AI.app)"
+          xattr -cr "$APP"
+          lipo -archs "$APP/Contents/MacOS/$(basename "$APP" .app)"
+          /usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' "$APP/Contents/Info.plist" || true
+          "$APP/Contents/MacOS/$(basename "$APP" .app)" > run.log 2>&1 &
+          PID=$!
+          sleep 25
+          if kill -0 $PID 2>/dev/null; then echo "Bản Intel chạy được sau 25 giây"; kill $PID; else echo "Bản Intel thoát sớm:"; cat run.log; ls ~/Library/Logs/DiagnosticReports/; exit 1; fi
+
+  release:
+    needs: [build, test-mac-intel]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
