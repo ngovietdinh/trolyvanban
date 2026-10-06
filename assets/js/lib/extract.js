@@ -1,5 +1,6 @@
 // Trích văn bản thuần từ tệp người dùng tải lên: .docx (Word), .pdf (có lớp chữ), .txt, .md, .html.
 import { docxToText } from './docx.js';
+import { fixLegacy } from './vn-legacy.js';
 
 let pdfjsPromise = null;
 async function loadPdfjs() {
@@ -36,8 +37,9 @@ export async function pdfToText(buffer) {
   const pages = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    pages.push(pageText(content.items));
+    const content = await page.getTextContent({ disableNormalization: true });
+    // Văn bản phông cũ (TCVN3, VNI) → Unicode.
+    pages.push(fixLegacy(pageText(content.items)));
   }
   return { text: pages.join('\n\n'), pages: doc.numPages };
 }
@@ -53,14 +55,31 @@ const htmlToText = (s) =>
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>');
 
-/** Trả về { text, pages?, kind } hoặc ném lỗi tiếng Việt. */
-export async function extractText(file) {
+/** Nhận dạng chữ (OCR) cho PDF ảnh quét / ảnh chụp — dùng bộ chuyển PDF sang Word. */
+async function ocrText(file, onProgress) {
+  const [{ convertFile }, { flowToText }] = await Promise.all([import('./pdf-convert.js'), import('./docx-flow.js')]);
+  const { doc, stats } = await convertFile(file, { mode: 'auto', onProgress });
+  return { text: flowToText(doc), pages: doc.pages.length, ocr: true, confidence: stats.confidence };
+}
+
+/** Trả về { text, pages?, kind, ocr? } hoặc ném lỗi tiếng Việt. PDF ảnh quét, ảnh chụp được nhận dạng chữ (OCR) trên máy. */
+export async function extractText(file, { onProgress } = {}) {
   const name = file.name || '';
+  if (/^image\//.test(file.type) || /\.(jpe?g|png|webp|bmp|gif|tiff?)$/i.test(name)) {
+    const r = await ocrText(file, onProgress);
+    if (r.text.replace(/\s/g, '').length < 10) throw new Error(`Không nhận dạng được chữ trong ảnh “${name}”.`);
+    return { ...r, kind: 'image' };
+  }
   const buf = await file.arrayBuffer();
   if (/\.docx$/i.test(name)) return { text: await docxToText(buf), kind: 'docx' };
   if (/\.pdf$/i.test(name)) {
     const r = await pdfToText(buf);
-    if (r.text.replace(/\s/g, '').length < 30) throw new Error(`“${name}” là PDF dạng ảnh quét (không có lớp chữ) — cần chuyển sang Word hoặc PDF có chữ (OCR) trước khi tải lên.`);
+    if (r.text.replace(/\s/g, '').length < 30 * r.pages) {
+      // Ảnh quét (toàn bộ hoặc phần lớn) → nhận dạng chữ.
+      const o = await ocrText(file, onProgress);
+      if (o.text.replace(/\s/g, '').length < 30) throw new Error(`Không nhận dạng được chữ trong “${name}” (ảnh quá mờ?).`);
+      return { ...o, kind: 'pdf' };
+    }
     return { ...r, kind: 'pdf' };
   }
   if (/\.(txt|md|csv)$/i.test(name)) return { text: new TextDecoder().decode(buf), kind: 'txt' };

@@ -1,8 +1,8 @@
 {
-  "version": "2.10.1",
+  "version": "2.11.0",
   "date": "2026-10-06",
   "notes": [
-    "Kho hồ sơ: lịch sử nhiều cuộc trò chuyện (mở lại, xóa từng cuộc/tất cả, hoàn tác)",
-    "Mọi tài liệu trong kho đều xóa được, kể cả biên bản và văn bản lập trong phần mềm"
+    "PDF sang Word: giữ bố cục (đoạn, căn lề, đậm/nghiêng, bảng, phần đầu 2 cột), nhận dạng chữ bản scan, ảnh chụp ngay trên máy",
+    "Tự sửa phông cũ TCVN3/VNI; AI soát lỗi OCR hoặc AI đọc ảnh; Kho hồ sơ đọc được PDF scan, ảnh chụp"
   ]
 }

@@ -5,7 +5,8 @@ export function trackErrors(page) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`console: ${m.text()}`);
+    // Bỏ qua cảnh báo nội bộ của bộ nhận dạng chữ (tesseract) — không phải lỗi ứng dụng.
+    if (m.type() === 'error' && !/Parameter not found/.test(m.text())) errors.push(`console: ${m.text()}`);
   });
   return { errors, assertClean: () => expect(errors, errors.join('\n')).toEqual([]) };
 }

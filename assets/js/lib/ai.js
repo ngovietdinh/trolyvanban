@@ -220,10 +220,23 @@ async function tryWithRetry(opts) {
 /** Tên trung tính cho mọi nhà cung cấp. */
 export const streamAI = streamClaude;
 
+/*
+ * Tin nhắn có ảnh (dạng trung tính): content = [{ type: 'text', text }, { type: 'image', mime, data (base64) }].
+ * Mỗi nhà cung cấp có cách biểu diễn riêng — chuyển đổi tại đây.
+ */
+const parts = (content) => (Array.isArray(content) ? content : [{ type: 'text', text: String(content ?? '') }]);
+function toAnthropic(messages) {
+  return messages.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.map((p) => (p.type === 'image' ? { type: 'image', source: { type: 'base64', media_type: p.mime || 'image/jpeg', data: p.data } } : { type: 'text', text: p.text })) } : m));
+}
+function toOpenAI(messages) {
+  return messages.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.map((p) => (p.type === 'image' ? { type: 'image_url', image_url: { url: `data:${p.mime || 'image/jpeg'};base64,${p.data}` } } : { type: 'text', text: p.text })) } : m));
+}
+const toGeminiParts = (content) => parts(content).map((p) => (p.type === 'image' ? { inline_data: { mime_type: p.mime || 'image/jpeg', data: p.data } } : { text: p.text }));
+
 async function streamAnthropic({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000 }) {
   const Anthropic = await loadSdk();
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-  const params = { model, max_tokens: maxTokens, system, messages };
+  const params = { model, max_tokens: maxTokens, system, messages: toAnthropic(messages) };
   // Opus 5.5 / Sonnet 5.5: bật cơ chế dự phòng phía máy chủ khi yêu cầu bị bộ lọc an toàn từ chối.
   const withFallback = model === 'claude-opus-5-5' || model === 'claude-sonnet-5-5';
   let stream;
@@ -307,7 +320,7 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: model || cfg.defaultModel, stream: true, max_tokens: Math.min(maxTokens, cfg.maxTokens || 16000), messages: [{ role: 'system', content: system }, ...messages] }),
+      body: JSON.stringify({ model: model || cfg.defaultModel, stream: true, max_tokens: Math.min(maxTokens, cfg.maxTokens || 16000), messages: [{ role: 'system', content: system }, ...toOpenAI(messages)] }),
     },
     provider,
     signal,
@@ -333,7 +346,7 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
 
 async function streamGemini({ apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000 }) {
   const cfg = PROVIDERS.gemini;
-  const contents = messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(m.content) }] }));
+  const contents = messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: toGeminiParts(m.content) }));
   const res = await doFetch(
     `${cfg.base}/models/${encodeURIComponent(model || cfg.defaultModel)}:streamGenerateContent?alt=sse`,
     {

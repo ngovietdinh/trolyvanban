@@ -45,6 +45,15 @@ await build({
 // pdf.js — đọc chữ từ tệp PDF ngay trên trình duyệt (Kho hồ sơ).
 const pdfDir = join(root, 'assets/vendor/pdfjs');
 mkdirSync(pdfDir, { recursive: true });
-for (const f of ['pdf.min.mjs', 'pdf.worker.min.mjs']) copyFileSync(join(root, 'node_modules/pdfjs-dist/build', f), join(pdfDir, f));
+for (const f of ['pdf.min.mjs', 'pdf.worker.min.mjs']) copyFileSync(join(root, 'node_modules/pdfjs-dist/legacy/build', f), join(pdfDir, f));
 copyFileSync(join(root, 'node_modules/pdfjs-dist/LICENSE'), join(pdfDir, 'LICENSE'));
-console.log('Vendored fonts + Anthropic SDK + pdf.js.');
+// tesseract.js — nhận dạng chữ (OCR) tiếng Việt cho PDF ảnh quét, ảnh chụp văn bản (PDF sang Word, Kho hồ sơ).
+const ocrDir = join(root, 'assets/vendor/tesseract');
+rmSync(ocrDir, { recursive: true, force: true });
+mkdirSync(join(ocrDir, 'core'), { recursive: true });
+mkdirSync(join(ocrDir, 'lang'), { recursive: true });
+for (const f of ['tesseract.esm.min.js', 'worker.min.js']) copyFileSync(join(root, 'node_modules/tesseract.js/dist', f), join(ocrDir, f));
+copyFileSync(join(root, 'node_modules/tesseract.js/LICENSE.md'), join(ocrDir, 'LICENSE.md'));
+for (const f of ['tesseract-core-relaxedsimd-lstm.wasm.js', 'tesseract-core-simd-lstm.wasm.js', 'tesseract-core-lstm.wasm.js']) copyFileSync(join(root, 'node_modules/tesseract.js-core', f), join(ocrDir, 'core', f));
+for (const l of ['vie', 'eng']) copyFileSync(join(root, `node_modules/@tesseract.js-data/${l}/4.0.0_best_int/${l}.traineddata.gz`), join(ocrDir, 'lang', `${l}.traineddata.gz`));
+console.log('Vendored fonts + Anthropic SDK + pdf.js + tesseract.js.');

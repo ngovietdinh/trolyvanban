@@ -2854,3 +2854,265 @@ mark.err-mark.is-ai {
 .ai-out-tools {
   padding: 0 20px 16px;
 }
+
+/* ---------- PDF sang Word ---------- */
+.pw-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.pw-opts {
+  position: sticky;
+  top: 0;
+}
+.pw-modes {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.pw-modes legend {
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.pw-mode {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.pw-mode input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.pw-mode .quick-icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+}
+.pw-mode strong {
+  display: block;
+  font-size: 13.5px;
+}
+.pw-mode small {
+  font-size: 12.5px;
+  color: var(--text-3);
+  line-height: 1.45;
+}
+.pw-mode.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.pw-mode.off {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.pw-mode:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.pw-checks {
+  display: grid;
+  gap: 8px;
+  font-size: 13.5px;
+}
+.pw-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pw-range .label {
+  font-weight: 600;
+  font-size: 13px;
+}
+.pw-range .input {
+  width: 76px;
+}
+.pw-privacy {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.pw-privacy .ic {
+  flex: none;
+  margin-top: 2px;
+}
+.pw-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.pw-file > div {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.pw-file strong {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pw-file small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.pw-out {
+  min-height: 420px;
+  overflow: hidden;
+}
+.pw-empty {
+  padding: 48px 24px;
+}
+.pw-feats {
+  list-style: none;
+  margin: 18px auto 0;
+  padding: 0;
+  max-width: 520px;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+.pw-feats li {
+  display: flex;
+  gap: 8px;
+}
+.pw-feats .ic {
+  flex: none;
+  color: var(--success);
+  margin-top: 2px;
+}
+.pw-progress {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 72px 24px;
+  text-align: center;
+}
+.pw-progress .bar {
+  width: min(100%, 380px);
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.pw-progress .bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+.pw-progress small {
+  color: var(--text-3);
+}
+.spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--surface-3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.pw-res-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.pw-res-head > div:first-child {
+  display: grid;
+  min-width: 0;
+}
+.pw-res-head small {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.pw-res-head .inline {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pw-out > .note {
+  margin: 12px 18px 0;
+}
+.pw-preview {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 18px 12px 24px;
+  background: var(--surface-2);
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 18px 18px;
+  max-height: 78vh;
+  overflow: auto;
+}
+.pw-wrap {
+  position: relative;
+}
+.pw-page {
+  box-sizing: border-box;
+  background: #fff;
+  color: #000;
+  font-family: 'Times New Roman', Tinos, serif;
+  font-size: 13pt;
+  line-height: 1.15;
+  box-shadow: var(--shadow-md);
+  transform-origin: top left;
+  word-break: break-word;
+}
+.pw-page p {
+  margin: 0;
+}
+.pw-tab {
+  display: inline-block;
+  width: 2.5em;
+}
+.pw-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.pw-table td {
+  vertical-align: top;
+  padding: 1pt 0;
+}
+.pw-table.grid td {
+  border: 0.75pt solid #000;
+  padding: 2pt 4pt;
+}
+.pw-num {
+  position: absolute;
+  left: 0;
+  bottom: 4px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+@media (max-width: 980px) {
+  .pw-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pw-opts {
+    position: static;
+  }
+}
