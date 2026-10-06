@@ -66,7 +66,7 @@ function renderList(ctx) {
                 <button class="btn btn-ghost btn-sm btn-icon" type="button" data-del-rec="${r.id}" aria-label="Xóa biên bản ${escapeHtml(r.nguoiKhai?.hoTen || '')}" title="Xóa biên bản">${icon('trash', 'ic-sm')}</button></li>`;
             })
             .join('')}</ul>`
-        : `<div class="empty"><div class="empty-icon">${icon('message', 'ic-lg')}</div><h3>Chưa có biên bản</h3><p>Lập kế hoạch hỏi từ Cây hỏi đáp pháp luật rồi bắt đầu ghi lời khai.</p><a class="btn btn-primary" href="#legal">${icon('layers')}Mở cây hỏi đáp</a></div>`
+        : `<div class="empty"><div class="empty-icon">${icon('message', 'ic-lg')}</div><h3>Chưa có biên bản</h3><p>Lập kế hoạch hỏi từ Cây hỏi đáp pháp luật rồi bắt đầu ghi lời khai.</p><a class="btn btn-primary" href="#legal">${icon('layers')}Mở cây hỏi đáp</a><a class="btn btn-ghost" href="#help/interview">${icon('help')}Xem hướng dẫn</a></div>`
     }</section>
   </div>`;
     const v = ctx.view;

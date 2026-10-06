@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="assets/css/document.css" />
   <link rel="stylesheet" href="assets/css/app.css" />
   <link rel="stylesheet" href="assets/css/legal.css" />
+  <link rel="stylesheet" href="assets/css/help.css" />
   <script>
     try { const t = localStorage.getItem('tlvb:theme'); if (t) document.documentElement.dataset.theme = JSON.parse(t); } catch {}
   </script>
@@ -61,6 +62,7 @@
           <div><strong>Chế độ cơ bản</strong><small>Thêm API key để bật AI</small></div>
         </div>
         <a href="#admin" data-nav="admin" class="sb-link"><svg class="ic"><use href="assets/icons.svg#i-shield" /></svg>Quản trị tài khoản</a>
+        <a href="#help" data-nav="help" class="sb-link"><svg class="ic"><use href="assets/icons.svg#i-help" /></svg>Hướng dẫn sử dụng</a>
         <a href="#settings" data-nav="settings" class="sb-link"><svg class="ic"><use href="assets/icons.svg#i-settings" /></svg>Cài đặt</a>
       </div>
     </aside>
@@ -73,12 +75,19 @@
           <svg class="ic"><use href="assets/icons.svg#i-menu" /></svg>
         </button>
         <div class="crumbs"><span data-view-title>Tổng quan</span></div>
+        <div class="help-hint" data-help-hint hidden>
+          <button type="button" class="help-hint-open" data-help-hint-open><svg class="ic ic-sm"><use href="assets/icons.svg#i-help" /></svg><span>Lần đầu dùng? <strong>Xem hướng dẫn</strong></span></button>
+          <button type="button" class="help-hint-x" data-help-hint-x aria-label="Ẩn gợi ý hướng dẫn" title="Ẩn gợi ý"><svg class="ic ic-sm"><use href="assets/icons.svg#i-x" /></svg></button>
+        </div>
         <button class="search-trigger" type="button" data-palette-open aria-label="Mở bảng lệnh (Ctrl + K)">
           <svg class="ic ic-sm"><use href="assets/icons.svg#i-search" /></svg>
           <span>Tìm chức năng, tài liệu…</span>
           <kbd class="kbd">Ctrl K</kbd>
         </button>
         <div class="topbar-actions">
+          <button class="btn btn-ghost btn-icon" type="button" aria-label="Hướng dẫn cho màn hình này (F1)" title="Hướng dẫn (F1)" data-help-open>
+            <svg class="ic"><use href="assets/icons.svg#i-help" /></svg>
+          </button>
           <button class="btn btn-ghost btn-icon theme-toggle" type="button" aria-label="Chuyển giao diện sáng/tối" data-theme-toggle>
             <svg class="ic icon-sun"><use href="assets/icons.svg#i-sun" /></svg>
             <svg class="ic icon-moon"><use href="assets/icons.svg#i-moon" /></svg>

@@ -134,7 +134,7 @@ export function render(ctx) {
             </li>`;
           })
           .join('')
-      : `<li class="kho-empty">${n ? 'Không tìm thấy nội dung phù hợp.' : 'Chưa có tài liệu. Tải lên biên bản, quyết định, kết luận giám định… để làm dữ liệu cho trợ lý.'}</li>`;
+      : `<li class="kho-empty">${n ? 'Không tìm thấy nội dung phù hợp.' : 'Chưa có tài liệu. Tải lên biên bản, quyết định, kết luận giám định… để làm dữ liệu cho trợ lý. <a href="#help/kho">Xem hướng dẫn và ví dụ câu lệnh</a>'}</li>`;
     const visIds = new Set(vis.map((d) => d.id));
     const selN = [...selected].filter((id) => visIds.has(id)).length;
     $('[data-sel-n]', root).textContent = selN ? `Đã chọn ${selN}/${vis.length}` : `${vis.length} tài liệu (dùng tất cả)`;

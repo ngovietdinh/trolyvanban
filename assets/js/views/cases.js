@@ -118,7 +118,7 @@ function renderList(ctx) {
               </a>`;
             })
             .join('')}</div>`
-        : `<section class="panel"><div class="empty"><div class="empty-icon">${icon('folder', 'ic-lg')}</div><h3>Chưa có hồ sơ vụ án</h3><p>Tạo hồ sơ để quản lý người tham gia tố tụng và các biên bản lời khai.</p><button class="btn btn-primary" type="button" data-new2>${icon('plus')}Tạo hồ sơ đầu tiên</button></div></section>`
+        : `<section class="panel"><div class="empty"><div class="empty-icon">${icon('folder', 'ic-lg')}</div><h3>Chưa có hồ sơ vụ án</h3><p>Tạo hồ sơ để quản lý người tham gia tố tụng và các biên bản lời khai.</p><button class="btn btn-primary" type="button" data-new2>${icon('plus')}Tạo hồ sơ đầu tiên</button><a class="btn btn-ghost" href="#help/quytrinh">${icon('help')}Xem quy trình mẫu</a></div></section>`
     }
     ${loosePlans.length ? `<section class="panel" style="margin-top:18px"><div class="panel-head"><h2>${icon('layers', 'ic-sm')}Kế hoạch hỏi chưa gắn hồ sơ</h2></div><ul class="doc-list">${loosePlans.map(planRow).join('')}</ul></section>` : ''}
   </div>`;

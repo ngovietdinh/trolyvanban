@@ -23,6 +23,9 @@ import * as legal from './views/legal.js';
 import * as interview from './views/interview.js';
 import * as cases from './views/cases.js';
 import * as admin from './views/admin.js';
+import * as help from './views/help.js';
+import { guideForRoute, visibleGuides, findGuide } from './guide/guides.js';
+import { guideBodyHtml, bindGuide, isSeen } from './guide/render.js';
 import { casesRepo } from './legal/repo.js';
 
 // perm: quyền cần có để mở màn hình.
@@ -43,6 +46,7 @@ const ROUTES = {
   docs: { mod: docs, title: 'Tài liệu của tôi', perm: 'docs' },
   admin: { mod: admin, title: 'Quản trị tài khoản', perm: 'users' },
   settings: { mod: settings, title: 'Cài đặt' },
+  help: { mod: help, title: 'Hướng dẫn sử dụng' },
 };
 
 let view = $('#view');
@@ -184,7 +188,74 @@ function route() {
     console.error(err);
     view.innerHTML = `<div class="page"><div class="empty"><div class="empty-icon">${icon('alert')}</div><h3>Đã xảy ra lỗi</h3><p>${escapeHtml(err.message)}</p></div></div>`;
   }
+  // Ví dụ “Thử ngay” từ hướng dẫn: điền sẵn vào ô nhập của màn hình đích.
+  if (ctx.handoff?.prefill) {
+    const box = $('[data-input]', view);
+    if (box) {
+      box.value = ctx.handoff.prefill;
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      box.focus();
+      toast('Đã điền sẵn ví dụ — chỉnh lại tên, nội dung rồi gửi', { type: 'info' });
+    }
+    ctx.handoff = null;
+  }
+  refreshHelpHint();
 }
+
+/* ---------- Hướng dẫn theo ngữ cảnh ---------- */
+const helpOpened = () => store.get('help-opened', {});
+function markHelpOpened(id) {
+  store.set('help-opened', { ...helpOpened(), [id]: Date.now() });
+  refreshHelpHint();
+}
+function refreshHelpHint() {
+  const hint = $('[data-help-hint]');
+  if (!hint) return;
+  const g = accounts.current() && currentRoute && currentRoute !== 'help' ? guideForRoute(currentRoute) : null;
+  hint.hidden = !g || (g.perm && !accounts.can(g.perm)) || !!store.get('help-hint-off', false) || isSeen(g.id) || !!helpOpened()[g.id];
+}
+/** Mở ngăn hướng dẫn bên phải cho màn hình hiện tại (hoặc hướng dẫn có id). */
+function openHelp(id) {
+  if (!id && currentRoute === 'help') id = parseHash().params[0];
+  const g = (id && findGuide(id)) || guideForRoute(currentRoute) || findGuide('batdau');
+  markHelpOpened(g.id);
+  const others = visibleGuides(ctx.can).filter((x) => x.id !== g.id && x.group === g.group).slice(0, 4);
+  modal(
+    `<div class="hd-head">
+       <span class="quick-icon">${icon(g.icon)}</span>
+       <div><small>Hướng dẫn nhanh · ${escapeHtml(g.time)}</small><h2 class="modal-title" tabindex="-1" autofocus>${escapeHtml(g.title)}</h2></div>
+       <button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng hướng dẫn" data-close>${icon('x')}</button>
+     </div>
+     <p class="hd-sum">${escapeHtml(g.summary)}</p>
+     <div class="hd-body">${guideBodyHtml(g, { compact: true, can: ctx.can })}</div>
+     ${others.length ? `<div class="hd-more"><small>Hướng dẫn cùng nhóm</small>${others.map((o) => `<a href="#help/${o.id}" data-close>${icon(o.icon, 'ic-sm')}${escapeHtml(o.title)}</a>`).join('')}</div>` : ''}
+     <div class="hd-foot"><a class="btn btn-primary" href="#help/${g.id}" data-close>${icon('book', 'ic-sm')}Xem đầy đủ (hỏi – đáp, liên quan)</a><a class="btn btn-ghost" href="#help" data-close>Tất cả hướng dẫn</a></div>`,
+    {
+      className: 'modal-drawer',
+      label: `Hướng dẫn: ${g.title}`,
+      onMount(box, close) {
+        box.parentElement.classList.add('is-drawer');
+        bindGuide(box, g, ctx, { onNavigate: close });
+      },
+    },
+  );
+}
+ctx.openHelp = openHelp;
+$('[data-help-open]').addEventListener('click', () => openHelp());
+$('[data-help-hint-open]').addEventListener('click', () => openHelp());
+$('[data-help-hint-x]').addEventListener('click', () => {
+  store.set('help-hint-off', true);
+  refreshHelpHint();
+  toast('Đã ẩn gợi ý. Vẫn có thể bấm nút ? hoặc phím F1 để xem hướng dẫn.', { type: 'info' });
+});
+document.addEventListener('keydown', (e) => {
+  if (!accounts.current() || document.querySelector('.modal-backdrop')) return;
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+  if (e.key === 'F1' || (e.key === '?' && !typing && !e.ctrlKey && !e.metaKey)) {
+    e.preventDefault();
+    openHelp();
+  }
+});
 
 /* ---------- Chrome: sidebar, user menu, AI status ---------- */
 function refreshChrome() {
@@ -466,7 +537,8 @@ function paletteCommands() {
   const can = (p) => accounts.can(p);
   const nav = Object.entries(ROUTES)
     .filter(([, r]) => !r.perm || can(r.perm))
-    .map(([k, r]) => ({ group: 'Điều hướng', label: r.title, icon: { dashboard: 'home', compose: 'file', legal: 'layers', interview: 'message', cases: 'folder', forms: 'file', kho: 'sparkles', chat: 'sparkles', spell: 'spell', summary: 'book', number: 'hash', templates: 'layers', docs: 'folder', admin: 'shield', settings: 'settings' }[k], run: () => ctx.navigate(`#${k}`) }));
+    .map(([k, r]) => ({ group: 'Điều hướng', label: r.title, icon: { dashboard: 'home', compose: 'file', legal: 'layers', interview: 'message', cases: 'folder', forms: 'file', kho: 'sparkles', chat: 'sparkles', spell: 'spell', summary: 'book', number: 'hash', templates: 'layers', docs: 'folder', admin: 'shield', settings: 'settings', help: 'help' }[k], run: () => ctx.navigate(`#${k}`) }));
+  const guides = visibleGuides(can).map((g) => ({ group: 'Hướng dẫn', label: `Hướng dẫn: ${g.title}`, icon: 'help', run: () => ctx.navigate(`#help/${g.id}`) }));
   const crimes = (can('legal') ? ALL_CRIMES : []).map((c) => ({ group: 'Tội danh — cây hỏi đáp', label: `Điều ${c.dieu}. ${c.ten}`, icon: 'gavel', run: () => ctx.navigate(`#legal/${c.dieu}`) }));
   const types = (can('docs') ? DOC_TYPES : []).map((t) => ({ group: 'Soạn mới', label: `Soạn ${t.name.toLowerCase()}`, icon: t.icon, hint: t.abbr, run: () => ctx.navigate(`#compose/${t.id}`) }));
   const recent = (can('docs') ? docsRepo.list() : [])
@@ -476,12 +548,16 @@ function paletteCommands() {
     { group: 'Thao tác', label: 'Chuyển giao diện sáng/tối', icon: 'moon', run: () => $('[data-theme-toggle]').click() },
     { group: 'Thao tác', label: 'Đăng xuất', icon: 'logout', run: () => $('[data-logout]')?.click() },
   ];
-  return [...nav, ...types, ...crimes, ...recent, ...actions];
+  return [...nav, ...guides, ...types, ...crimes, ...recent, ...actions];
 }
 
 function renderPalette() {
   const q = norm(pInput.value.trim());
-  pItems = paletteCommands().filter((c) => !q || norm(c.label + ' ' + c.group).includes(q));
+  const words = q.split(/\s+/).filter(Boolean);
+  pItems = paletteCommands().filter((c) => {
+    const t = norm(c.label + ' ' + c.group);
+    return words.every((w) => t.includes(w));
+  });
   pIndex = Math.min(pIndex, Math.max(0, pItems.length - 1));
   if (!pItems.length) {
     pList.innerHTML = `<li class="palette-empty">Không tìm thấy kết quả phù hợp</li>`;

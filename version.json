@@ -1,8 +1,8 @@
 {
-  "version": "2.6.0",
-  "date": "2026-10-05",
+  "version": "2.7.0",
+  "date": "2026-10-06",
   "notes": [
-    "Kho hồ sơ & Trợ lý AI: tải lên Word/PDF/txt, hỏi đáp có trích dẫn, tìm mâu thuẫn",
-    "Lập biên bản lời khai mới từ các BBLK cũ, tạo văn bản tố tụng theo mẫu bằng lệnh"
+    "Trung tâm hướng dẫn: từng bước, ví dụ minh họa, Thử ngay, lỗi thường gặp, hỏi đáp cho mọi chức năng",
+    "Nút ? / phím F1 mở hướng dẫn đúng màn hình; gợi ý cho người mới; lộ trình làm quen"
   ]
 }
