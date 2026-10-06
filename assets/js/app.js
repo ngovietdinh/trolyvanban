@@ -4,6 +4,7 @@ import { store, docsRepo } from './lib/store.js';
 import { PROVIDERS, setAIHooks } from './lib/ai.js';
 import { accounts, vault, systemConfig } from './lib/accounts.js';
 import { initUpdates } from './update.js';
+import { desktop, isDesktop } from './lib/platform.js';
 import { DOC_TYPES } from './lib/doc-types.js';
 import { ALL_CRIMES } from './legal/engine.js';
 
@@ -476,7 +477,9 @@ function gateHtml(mode) {
   const title = isLogin ? 'Đăng nhập' : first ? 'Tạo tài khoản đầu tiên' : 'Tạo tài khoản';
   const sub = isLogin
     ? 'Dữ liệu và API key của mỗi tài khoản được lưu, mã hóa riêng trên máy này.'
-    : 'Tài khoản mới có quyền Người dùng. Quản trị viên đăng nhập trên máy này để cấp thêm quyền (Tố tụng, AI…).';
+    : isDesktop
+      ? 'Bản cài đặt trên máy: tài khoản mới có toàn quyền (văn bản, công cụ, AI, Tố tụng). Dữ liệu chỉ lưu trên máy này.'
+      : 'Tài khoản mới có quyền Người dùng. Quản trị viên đăng nhập trên máy này để cấp thêm quyền (Tố tụng, AI…).';
   return `
     <div class="gate-card">
       <div class="auth-head">
@@ -496,7 +499,7 @@ function gateHtml(mode) {
         ${isLogin && !signup ? 'Liên hệ quản trị viên để được cấp tài khoản.' : ''}
         ${!isLogin && !first ? `Đã có tài khoản? <button type="button" data-gate-mode="login">Đăng nhập</button>` : ''}
       </p>
-      <p class="gate-foot">${icon('lock', 'ic-sm')}Chạy cục bộ trên máy · <a href="index.html">Về trang giới thiệu</a></p>
+      <p class="gate-foot">${icon('lock', 'ic-sm')}Chạy cục bộ trên máy${isDesktop ? ` · Bản cài đặt ${desktop.os}` : ' · <a href="index.html">Về trang giới thiệu</a>'}</p>
     </div>`;
 }
 

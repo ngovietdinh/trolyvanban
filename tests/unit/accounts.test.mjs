@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { accounts, vault, effectivePerms, ROLES, PERMS, SUPER_EMAIL, setSystemConfig, auditLog } from '../../assets/js/lib/accounts.js';
+import { accounts, vault, effectivePerms, signupDefaults, ROLES, PERMS, SUPER_EMAIL, setSystemConfig, auditLog } from '../../assets/js/lib/accounts.js';
 import { rawStore, store, getScope } from '../../assets/js/lib/store.js';
 
 const PW = 'matkhau-toi-cao';
@@ -85,4 +85,21 @@ test('quyền thực tế = mặc định vai trò + ghi đè', () => {
   assert.ok(p.has('legal') && !p.has('ai'));
   assert.equal(effectivePerms({ role: 'superadmin', perms: { legal: false } }).has('legal'), true);
   assert.equal(effectivePerms(null).size, 0);
+});
+
+test('quyền mặc định khi tự đăng ký: web chờ cấp quyền, bản cài đặt toàn quyền', () => {
+  const all = PERMS.map((p) => p.id).sort();
+  const perms = (d) => [...effectivePerms({ role: d.role, perms: d.perms })].sort();
+  const web = signupDefaults({ desktop: false });
+  assert.equal(web.role, 'user');
+  assert.equal(web.pending, true);
+  assert.ok(!perms(web).includes('legal'));
+  const first = signupDefaults({ desktop: true, firstUser: true });
+  assert.equal(first.role, 'superadmin');
+  assert.deepEqual(perms(first), all);
+  const later = signupDefaults({ desktop: true });
+  assert.equal(later.role, 'admin');
+  assert.equal(later.pending, false);
+  assert.deepEqual(perms(later), all);
+  assert.equal(signupDefaults({ desktop: false, superAcc: true }).role, 'superadmin');
 });

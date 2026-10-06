@@ -1,0 +1,84 @@
+{
+  "name": "trolyvanban-desktop",
+  "productName": "Trợ Lý Văn Bản AI",
+  "version": "2.12.0",
+  "description": "Trợ Lý Văn Bản AI — bản cài đặt trên máy tính",
+  "author": "Trợ Lý Văn Bản AI",
+  "homepage": "https://github.com/ngovietdinh/trolyvanban",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "vn.trolyvanban.desktop",
+    "productName": "Trợ Lý Văn Bản AI",
+    "artifactName": "TroLyVanBan-${version}-${os}-${arch}.${ext}",
+    "copyright": "Trợ Lý Văn Bản AI",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "build/icon.png",
+      "web/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Trợ Lý Văn Bản AI",
+      "deleteAppDataOnUninstall": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "identity": null
+    },
+    "dmg": {
+      "title": "Trợ Lý Văn Bản AI ${version}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office",
+      "icon": "build/icon.png"
+    },
+    "publish": null,
+    "afterPack": "build/after-pack.cjs"
+  },
+  "repository": "github:ngovietdinh/trolyvanban"
+}

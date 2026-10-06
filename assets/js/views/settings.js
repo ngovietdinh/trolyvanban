@@ -7,7 +7,8 @@ import { khoDb } from '../lib/kho-db.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { audit } from '../lib/accounts.js';
 import { APP_VERSION } from '../version.js';
-import { checkForUpdate, applyUpdate } from '../update.js';
+import { isDesktop } from '../lib/platform.js';
+import { checkForUpdate, applyUpdate, DESKTOP_DOWNLOAD_URL } from '../update.js';
 
 const BACKUP_KEYS = { docs: 'docs', cases: 'cases', records: 'records', plans: 'plans' };
 
@@ -123,12 +124,16 @@ export function render(ctx) {
       <section class="panel">
         <div class="panel-head"><h2>${icon('refresh', 'ic-sm')}Phiên bản &amp; cập nhật</h2><span class="badge" data-version>v${APP_VERSION}</span></div>
         <div class="setting-row">
-          <div><h3>Cập nhật phần mềm</h3><p>Ứng dụng chạy cục bộ và lưu bộ nhớ đệm để dùng ngoại tuyến. Cập nhật chỉ thay mã nguồn — tài khoản, API key và dữ liệu trên máy được giữ nguyên.</p></div>
+          <div><h3>Cập nhật phần mềm</h3><p>${isDesktop ? 'Bản cài đặt trên máy, dùng được khi không có mạng. Có bản mới thì tải bộ cài và cài đè lên — tài khoản, API key và dữ liệu được giữ nguyên.' : 'Ứng dụng chạy cục bộ và lưu bộ nhớ đệm để dùng ngoại tuyến. Cập nhật chỉ thay mã nguồn — tài khoản, API key và dữ liệu trên máy được giữ nguyên.'}</p></div>
           <div class="setting-ctl">
             <div class="inline"><button class="btn btn-sm" type="button" data-check-update>${icon('refresh', 'ic-sm')}Kiểm tra cập nhật</button></div>
             <div data-update-out></div>
           </div>
         </div>
+        ${isDesktop ? '' : `<div class="setting-row">
+          <div><h3>Bản cài đặt cho máy tính</h3><p>Cài ứng dụng trên Windows hoặc macOS: chạy như phần mềm riêng, dùng được khi không có mạng, tài khoản tạo mới có toàn quyền (kể cả phân hệ Tố tụng).</p></div>
+          <div class="setting-ctl"><a class="btn btn-sm" href="${DESKTOP_DOWNLOAD_URL}" target="_blank" rel="noopener" data-desktop-dl>${icon('download', 'ic-sm')}Tải bộ cài Windows / macOS</a></div>
+        </div>`}
       </section>
 
       <section class="panel">
@@ -353,7 +358,7 @@ export function render(ctx) {
     try {
       const r = await checkForUpdate();
       out.innerHTML = r.available
-        ? `<div class="note">${icon('info', 'ic-sm')}<span>Có phiên bản mới <strong>v${escapeHtml(r.latest)}</strong>.${r.notes?.length ? `<br>${r.notes.map((n) => '• ' + escapeHtml(n)).join('<br>')}` : ''}</span></div><button class="btn btn-primary btn-sm" type="button" data-apply-update>${icon('download', 'ic-sm')}Cập nhật ngay</button>`
+        ? `<div class="note">${icon('info', 'ic-sm')}<span>Có phiên bản mới <strong>v${escapeHtml(r.latest)}</strong>.${r.notes?.length ? `<br>${r.notes.map((n) => '• ' + escapeHtml(n)).join('<br>')}` : ''}</span></div><button class="btn btn-primary btn-sm" type="button" data-apply-update>${icon('download', 'ic-sm')}${isDesktop ? 'Tải bộ cài mới' : 'Cập nhật ngay'}</button>`
         : `<p class="note">${icon('check-circle', 'ic-sm')}<span>Bạn đang dùng phiên bản mới nhất (v${APP_VERSION}).</span></p>`;
       $('[data-apply-update]', out)?.addEventListener('click', applyUpdate);
     } catch (err) {

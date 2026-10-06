@@ -1,8 +1,9 @@
 {
-  "version": "2.11.0",
+  "version": "2.12.0",
   "date": "2026-10-06",
   "notes": [
-    "PDF sang Word: giữ bố cục (đoạn, căn lề, đậm/nghiêng, bảng, phần đầu 2 cột), nhận dạng chữ bản scan, ảnh chụp ngay trên máy",
-    "Tự sửa phông cũ TCVN3/VNI; AI soát lỗi OCR hoặc AI đọc ảnh; Kho hồ sơ đọc được PDF scan, ảnh chụp"
+    "Bộ cài đặt trên máy tính cho Windows và macOS: chạy như phần mềm riêng, dùng ngoại tuyến",
+    "Bản cài đặt mặc định toàn quyền: tài khoản đầu tiên là quản trị tối cao, tài khoản sau có đủ mọi quyền kể cả Tố tụng",
+    "Bản web: Cài đặt → Tải bộ cài Windows / macOS"
   ]
 }

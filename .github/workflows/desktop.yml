@@ -1,0 +1,82 @@
+# Đóng gói bộ cài đặt máy tính (Windows .exe, macOS .dmg) và đăng lên GitHub Releases.
+# Tự chạy khi version.json trên main đổi (mỗi lần phát hành), hoặc chạy tay ở tab Actions.
+name: Bộ cài đặt máy tính
+
+on:
+  push:
+    branches: [main]
+    paths: [version.json]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win
+          - os: macos-latest
+            target: mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Chuẩn bị mã web
+        run: node scripts/desktop.mjs
+      - name: Cài Electron
+        working-directory: desktop
+        run: npm ci
+      - name: Đóng gói
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --${{ matrix.target }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tlvb-${{ matrix.target }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Đọc phiên bản
+        id: v
+        run: |
+          echo "version=$(node -p "require('./version.json').version")" >> "$GITHUB_OUTPUT"
+          node -e "const v=require('./version.json');console.log((v.notes||[]).map(n=>'- '+n).join('\n'))" > notes.md
+          cat >> notes.md <<'TXT'
+
+          ### Cài đặt
+          - **Windows**: tải `TroLyVanBan-…-win-x64.exe`, chạy và làm theo hướng dẫn. Nếu Windows SmartScreen cảnh báo, chọn *Thông tin thêm → Vẫn chạy*.
+          - **macOS**: chip Apple (M1, M2…) tải bản `mac-arm64.dmg`, máy Intel tải `mac-x64.dmg`. Kéo ứng dụng vào Applications; lần đầu mở bấm chuột phải → *Mở* (hoặc Cài đặt hệ thống → Quyền riêng tư & Bảo mật → *Vẫn mở*).
+          - Bản cài đặt: tài khoản tạo mới có toàn quyền; dữ liệu, tài khoản và API key chỉ lưu trên máy. Cài bản mới đè lên bản cũ, dữ liệu được giữ nguyên.
+          TXT
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: Trợ Lý Văn Bản AI v${{ steps.v.outputs.version }}
+          body_path: notes.md
+          target_commitish: ${{ github.sha }}
+          make_latest: 'true'
+          files: out/*

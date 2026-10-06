@@ -536,7 +536,8 @@ export const GUIDES = [
       { t: 'Bật tự chuyển AI và ghi nhớ', d: 'Khi một dịch vụ lỗi (503, quá tải, hết hạn mức), phần mềm tự thử lại, đổi mô hình dự phòng, rồi chuyển sang dịch vụ khác có key. Kết quả AI đã hỏi được **ghi nhớ trên máy** để lần sau trả lời ngay, không tốn lượt.' },
       { t: 'Thông tin đơn vị', d: 'Điền **Thông tin đơn vị mặc định** (văn bản hành chính) và **Cơ quan điều tra** (biên bản, biểu mẫu tố tụng, mẫu số). Bấm lưu.' },
       { t: 'Sao lưu và khôi phục', d: '[[Xuất sao lưu]] tải về tệp .json; ở máy mới đăng nhập rồi bấm [[Khôi phục]] và chọn tệp đó.' },
-      { t: 'Cập nhật', d: '[[Kiểm tra cập nhật]] → [[Cập nhật ngay]] khi có bản mới.' },
+      { t: 'Cập nhật', d: '[[Kiểm tra cập nhật]] → [[Cập nhật ngay]] khi có bản mới. Bản cài đặt trên máy thì bấm [[Tải bộ cài mới]] rồi cài đè lên — dữ liệu giữ nguyên.' },
+      { t: 'Cài lên máy tính (tùy chọn)', d: 'Bấm [[Tải bộ cài Windows / macOS]]: Windows tải tệp **.exe**, máy Mac chip Apple tải **mac-arm64.dmg**, Mac Intel tải **mac-x64.dmg**. Bản cài đặt chạy như phần mềm riêng, dùng được khi mất mạng, và **tài khoản tạo mới có toàn quyền** (kể cả Tố tụng).', tip: 'Windows báo SmartScreen: chọn “Thông tin thêm → Vẫn chạy”. macOS lần đầu: chuột phải vào ứng dụng → Mở.' },
     ],
     examples: [],
     tips: [
@@ -551,6 +552,7 @@ export const GUIDES = [
     faq: [
       ['Lỗi 503 / 429 là gì?', '503: máy chủ AI quá tải tạm thời; 429: vượt hạn mức. Phần mềm tự thử lại và chuyển dịch vụ; nếu vẫn lỗi, chờ vài phút hoặc đổi mô hình nhẹ hơn.'],
       ['Có cần Internet không?', 'Chỉ khi dùng AI hoặc cập nhật. Các chức năng khác chạy trên máy.'],
+      ['Bản cài đặt khác bản web thế nào?', 'Cùng chức năng. Bản cài đặt chạy như phần mềm trên Windows/macOS, mặc định cấp toàn quyền cho tài khoản tạo trên máy; bản web mặc định là Người dùng, chờ quản trị cấp quyền. Dữ liệu hai bản tách riêng — chuyển bằng Xuất sao lưu / Khôi phục.'],
     ],
     related: ['admin', 'batdau'],
   },

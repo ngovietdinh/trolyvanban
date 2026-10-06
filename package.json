@@ -10,7 +10,10 @@
     "test:e2e": "playwright test",
     "test:all": "npm test && npm run test:e2e",
     "vendor": "node scripts/vendor.mjs",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "desktop": "node scripts/desktop.mjs",
+    "desktop:start": "node scripts/desktop.mjs && cd desktop && npm install && npx electron .",
+    "test:desktop": "node scripts/desktop.mjs && node --test tests/desktop/smoke.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

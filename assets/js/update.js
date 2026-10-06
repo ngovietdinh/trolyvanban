@@ -1,6 +1,11 @@
 // Cập nhật phần mềm: đăng ký service worker (dùng ngoại tuyến) và thông báo khi có phiên bản mới.
 import { APP_VERSION } from './version.js';
 import { icon, escapeHtml } from './ui.js';
+import { isDesktop } from './lib/platform.js';
+
+// Bản cài đặt trên máy: so với version.json trên nhánh main, có bản mới thì mở trang tải bộ cài.
+const DESKTOP_VERSION_URL = 'https://raw.githubusercontent.com/ngovietdinh/trolyvanban/main/version.json';
+export const DESKTOP_DOWNLOAD_URL = 'https://github.com/ngovietdinh/trolyvanban/releases/latest';
 
 let registration = null;
 
@@ -35,7 +40,7 @@ function banner(version, notes = []) {
   const el = document.createElement('div');
   el.className = 'update-banner';
   el.setAttribute('role', 'status');
-  el.innerHTML = `${icon('refresh', 'ic-sm')}<span><strong>Đã có phiên bản mới${version ? ` v${escapeHtml(version)}` : ''}.</strong> ${notes.length ? escapeHtml(notes[0]) : 'Dữ liệu và tài khoản được giữ nguyên.'}</span><button class="btn btn-sm btn-primary" type="button" data-do-update>Cập nhật ngay</button><button class="btn btn-sm btn-ghost btn-icon" type="button" aria-label="Để sau" data-dismiss>${icon('x', 'ic-sm')}</button>`;
+  el.innerHTML = `${icon('refresh', 'ic-sm')}<span><strong>Đã có phiên bản mới${version ? ` v${escapeHtml(version)}` : ''}.</strong> ${notes.length ? escapeHtml(notes[0]) : 'Dữ liệu và tài khoản được giữ nguyên.'}</span><button class="btn btn-sm btn-primary" type="button" data-do-update>${isDesktop ? 'Tải bộ cài mới' : 'Cập nhật ngay'}</button><button class="btn btn-sm btn-ghost btn-icon" type="button" aria-label="Để sau" data-dismiss>${icon('x', 'ic-sm')}</button>`;
   document.body.append(el);
   el.querySelector('[data-do-update]').addEventListener('click', applyUpdate);
   el.querySelector('[data-dismiss]').addEventListener('click', () => {
@@ -48,7 +53,7 @@ function banner(version, notes = []) {
 export async function checkForUpdate() {
   let info;
   try {
-    const res = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
+    const res = await fetch(`${isDesktop ? DESKTOP_VERSION_URL : 'version.json'}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error();
     info = await res.json();
   } catch {
@@ -61,6 +66,10 @@ export async function checkForUpdate() {
 
 /** Áp dụng bản mới: kích hoạt service worker đang chờ rồi tải lại trang (dữ liệu localStorage giữ nguyên). */
 export async function applyUpdate() {
+  if (isDesktop) {
+    window.open(DESKTOP_DOWNLOAD_URL, '_blank');
+    return;
+  }
   const latest = await checkForUpdate().then((r) => r.latest).catch(() => null);
   const prev = lsGet(LS.attempt);
   lsSet(LS.attempt, { version: latest, at: Date.now(), n: prev?.version === latest ? (prev.n || 0) + 1 : 1 });

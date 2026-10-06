@@ -17,4 +17,9 @@ for (const [file, re, rep] of [
   const p = root + file;
   writeFileSync(p, readFileSync(p, 'utf8').replace(re, rep));
 }
+// Bản cài đặt máy tính dùng chung số phiên bản.
+const deskPkg = `${root}desktop/package.json`;
+const pkg = JSON.parse(readFileSync(deskPkg, 'utf8'));
+pkg.version = version;
+writeFileSync(deskPkg, JSON.stringify(pkg, null, 2) + '\n');
 console.log(`Đã cập nhật phiên bản ${version}.`);

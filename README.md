@@ -54,6 +54,17 @@ Nền tảng soạn thảo văn bản hành chính tiếng Việt, trình bày �
 - Khi máy chủ có bản mới, ứng dụng hiện thông báo **“Đã có phiên bản mới — Cập nhật ngay”**; cũng có thể kiểm tra trong **Cài đặt → Phiên bản & cập nhật**. Cập nhật chỉ thay mã nguồn, dữ liệu trên máy giữ nguyên.
 - Phát hành bản mới: `npm run release -- 2.1.0 "Ghi chú thay đổi"` (đồng bộ `version.json`, `sw.js`, `assets/js/version.js`), rồi triển khai lên máy chủ tĩnh.
 
+## Bản cài đặt trên máy tính (Windows, macOS)
+
+Ngoài bản web, ứng dụng có **bộ cài đặt** chạy như phần mềm riêng (Electron, thư mục `desktop/`), dùng được khi không có mạng.
+
+- **Tải về**: [GitHub Releases](https://github.com/ngovietdinh/trolyvanban/releases/latest) — Windows `TroLyVanBan-x.y.z-win-x64.exe`; macOS `…-mac-arm64.dmg` (chip Apple M1/M2…) hoặc `…-mac-x64.dmg` (Intel). Trong bản web: **Cài đặt → Phiên bản & cập nhật → Tải bộ cài Windows / macOS**.
+- **Phân quyền mặc định của bản cài đặt: toàn quyền.** Tài khoản đầu tiên tạo trên máy là **Quản trị tối cao**; tài khoản tự đăng ký sau đó là **Quản trị viên có đủ mọi quyền** (văn bản, công cụ, AI, Tố tụng, AI trực tuyến trong Tố tụng, quản lý tài khoản), không phải chờ cấp quyền. Vẫn có thể hạ quyền từng tài khoản trong **Quản trị tài khoản**. Bản web giữ nguyên cách cũ (Người dùng, chờ cấp quyền, Tố tụng ẩn).
+- Dữ liệu, tài khoản, API key lưu trong thư mục dữ liệu của người dùng (Windows `%APPDATA%\Trợ Lý Văn Bản AI`, macOS `~/Library/Application Support/Trợ Lý Văn Bản AI`); gỡ cài đặt hoặc cài bản mới đè lên không mất dữ liệu. Menu **Trợ giúp → Mở thư mục dữ liệu**.
+- Có bản mới: ứng dụng so với `version.json` trên nhánh `main` và hiện **“Tải bộ cài mới”**.
+- Bộ cài chưa ký số: Windows SmartScreen chọn *Thông tin thêm → Vẫn chạy*; macOS lần đầu bấm chuột phải vào ứng dụng → *Mở*.
+- **Đóng gói**: mỗi khi `version.json` trên `main` đổi, GitHub Actions (`.github/workflows/desktop.yml`) build bộ cài Windows và macOS rồi đăng lên Releases (cũng chạy tay được ở tab Actions). Build trên máy: `node scripts/desktop.mjs && cd desktop && npm install && npm run dist:win` (hoặc `dist:mac` trên máy Mac); chạy thử `npm run desktop:start`.
+
 ## Phân hệ Tố tụng hình sự
 
 | Thành phần | Mô tả |
@@ -99,6 +110,7 @@ Vào **Cài đặt → Trí tuệ nhân tạo**, chọn nhà cung cấp (Claude,
 ```bash
 npm test           # unit test (node:test) — đọc số, thể thức, DOCX, chính tả, tóm tắt, trợ lý, dữ liệu điều luật, bộ sinh câu hỏi, biên bản
 npm run test:e2e   # test end-to-end (Playwright) trên desktop & di động, gồm API Claude giả lập
+npm run test:desktop  # mở bản cài đặt Electron thật (Linux cần xvfb-run): toàn quyền mặc định, OCR, lưu dữ liệu
 ```
 
 ## Cấu trúc

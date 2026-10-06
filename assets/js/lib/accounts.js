@@ -8,6 +8,7 @@
 // - Quản trị đặt lại mật khẩu → kho API key của tài khoản đó bị xóa (không thể khôi phục).
 
 import { rawStore, sessionStore, setScope, uid, SCOPED_KEYS } from './store.js';
+import { isDesktop } from './platform.js';
 
 export const SUPER_EMAIL = 'gsnvbu@gmail.com';
 const ITER = 310000;
@@ -20,6 +21,20 @@ export const PERMS = [
   { id: 'legal.ai', label: 'AI trực tuyến trong Tố tụng', desc: 'Cho phép gửi nội dung lời khai, hồ sơ tới dịch vụ AI bên ngoài' },
   { id: 'users', label: 'Quản lý tài khoản & phân quyền', desc: 'Tạo, khóa, đặt lại mật khẩu, cấp quyền cho tài khoản khác' },
 ];
+
+/**
+ * Vai trò mặc định khi tự đăng ký.
+ * - Web: Người dùng, chờ quản trị cấp quyền (Tố tụng ẩn, không AI trực tuyến trong Tố tụng).
+ * - Bản cài đặt trên máy (Windows/macOS): toàn quyền. Tài khoản đầu tiên trên máy là quản trị tối cao,
+ *   các tài khoản sau là quản trị viên có đủ mọi quyền (kể cả Tố tụng và AI trong Tố tụng).
+ */
+export function signupDefaults({ superAcc = false, firstUser = false, desktop = isDesktop } = {}) {
+  if (superAcc) return { role: 'superadmin', perms: {}, pending: false };
+  if (!desktop) return { role: 'user', perms: {}, pending: true };
+  if (firstUser) return { role: 'superadmin', perms: {}, pending: false };
+  const base = new Set(ROLES.admin.perms);
+  return { role: 'admin', perms: Object.fromEntries(PERMS.filter((p) => !base.has(p.id)).map((p) => [p.id, true])), pending: false };
+}
 
 export const ROLES = {
   superadmin: { label: 'Quản trị tối cao', perms: PERMS.map((p) => p.id) },
@@ -167,10 +182,11 @@ export const accounts = {
     const superAcc = isSuperEmail(email);
     if (!superAcc && !systemConfig().allowSignup) throw new Error('Đăng ký đang tắt. Liên hệ quản trị viên để được cấp tài khoản.');
     const cred = await buildCredentials(password);
-    const user = { id: uid(), name: name.trim(), email, pwHash: cred.pwHash, pwSalt: cred.pwSalt, iter: cred.iter, vault: null, role: superAcc ? 'superadmin' : 'user', perms: {}, locked: false, pending: !superAcc, createdAt: Date.now(), lastLogin: Date.now() };
+    const def = signupDefaults({ superAcc, firstUser: !all.length });
+    const user = { id: uid(), name: name.trim(), email, pwHash: cred.pwHash, pwSalt: cred.pwSalt, iter: cred.iter, vault: null, role: def.role, perms: def.perms, locked: false, pending: def.pending, createdAt: Date.now(), lastLogin: Date.now() };
     saveUsers([...all, user]);
     startSession(user, cred.vaultKey);
-    if (superAcc) await migrateLegacy(user, cred.vaultKey);
+    if (user.role === 'superadmin') await migrateLegacy(user, cred.vaultKey);
     audit('Đăng ký tài khoản', `${user.email} (${ROLES[user.role].label})`);
     return publicUser(user);
   },
