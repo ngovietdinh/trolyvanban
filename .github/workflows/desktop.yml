@@ -53,10 +53,25 @@ jobs:
           # Giả lập tệp tải từ mạng (có cờ quarantine), gỡ cờ như hướng dẫn người dùng rồi mở.
           xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Chrome;" "$APP"
           xattr -cr "$APP"
-          "$APP/Contents/MacOS/$(basename "$APP" .app)" --no-sandbox > run.log 2>&1 &
+          ELECTRON_ENABLE_LOGGING=1 "$APP/Contents/MacOS/$(basename "$APP" .app)" > run.log 2>&1 &
           PID=$!
           sleep 20
-          if kill -0 $PID 2>/dev/null; then echo "Ứng dụng chạy được sau 20 giây"; kill $PID; else echo "Ứng dụng thoát sớm:"; cat run.log; exit 1; fi
+          if kill -0 $PID 2>/dev/null; then echo "Ứng dụng chạy được sau 20 giây"; kill $PID; exit 0; fi
+          echo "Ứng dụng thoát sớm:"; cat run.log
+          ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -5
+          f="$(ls -t ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -1)"
+          [ -n "$f" ] && python3 -c "
+          import json,sys
+          t=open(sys.argv[1]).read().split('\n',1)
+          d=json.loads(t[1])
+          print(json.dumps({k:d.get(k) for k in ('exception','termination','asi','crashed','faultingThread','codeSigningID','codeSigningFlags')},indent=1,ensure_ascii=False))
+          th=d['threads'][d.get('faultingThread',0)]
+          imgs=d.get('usedImages',[])
+          for fr in th.get('frames',[])[:25]:
+            im=imgs[fr['imageIndex']] if fr.get('imageIndex') is not None and fr['imageIndex']<len(imgs) else {}
+            print(im.get('name'), fr.get('symbol'), fr.get('imageOffset'))
+          " "$f"
+          exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: tlvb-${{ matrix.target }}
