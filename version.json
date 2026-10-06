@@ -1,9 +1,7 @@
 {
-  "version": "2.12.0",
+  "version": "2.12.1",
   "date": "2026-10-06",
   "notes": [
-    "Bộ cài đặt trên máy tính cho Windows và macOS: chạy như phần mềm riêng, dùng ngoại tuyến",
-    "Bản cài đặt mặc định toàn quyền: tài khoản đầu tiên là quản trị tối cao, tài khoản sau có đủ mọi quyền kể cả Tố tụng",
-    "Bản web: Cài đặt → Tải bộ cài Windows / macOS"
+    "Sửa bản macOS bị tắt ngay khi mở (tên gói ứng dụng có dấu tiếng Việt)"
   ]
 }

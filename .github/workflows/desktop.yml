@@ -42,7 +42,15 @@ jobs:
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --${{ matrix.target }} --publish never
+        # macOS: tên gói .app có dấu tiếng Việt làm Electron crash khi mở (Trace/BPT trap) →
+        # tên gói không dấu, tên hiển thị trong Finder/Dock vẫn có dấu.
+        run: |
+          if [ "${{ matrix.target }}" = mac ]; then
+            npx electron-builder --mac --publish never -c.productName="Tro Ly Van Ban AI" -c.mac.extendInfo.CFBundleDisplayName="Trợ Lý Văn Bản AI"
+          else
+            npx electron-builder --win --publish never
+          fi
+        shell: bash
       - name: Kiểm tra chữ ký và mở thử ứng dụng (macOS)
         if: matrix.target == 'mac'
         working-directory: desktop
@@ -98,7 +106,7 @@ jobs:
 
           ### Cài đặt
           - **Windows**: tải `TroLyVanBan-…-win-x64.exe`, chạy và làm theo hướng dẫn. Nếu Windows SmartScreen cảnh báo, chọn *Thông tin thêm → Vẫn chạy*.
-          - **macOS**: chip Apple (M1, M2…) tải bản `mac-arm64.dmg`, máy Intel tải `mac-x64.dmg`. Kéo ứng dụng vào Applications. Lần đầu mở, macOS báo *không thể mở vì Apple không thể kiểm tra phần mềm độc hại*: bấm *OK*, vào *Cài đặt hệ thống → Quyền riêng tư & Bảo mật*, kéo xuống, bấm *Vẫn mở* (Open Anyway) và nhập mật khẩu máy — chỉ làm một lần. Hoặc chạy trong Terminal: `xattr -cr "/Applications/Trợ Lý Văn Bản AI.app"`.
+          - **macOS**: chip Apple (M1, M2…) tải bản `mac-arm64.dmg`, máy Intel tải `mac-x64.dmg`. Kéo ứng dụng vào Applications. Lần đầu mở, macOS báo *không thể mở vì Apple không thể kiểm tra phần mềm độc hại*: bấm *OK*, vào *Cài đặt hệ thống → Quyền riêng tư & Bảo mật*, kéo xuống, bấm *Vẫn mở* (Open Anyway) và nhập mật khẩu máy — chỉ làm một lần. Hoặc chạy trong Terminal: `xattr -cr "/Applications/Tro Ly Van Ban AI.app"`.
           - Bản cài đặt: tài khoản tạo mới có toàn quyền; dữ liệu, tài khoản và API key chỉ lưu trên máy. Cài bản mới đè lên bản cũ, dữ liệu được giữ nguyên.
           TXT
       - uses: softprops/action-gh-release@v2
