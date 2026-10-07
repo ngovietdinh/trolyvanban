@@ -91,10 +91,12 @@ test.describe('Cây hỏi đáp pháp luật', () => {
   test('sơ đồ cây và tài liệu cần thu thập', async ({ page }) => {
     await freshApp(page, '#legal/222');
     await page.locator('[data-tab="map"]').click();
-    await expect(page.locator('.mm-root')).toContainText('Điều 222');
-    await expect(page.locator('.mm-act').first()).toBeVisible();
-    expect(await page.locator('[data-links] path').count()).toBeGreaterThan(5);
-    await page.locator('.mm-issue').nth(2).click();
+    const tree = page.locator('[data-pt-tree]');
+    await expect(tree.locator('[data-node="crime-222"]')).toContainText('Điều 222');
+    await expect(tree.locator('.pt-act').first()).toBeVisible();
+    // Mở một hành vi, bấm câu hỏi → sang tab câu hỏi.
+    await tree.locator('.pt-act > .pt-node').first().click();
+    await tree.locator('.pt-q > .pt-node').first().click();
     await expect(page.locator('[data-tab="issues"]')).toHaveAttribute('aria-selected', 'true');
     await page.locator('[data-tab="docs"]').click();
     await expect(page.locator('.lg-docs')).toContainText('mạng đấu thầu quốc gia');

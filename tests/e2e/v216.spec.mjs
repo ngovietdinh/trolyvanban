@@ -1,0 +1,100 @@
+import { test, expect } from '@playwright/test';
+import { trackErrors, freshApp } from './helpers.mjs';
+
+const BAO_CAO = `Qua thanh tra, ông A đã sử dụng con dấu giả của Sở Tài chính để làm giả hồ sơ quyết toán nhằm hợp thức hóa các khoản chi. Hành vi làm giả có dấu hiệu Điều 341 BLHS.`;
+
+test.describe('Phân tích vụ việc 4 bước + sơ đồ cây', () => {
+  test('nhập hành vi + tải tài liệu → đề xuất điều luật → chọn hành vi → câu hỏi & sơ đồ cây', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#legal');
+    await page.locator('.lg-case-hero').click();
+    await expect(page).toHaveURL(/#legal\/vu-viec$/);
+    await expect(page.locator('.wz-step.active')).toContainText('Hành vi');
+
+    // ① Hành vi: nhập tay + tài liệu.
+    await page.fill('[data-manual]', 'Kế toán lập chứng từ chi khống để rút tiền\nThủ quỹ thu tiền nhưng không nhập quỹ\nGiám đốc ký duyệt hồ sơ không kiểm tra theo quy trình');
+    await page.locator('[data-file]').setInputFiles({ name: 'ket-luan.txt', mimeType: 'text/plain', buffer: Buffer.from(BAO_CAO, 'utf8') });
+    await page.click('[data-analyze]');
+
+    // ② Điều luật đề xuất: nhiều điều, chọn điều chính, bỏ một điều, thêm điều khác.
+    await expect(page.locator('.wz-step.active')).toContainText('Điều luật đề xuất');
+    const card = (d) => page.locator(`[data-crime-card="${d}"]`);
+    for (const d of ['353', '360', '341']) await expect(card(d).locator('[data-pick]')).toBeChecked();
+    await expect(card('353').locator('[data-primary]')).toBeChecked();
+    await card('360').locator('[data-pick]').uncheck();
+    await page.fill('[data-crime-q]', 'nhận hối lộ');
+    await page.locator('[data-add-crime="354"]').click();
+    await expect(card('354').locator('[data-pick]')).toBeChecked();
+    await expect(page.locator('.wz-sum')).toContainText('Đã chọn 3 điều');
+    await page.click('[data-next]');
+
+    // ③ Hành vi theo điều: điều bỏ chọn không vào kế hoạch; thêm hành vi có sẵn, hành vi tự nhập.
+    await expect(page.locator('.wz-step.active')).toContainText('Hành vi theo điều');
+    await expect(page.locator('[data-group="353"] .la-row')).toHaveCount(2);
+    await expect(page.locator('[data-group="341"] [data-r-name][value^="Sử dụng con dấu"]')).toHaveCount(1);
+    await expect(page.locator('.wz-outside')).toContainText('1 hành vi thuộc điều chưa chọn');
+    await page.locator('[data-group="354"] [data-add-known]').first().click();
+    await page.locator('[data-add-row="354"]').click();
+    const blank = page.locator('[data-group="354"] .la-row').filter({ has: page.locator('[data-r-name][value=""]') });
+    await blank.locator('[data-r-name]').fill('Nhận tiền của nhà thầu để cho trúng thầu');
+    await blank.locator('[data-r-name]').press('Tab');
+    await expect(page.locator('[data-count]')).toHaveText(/^\d+ hành vi đã chọn$/);
+    const n = parseInt(await page.locator('[data-count]').innerText(), 10);
+    expect(n).toBe((await page.locator('.wz-group .la-row .la-check:checked').count()));
+    await page.click('[data-next]');
+
+    // ④ Kế hoạch: thanh bước, sơ đồ cây nhiều điều luật, câu hỏi.
+    await expect(page).toHaveURL(/#legal\/353$/);
+    await expect(page.locator('.wz-bar .wz-step.active')).toContainText('Câu hỏi & sơ đồ cây');
+    await expect(page.locator('[data-tab="map"]')).toHaveAttribute('aria-selected', 'true');
+    const tree = page.locator('[data-pt-tree]');
+    await expect(tree.locator('[data-node="crime-353"]')).toContainText('Điều chính');
+    await expect(tree.locator('[data-node="crime-341"]')).toContainText('Liên quan');
+    await expect(tree.locator('[data-node="crime-354"]')).toBeVisible();
+    await expect(tree.locator('[data-node="crime-360"]')).toHaveCount(0);
+    // Nhánh hành vi của từng điều mở sẵn; mở hành vi tự nhập của Điều 354 → câu hỏi.
+    await expect(tree.locator('[data-node="acts-354"]')).toHaveClass(/open/);
+    const act = tree.locator('[data-node="acts-354"] .pt-act').filter({ hasText: 'Nhận tiền của nhà thầu' });
+    await act.locator('> .pt-node').click();
+    await expect(act.locator('.pt-q').first()).toBeVisible();
+    // Tìm trong sơ đồ.
+    await page.fill('[data-pt-q]', 'con dấu');
+    await expect(tree.locator('.pt-li.hit').first()).toBeVisible();
+    // Bấm một câu hỏi → sang tab câu hỏi, đúng vấn đề.
+    await act.locator('.pt-q > .pt-node').first().click();
+    await expect(page.locator('[data-tab="issues"]')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.lg-issue details[open]').filter({ hasText: 'Nhận tiền của nhà thầu' })).toBeVisible();
+
+    // Quay lại bước 3 từ thanh bước: dữ liệu còn nguyên, hành vi mới không bị tạo trùng.
+    await page.locator('.wz-bar [data-wz-go="3"]').click();
+    await expect(page.locator('.wz-step.active')).toContainText('Hành vi theo điều');
+    await expect(page.locator('[data-group="354"] .la-row')).toHaveCount(2);
+    await expect(page.locator('[data-group="354"] .la-row').filter({ hasText: 'Có trong hệ thống' })).toHaveCount(2);
+    await page.click('[data-next]');
+    await expect(page.locator('.wz-bar')).toBeVisible();
+    t.assertClean();
+  });
+
+  test('sơ đồ cây ở trang điều luật: mở rộng / thu gọn, nhánh vấn đề chung, phóng to, toàn màn hình', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#legal/174');
+    await page.locator('[data-tab="map"]').click();
+    const tree = page.locator('[data-pt-tree]');
+    await expect(tree.locator('[data-node="root"]')).toContainText('Kế hoạch hỏi');
+    await expect(tree.locator('[data-node="common"]')).toContainText('Vấn đề chung');
+    const before = await tree.locator('.pt-li').count();
+    await page.click('[data-pt-all]');
+    const all = await tree.locator('.pt-li').count();
+    expect(all).toBeGreaterThan(before + 20);
+    await expect(tree.locator('.pt-q').first()).toBeVisible();
+    await page.click('[data-pt-none]');
+    await expect(tree.locator('.pt-li')).toHaveCount(1 + (await tree.locator('[data-node="root"] > .pt-kids > ul > .pt-li').count()));
+    await page.locator('[data-pt-zoom="1"]').click();
+    await expect(page.locator('[data-pt-canvas]')).toHaveAttribute('style', /--zoom: 1\.15/);
+    await page.click('[data-pt-full]');
+    await expect(page.locator('.pt-wrap.full')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.pt-wrap.full')).toHaveCount(0);
+    t.assertClean();
+  });
+});

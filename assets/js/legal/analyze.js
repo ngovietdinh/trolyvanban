@@ -56,6 +56,14 @@ const short = (s, n = 140) => {
 
 const norm = (s) => syl(s).join(' ');
 
+// Các tội “biến thể” khác tội cơ bản bởi một tình tiết đặc biệt trong tên (vô ý, khi thi hành công vụ, kích động
+// mạnh, vượt quá phòng vệ…): chỉ chọn khi mô tả có nhắc tình tiết đó.
+const QUALIFIERS = [['vô ý'], ['thi hành công vụ'], ['kích động'], ['phòng vệ', 'bắt giữ'], ['quy tắc nghề nghiệp', 'quy tắc hành chính'], ['con mới đẻ']];
+export function qualifierPenalty(crimeName, textNorm) {
+  const n = norm(crimeName);
+  return QUALIFIERS.some((ws) => ws.some((w) => n.includes(w)) && !ws.some((w) => textNorm.includes(w))) ? 0.3 : 0;
+}
+
 /** Các “Điều N” của BLHS được nêu trong tài liệu (bỏ qua điều của BLTTHS, luật khác). */
 export function mentionedArticles(text) {
   const out = new Map();
@@ -105,7 +113,7 @@ export function analyzeOffline(text, { primary } = {}) {
       const phrase = norm(h.ten);
       let top = null;
       sentences.forEach((s, i) => {
-        const sc = matchScore(ht, sentT[i], phrase, sentN[i]);
+        const sc = matchScore(ht, sentT[i], phrase, sentN[i]) - qualifierPenalty(crime.ten, sentN[i]);
         if (sc >= 0.34 && (!top || sc > top.sc)) top = { sc, s };
       });
       if (top) {
@@ -169,6 +177,84 @@ export function analyzeOffline(text, { primary } = {}) {
     }
   }
   return { tomTat: sum.summary, keywords: sum.keywords, crimes, items: [...items, ...fresh] };
+}
+
+/**
+ * Hành vi nhập tay (mỗi dòng một hành vi, hoặc một đoạn mô tả): mỗi dòng thành một hành vi. Dòng khớp hành vi có sẵn
+ * trong hệ thống → dùng hành vi đó; không khớp → hành vi mới, gắn vào điều luật gần nhất (tên tội danh, hành vi).
+ * Trả về cùng dạng analyzeOffline: { tomTat, crimes, items }.
+ */
+export function analyzeActs(text, { primary } = {}) {
+  const raw = String(text || '')
+    .split(/\n+/)
+    .flatMap((l) => (l.length > 260 ? splitSentences(l) : [l]))
+    .map((l) => l.replace(/^\s*[-•+*\d.)]+\s*/, '').trim())
+    .filter((l) => l.length >= 6);
+  const crimes = ALL_CRIMES.map((c) => crimeWithCustomActs(c.dieu) || c);
+  const named = crimes.map((c) => ({ c, name: termsOf(c.ten.replace(/^Tội\s+/i, '')), acts: termsOf(c.hanhVi.map((h) => h.ten).join(' ')) }));
+  const mentioned = mentionedArticles(text);
+  const score = new Map();
+  const items = raw.map((line) => {
+    const st = termsOf(line);
+    const ln = norm(line);
+    // 1) Hành vi có sẵn khớp nhất.
+    let best = null;
+    for (const c of crimes) {
+      for (const h of c.hanhVi) {
+        const sc = matchScore(termsOf(h.ten), st, norm(h.ten), ln) + (String(primary) === c.dieu ? 0.05 : 0) - qualifierPenalty(c.ten, ln);
+        if (sc >= 0.34 && (!best || sc > best.sc)) best = { sc, c, h };
+      }
+    }
+    // 2) Điều luật gần nhất theo tên tội danh / hành vi (tên tội nặng hơn).
+    let pick = null;
+    let top = 0;
+    const m = line.match(/Điều\s+(\d{1,3}[a-zđ]?)/iu);
+    if (m && findCrime(m[1])) pick = findCrime(m[1]).dieu;
+    for (const n of named) {
+      let k = 0;
+      st.bi.forEach((t) => (n.name.bi.has(t) ? (k += 2.5) : n.acts.bi.has(t) && k++));
+      if (String(primary) === n.c.dieu) k += 0.5;
+      if (k) k -= qualifierPenalty(n.c.ten, ln) * 10;
+      if (k > top) [top, pick] = [k, pick && m ? pick : n.c.dieu];
+    }
+    const it = best
+      ? { ten: best.h.ten, dieu: best.c.dieu, hanhViId: best.h.id, trich: short(line, 260), score: best.sc, checked: true, nguon: 'he-thong' }
+      : { ten: short(line, 160), dieu: top >= 1 || m ? pick : String(primary || pick || ''), hanhViId: null, trich: '', score: 0, checked: true, nguon: 'tu-nhap' };
+    score.set(it.dieu, (score.get(it.dieu) || 0) + 1 + it.score);
+    return it;
+  });
+  for (const [d, n] of mentioned) score.set(d, (score.get(d) || 0) + 2 * n);
+  const ranked = [...score]
+    .filter(([d]) => findCrime(d))
+    .sort((a, b) => b[1] - a[1])
+    .map(([d, sc]) => {
+      const n = items.filter((x) => x.dieu === d).length;
+      return { dieu: d, ten: findCrime(d).ten, score: Math.round(sc * 10) / 10, reasons: [n ? `${n} hành vi nhập vào thuộc điều này` : '', mentioned.has(d) ? `Có viện dẫn Điều ${d}` : ''].filter(Boolean) };
+    });
+  return { tomTat: '', keywords: [], crimes: ranked, items };
+}
+
+/** Gộp kết quả từ nhiều nguồn (nhập tay + tài liệu): bỏ trùng hành vi, cộng điểm điều luật. */
+export function mergeResults(...rs) {
+  const list = rs.filter(Boolean);
+  const items = [];
+  const seen = new Set();
+  for (const r of list) {
+    for (const x of r.items) {
+      const k = x.hanhViId ? `${x.dieu}|${x.hanhViId}` : `${x.dieu}|${norm(x.ten)}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      items.push(x);
+    }
+  }
+  const cs = new Map();
+  for (const r of list) {
+    for (const c of r.crimes) {
+      const cur = cs.get(c.dieu);
+      cs.set(c.dieu, cur ? { ...cur, score: Math.round((cur.score + c.score) * 10) / 10, reasons: [...new Set([...cur.reasons, ...(c.reasons || [])])] } : { ...c, reasons: [...(c.reasons || [])] });
+    }
+  }
+  return { tomTat: list.map((r) => r.tomTat).filter(Boolean).join(' '), keywords: list.flatMap((r) => r.keywords || []), crimes: [...cs.values()].sort((a, b) => b.score - a.score), items, ai: list.some((r) => r.ai) };
 }
 
 /* ---------------- AI ---------------- */

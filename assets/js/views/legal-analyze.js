@@ -1,16 +1,19 @@
-// Thêm hành vi từ tài liệu: tải đơn tố giác, báo cáo, kết luận thanh tra, biên bản… → đọc, tóm tắt, liệt kê
-// hành vi có dấu hiệu tội phạm theo điều luật trong hệ thống (một vụ việc có thể liên quan nhiều điều).
+// Thêm hành vi từ tài liệu (trong một điều cụ thể): tải đơn tố giác, báo cáo, kết luận thanh tra, biên bản… → đọc,
+// tóm tắt, liệt kê hành vi có dấu hiệu tội phạm theo điều luật trong hệ thống (một vụ việc có thể liên quan nhiều điều).
 // Người dùng chọn / bỏ chọn, sửa tên, đổi điều luật, xem câu hỏi sẽ sinh → bấm “Thêm hành vi”.
 import { $, $$, icon, toast, escapeHtml } from '../ui.js';
-import { findCrime, crimeWithCustomActs } from '../legal/engine.js';
-import { customActs } from '../legal/repo.js';
+import { findCrime } from '../legal/engine.js';
 import { getRole } from '../legal/roles.js';
-import { analyzeOffline, analyzeWithAi, questionsForAct, taiLieuForAct } from '../legal/analyze.js';
-import { extractText } from '../lib/extract.js';
+import { analyzeOffline, analyzeWithAi } from '../legal/analyze.js';
 import { streamAI } from '../lib/ai.js';
+import { dropzoneHtml, bindDropzone, readAll, toRows, newRow, rowHtml, bindRows, commitRows } from './acts-review.js';
 
-const MAX_FILE = 40 * 1024 * 1024;
-const lines = (v) => String(v || '').split('\n').map((x) => x.replace(/^\s*[-•\d.)]+\s*/, '').trim()).filter(Boolean);
+/** Hộp chọn chế độ phân tích (AI nếu có). */
+export function aiModeHtml(ai) {
+  return ai
+    ? `<label class="check"><input type="checkbox" data-use-ai checked />Phân tích sâu bằng <strong>${escapeHtml(ai.local ? 'AI trên máy' : ai.label)}</strong>${ai.local ? ' — tài liệu không ra khỏi máy / mạng nội bộ' : ' — nội dung tài liệu sẽ được gửi tới dịch vụ AI'}</label>`
+    : `<p class="note">${icon('lock', 'ic-sm')}<span>Phân tích chạy hoàn toàn trên máy (đối chiếu tên tội danh, điều luật được viện dẫn, hành vi trong hệ thống). Kết nối <a class="link" href="#settings">AI chạy trên máy</a> để phân tích sâu hơn mà không gửi dữ liệu ra ngoài.</span></p>`;
+}
 
 /**
  * opts: { crime (điều đang mở), roleId, selected (id hành vi đã chọn), onAdd({ primaryIds, related: [{ dieu, hanhViIds }], quotes: [{ dieu, id, text }] }) }
@@ -26,18 +29,9 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
     <h2 class="modal-title">Thêm hành vi từ tài liệu</h2>
     <p class="hint">Điều đang làm việc: <strong>Điều ${crime.dieu}</strong> — ${escapeHtml(crime.ten)}. Hệ thống đọc tài liệu, tóm tắt và đối chiếu từng hành vi với các điều luật đang có; một vụ việc có thể thuộc nhiều điều cùng lúc.</p>
     <div class="la-body" data-step="input">
-      <label class="la-drop" data-drop>
-        <input type="file" accept=".pdf,.docx,.txt,.md,.html,image/*" multiple data-file hidden />
-        ${icon('upload')}<strong>Chọn hoặc kéo thả tài liệu</strong>
-        <small data-drop-hint>Đơn tố giác, báo cáo xác minh, kết luận thanh tra, biên bản… (.pdf, .docx, ảnh chụp, .txt)</small>
-        <span class="la-files" data-files></span>
-      </label>
+      ${dropzoneHtml()}
       <div class="field"><label for="la-text">Hoặc dán nội dung</label><textarea class="textarea" rows="5" id="la-text" data-text placeholder="Dán nội dung đơn, báo cáo, lời khai…"></textarea></div>
-      <div class="la-mode">${
-        ai
-          ? `<label class="check"><input type="checkbox" data-use-ai checked />Phân tích sâu bằng <strong>${escapeHtml(ai.local ? 'AI trên máy' : ai.label)}</strong>${ai.local ? ' — tài liệu không ra khỏi máy / mạng nội bộ' : ' — nội dung tài liệu sẽ được gửi tới dịch vụ AI'}</label>`
-          : `<p class="note">${icon('lock', 'ic-sm')}<span>Phân tích chạy hoàn toàn trên máy (đối chiếu tên tội danh, điều luật được viện dẫn, hành vi trong hệ thống). Kết nối <a class="link" href="#settings">AI chạy trên máy</a> để phân tích sâu hơn mà không gửi dữ liệu ra ngoài.</span></p>`
-      }</div>
+      <div class="la-mode">${aiModeHtml(ai)}</div>
       <p class="hint" data-progress hidden></p>
     </div>
     <div class="la-body" data-step="review" hidden></div>
@@ -49,49 +43,29 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
       className: 'modal-wide la-modal',
       label: 'Thêm hành vi từ tài liệu',
       onMount(box, close) {
-        let files = [];
-        const fileInput = $('[data-file]', box);
-        const drop = $('[data-drop]', box);
+        const dz = bindDropzone(box);
         const progress = $('[data-progress]', box);
-        const showFiles = () => ($('[data-files]', box).innerHTML = files.map((f) => `<span class="badge">${icon('file', 'ic-sm')}${escapeHtml(f.name)}</span>`).join(''));
-        const addFiles = (list) => {
-          for (const f of list) {
-            if (f.size > MAX_FILE) toast(`“${f.name}” lớn hơn 40 MB`, { type: 'error' });
-            else files.push(f);
-          }
-          showFiles();
-        };
-        fileInput.addEventListener('change', () => addFiles([...fileInput.files]));
-        drop.addEventListener('dragover', (e) => (e.preventDefault(), drop.classList.add('over')));
-        drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-        drop.addEventListener('drop', (e) => {
-          e.preventDefault();
-          drop.classList.remove('over');
-          addFiles([...e.dataTransfer.files]);
-        });
         const say = (t) => {
           progress.hidden = !t;
           progress.innerHTML = t ? `${icon('refresh', 'ic-sm spin')}${escapeHtml(t)}` : '';
         };
-
         const actions = $('[data-actions]', box);
         const setActions = (html) => {
           actions.innerHTML = html;
           $$('[data-close]', actions).forEach((b) => b.addEventListener('click', close));
         };
+        const inputActions = () => {
+          setActions(`<button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-analyze>${icon('sparkles', 'ic-sm')}Phân tích</button>`);
+          $('[data-analyze]', actions).addEventListener('click', analyze);
+        };
 
         async function analyze() {
           const btn = $('[data-analyze]', box);
-          let text = $('[data-text]', box).value.trim();
-          if (!files.length && !text) return toast('Chọn tài liệu hoặc dán nội dung cần phân tích', { type: 'error' });
+          const pasted = $('[data-text]', box).value.trim();
+          if (!dz.files().length && !pasted) return toast('Chọn tài liệu hoặc dán nội dung cần phân tích', { type: 'error' });
           btn.disabled = true;
           try {
-            for (const f of files) {
-              say(`Đang đọc “${f.name}”…`);
-              const r = await extractText(f, { onProgress: (p) => say(`Nhận dạng chữ “${f.name}” — trang ${p.page}/${p.total}${p.pct ? ` ${Math.round(p.pct * 100)}%` : ''}`) });
-              if (r.ocr) toast(`“${f.name}” là ảnh quét — đã nhận dạng chữ (OCR)`, { type: 'info' });
-              text = `${text}\n\n${r.text}`.trim();
-            }
+            const text = await readAll(dz.files(), pasted, say);
             if (text.replace(/\s/g, '').length < 40) throw new Error('Tài liệu quá ngắn hoặc không đọc được chữ.');
             say('Đang đối chiếu với các điều luật trong hệ thống…');
             const offline = analyzeOffline(text, { primary: crime.dieu });
@@ -108,72 +82,18 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
               }
             }
             say('');
-            showReview();
+            rows = toRows(result.items, { [crime.dieu]: selected });
+            $('[data-step="input"]', box).hidden = true;
+            renderReview();
           } catch (err) {
             say('');
             toast(err.message, { type: 'error', timeout: 6000 });
-            setActions(`<button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-analyze>${icon('sparkles', 'ic-sm')}Phân tích</button>`);
-            $('[data-analyze]', actions).addEventListener('click', analyze);
+            inputActions();
           }
         }
         $('[data-analyze]', box).addEventListener('click', analyze);
 
-        /* ---------- Duyệt kết quả ---------- */
-        const dieuOptions = () => {
-          const ds = [...new Set([crime.dieu, ...result.crimes.map((c) => c.dieu), ...rows.map((r) => r.dieu)])].filter((d) => findCrime(d));
-          return ds;
-        };
-        const genQuestions = (r) => {
-          const c = crimeWithCustomActs(r.dieu);
-          return r.cauHoiAi?.length ? r.cauHoiAi : questionsForAct(c, r.ten, r.trich);
-        };
-        const existingOf = (r) => {
-          const c = crimeWithCustomActs(r.dieu);
-          if (!c) return null;
-          if (r.hanhViId && r.ten === r.tenGoc) return c.hanhVi.find((h) => h.id === r.hanhViId) || null;
-          return c.hanhVi.find((h) => h.ten.trim().toLowerCase() === r.ten.trim().toLowerCase()) || null;
-        };
-
-        function showReview() {
-          rows = result.items.map((x, i) => ({ ...x, idx: i, tenGoc: x.ten, cauHoiAi: x.cauHoi || [], edited: false }));
-          rows.forEach((r) => (r.q = r.hanhViId ? [] : genQuestions(r)));
-          // Hành vi đã có trong kế hoạch thì bỏ chọn sẵn.
-          rows.forEach((r) => r.dieu === crime.dieu && selected.includes(r.hanhViId) && ((r.checked = false), (r.daCo = true)));
-          $('[data-step="input"]', box).hidden = true;
-          renderReview();
-        }
-
-        function rowHtml(r, ds) {
-          const known = existingOf(r);
-          const c = findCrime(r.dieu);
-          return `<div class="la-row ${r.checked ? 'on' : ''}" data-row="${r.idx}">
-            <input type="checkbox" class="la-check" data-r-check ${r.checked ? 'checked' : ''} aria-label="Chọn hành vi" />
-            <div class="la-main">
-              <div class="la-line">
-                <input class="input la-name" data-r-name value="${escapeHtml(r.ten)}" aria-label="Tên hành vi" />
-                ${
-                  r.askOther
-                    ? `<span class="la-other"><input class="input" data-r-other inputmode="numeric" placeholder="Số điều" aria-label="Số điều BLHS" /><button class="btn btn-sm" type="button" data-r-other-ok>Chọn</button></span>`
-                    : `<select class="select la-dieu" data-r-dieu aria-label="Điều luật">${ds.map((d) => `<option value="${d}" ${d === r.dieu ? 'selected' : ''}>Điều ${d}</option>`).join('')}<option value="__other">Điều khác…</option></select>`
-                }
-              </div>
-              <div class="la-meta">
-                ${known ? `<span class="badge badge-success" title="Dùng bộ câu hỏi có sẵn của hành vi này">Có trong hệ thống</span>` : `<span class="badge badge-accent" title="Sẽ được lưu thành hành vi tự thêm của Điều ${r.dieu}">Hành vi mới</span>`}
-                ${r.daCo ? '<span class="badge">Đã có trong kế hoạch</span>' : ''}
-                ${r.ngoaiDanhMuc ? `<span class="badge badge-warning">Điều ${escapeHtml(r.dieu)} chưa có trong hệ thống — chọn điều khác</span>` : ''}
-                ${r.nguon === 'ai' ? '<span class="badge">AI</span>' : ''}
-                <small>${c ? escapeHtml(c.ten) : ''}</small>
-              </div>
-              ${r.trich ? `<blockquote class="la-quote">${icon('quote', 'ic-sm')}${escapeHtml(r.trich)}</blockquote>` : ''}
-              ${r.lyDo ? `<p class="la-why">${escapeHtml(r.lyDo)}</p>` : ''}
-              ${
-                known
-                  ? `<small class="hint">${known.cauHoi.length} câu hỏi đặc thù có sẵn + câu hỏi theo cấu thành Điều ${r.dieu}.</small>`
-                  : `<details class="la-qs"><summary>Câu hỏi sẽ sinh (${r.q.length}) — sửa được</summary><textarea class="textarea" rows="${Math.min(10, r.q.length + 1)}" data-r-q>${escapeHtml(r.q.join('\n'))}</textarea></details>`
-              }
-            </div>
-          </div>`;
-        }
+        const dieuOptions = () => [...new Set([crime.dieu, ...result.crimes.map((c) => c.dieu), ...rows.map((r) => r.dieu)])].filter((d) => findCrime(d));
 
         function renderReview() {
           const step = $('[data-step="review"]', box);
@@ -193,7 +113,13 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
                 .join('')}
               <button class="btn btn-ghost btn-sm" type="button" data-add-row>${icon('plus', 'ic-sm')}Thêm hành vi tự nhập</button>
             </section>`;
-          bindReview();
+          bindRows(box, rows, { rerender: renderReview, onCount: updateCount });
+          $('[data-add-row]', box).addEventListener('click', () => {
+            const r = newRow(rows, crime.dieu);
+            rows.push(r);
+            renderReview();
+            $(`[data-row="${r.idx}"] [data-r-name]`, box)?.focus();
+          });
           updateCount();
         }
 
@@ -204,91 +130,21 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
           $('[data-back]', actions).addEventListener('click', () => {
             $('[data-step="review"]', box).hidden = true;
             $('[data-step="input"]', box).hidden = false;
-            setActions(`<button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-analyze>${icon('sparkles', 'ic-sm')}Phân tích</button>`);
-            $('[data-analyze]', actions).addEventListener('click', analyze);
+            inputActions();
           });
           $('[data-commit]', actions).addEventListener('click', commit);
         }
 
-        function bindReview() {
-          $$('[data-row]', box).forEach((el) => {
-            const r = rows.find((x) => x.idx === +el.dataset.row);
-            $('[data-r-check]', el).addEventListener('change', (e) => {
-              r.checked = e.target.checked;
-              el.classList.toggle('on', r.checked);
-              updateCount();
-            });
-            $('[data-r-name]', el).addEventListener('change', (e) => {
-              r.ten = e.target.value.trim();
-              if (!r.edited) r.q = genQuestions({ ...r, cauHoiAi: [] });
-              if (!r.checked && r.ten) r.checked = true;
-              renderReview();
-            });
-            const setDieu = (d) => {
-              r.dieu = d;
-              r.askOther = false;
-              r.ngoaiDanhMuc = false;
-              if (r.hanhViId && !crimeWithCustomActs(d)?.hanhVi.some((h) => h.id === r.hanhViId)) r.hanhViId = null;
-              if (!r.edited) r.q = genQuestions({ ...r, cauHoiAi: [] });
-              renderReview();
-            };
-            $('[data-r-dieu]', el)?.addEventListener('change', (e) => {
-              if (e.target.value !== '__other') return setDieu(e.target.value);
-              r.askOther = true;
-              renderReview();
-              $(`[data-row="${r.idx}"] [data-r-other]`, box)?.focus();
-            });
-            const pickOther = () => {
-              const v = $('[data-r-other]', el).value.trim();
-              const c = v && findCrime(v);
-              if (!c) return toast(v ? `Hệ thống chưa có Điều ${v} của Bộ luật Hình sự` : 'Nhập số điều, vd: 174', { type: 'error' });
-              setDieu(c.dieu);
-            };
-            $('[data-r-other-ok]', el)?.addEventListener('click', pickOther);
-            $('[data-r-other]', el)?.addEventListener('keydown', (e) => e.key === 'Enter' && (e.preventDefault(), pickOther()));
-            $('[data-r-q]', el)?.addEventListener('input', (e) => {
-              r.q = lines(e.target.value);
-              r.edited = true;
-            });
-          });
-          $('[data-add-row]', box).addEventListener('click', () => {
-            const r = { idx: rows.length ? Math.max(...rows.map((x) => x.idx)) + 1 : 0, ten: '', tenGoc: '', dieu: crime.dieu, hanhViId: null, trich: '', checked: true, nguon: 'tu-nhap', cauHoiAi: [], q: [] };
-            rows.push(r);
-            renderReview();
-            $(`[data-row="${r.idx}"] [data-r-name]`, box)?.focus();
-          });
-        }
-
         function commit() {
-          const chosen = rows.filter((r) => r.checked && r.ten.trim());
-          const primaryIds = [];
-          const related = new Map();
-          let created = 0;
-          const skipped = [];
-          const quotes = [];
-          for (const r of chosen) {
-            const c = crimeWithCustomActs(r.dieu);
-            if (!c) {
-              skipped.push(r.ten);
-              continue;
-            }
-            let id = existingOf(r)?.id;
-            // Hành vi có sẵn: thêm câu hỏi bám đúng nội dung tài liệu (đoạn trích) vào vấn đề của hành vi.
-            if (id && r.trich) quotes.push({ dieu: c.dieu, id, text: questionsForAct(c, r.ten, r.trich)[0] });
-            if (!id) {
-              const q = r.q?.length ? r.q : genQuestions(r);
-              id = customActs.save(c.dieu, { ten: r.ten.trim(), cauHoi: q, taiLieu: r.taiLieu?.length ? r.taiLieu : taiLieuForAct(r.ten), nguon: 'tai-lieu', trich: r.trich || '' }).id;
-              created++;
-            }
-            if (c.dieu === crime.dieu) primaryIds.push(id);
-            else related.set(c.dieu, [...(related.get(c.dieu) || []), id]);
-          }
-          if (skipped.length) toast(`Bỏ qua ${skipped.length} hành vi chưa chọn được điều luật trong hệ thống`, { type: 'info' });
-          if (!primaryIds.length && !related.size) return;
-          onAdd({ primaryIds, related: [...related].map(([dieu, hanhViIds]) => ({ dieu, hanhViIds })), quotes });
+          const { byDieu, quotes, created, skipped } = commitRows(rows);
+          if (skipped) toast(`Bỏ qua ${skipped} hành vi chưa chọn được điều luật trong hệ thống`, { type: 'info' });
+          if (!byDieu.size) return;
+          const primaryIds = byDieu.get(crime.dieu) || [];
+          const related = [...byDieu].filter(([d]) => d !== crime.dieu).map(([dieu, hanhViIds]) => ({ dieu, hanhViIds }));
+          onAdd({ primaryIds, related, quotes });
           close();
-          const parts = [primaryIds.length && `Điều ${crime.dieu}: ${primaryIds.length}`, ...[...related].map(([d, ids]) => `Điều ${d}: ${ids.length}`)].filter(Boolean);
-          toast(`Đã thêm ${primaryIds.length + [...related.values()].flat().length} hành vi (${parts.join(', ')})${created ? ` — ${created} hành vi mới đã sinh câu hỏi` : ''}`, { timeout: 6000 });
+          const parts = [...byDieu].map(([d, ids]) => `Điều ${d}: ${ids.length}`);
+          toast(`Đã thêm ${[...byDieu.values()].flat().length} hành vi (${parts.join(', ')})${created ? ` — ${created} hành vi mới đã sinh câu hỏi` : ''}`, { timeout: 6000 });
         }
       },
     },

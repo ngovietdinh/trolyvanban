@@ -1,8 +1,8 @@
 {
-  "version": "2.16.0",
+  "version": "2.17.0",
   "date": "2026-10-07",
   "notes": [
-    "Bản cài đặt cập nhật tại chỗ: bấm Cập nhật ngay, chỉ tải phần thay đổi (vài MB), không cần tải lại bộ cài",
-    "Tự quay về bản trước nếu bản cập nhật không chạy được"
+    "Tố tụng: Phân tích vụ việc 4 bước — nhập hành vi / tải Word, PDF → đề xuất điều luật → chọn hành vi → câu hỏi & sơ đồ cây",
+    "Sơ đồ cây mới: chi tiết đến từng câu hỏi, mở / thu gọn, hiệu ứng, tìm, phóng to, toàn màn hình"
   ]
 }

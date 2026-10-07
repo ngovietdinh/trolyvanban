@@ -15,6 +15,8 @@ import { INVESTIGATOR_SYSTEM } from '../legal/assist.js';
 import { store, uid } from '../lib/store.js';
 import { mobilePanes } from '../lib/panes.js';
 import { openAnalyzeDialog } from './legal-analyze.js';
+import { mountPlanTree } from './plan-tree.js';
+import { mountWizard, stepperHtml, wizardState } from './legal-wizard.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -40,12 +42,15 @@ export function render(ctx, params = []) {
   const openIssues = new Map(); // key → true/false (người dùng đã mở/đóng)
   let openTree = new Set(store.get('legal-open', ['kinh-te', 'kinh-te/dau-thau']));
   let plan = null;
+  let treeCtl = null; // sơ đồ cây đang hiển thị
+  let treeOpen = null; // nhánh đang mở của sơ đồ (giữ khi cập nhật kế hoạch)
   /** Hộp gợi ý đang mở: { key, q (câu hỏi gốc hoặc null = cả vấn đề), items: [{ text, added }], loading, offline, error } */
   let sugg = null;
 
   ctx.view.innerHTML = `
   <div class="legal">
     <aside class="lg-side" aria-label="Cây lĩnh vực và tội danh">
+      <button class="lg-new-case" type="button" data-wizard>${icon('sparkles', 'ic-sm')}<span><strong>Phân tích vụ việc</strong><small>Nhập hành vi / tải Word, PDF → đề xuất điều luật</small></span></button>
       <div class="lg-search">${icon('search', 'ic-sm')}<input type="search" placeholder="Tìm điều luật, tội danh, hành vi…" aria-label="Tìm tội danh" data-q /></div>
       <nav class="lg-tree" data-tree></nav>
     </aside>
@@ -108,7 +113,8 @@ export function render(ctx, params = []) {
 
   function selectCrime(dieu) {
     const crime = findCrime(dieu);
-    sel = { ...sel, dieu, hanhViIds: [crime.hanhVi[0].id], dinhKhung: [], lienQuan: [] };
+    sel = { ...sel, dieu, hanhViIds: [crime.hanhVi[0].id], dinhKhung: [], lienQuan: [], fromWizard: false };
+    treeOpen = null;
     overlay = { removed: [], edited: {}, added: {}, ai: {} };
     editingPlanId = null;
     sugg = null;
@@ -152,6 +158,11 @@ export function render(ctx, params = []) {
           <h1 class="page-title">Cây hỏi đáp <em>pháp luật</em></h1>
           <p class="page-sub">Chọn lĩnh vực → nhóm → tội danh → hành vi vi phạm. Hệ thống tự liệt kê các vấn đề cần làm rõ và bộ câu hỏi bám sát cấu thành tội phạm.</p>
         </div></div>
+        <button class="lg-case-hero" type="button" data-wizard>
+          <span class="lg-case-icon">${icon('sparkles')}</span>
+          <span class="lg-case-text"><strong>Phân tích vụ việc theo từng bước</strong><span>Chưa rõ điều luật? Nhập hành vi hoặc tải đơn, báo cáo (Word, PDF, ảnh) → hệ thống đề xuất điều luật → chọn hành vi → câu hỏi và sơ đồ cây.</span></span>
+          <span class="lg-case-steps">${['Hành vi', 'Điều luật', 'Chọn hành vi', 'Câu hỏi & sơ đồ'].map((t, i) => `<em><b>${i + 1}</b>${t}</em>`).join('')}</span>
+        </button>
         <div class="lg-domains">
           ${DOMAINS.filter((d) => d.crimes.length).map((d) => `<button class="lg-domain-card" type="button" data-open-domain="${d.id}"><span class="quick-icon">${icon(d.icon)}</span><strong>${d.ten}</strong><span>${escapeHtml(d.moTa)}</span><em>${d.groups.length} nhóm · ${d.crimes.length} tội danh</em></button>`).join('')}
         </div>
@@ -276,6 +287,49 @@ export function render(ctx, params = []) {
     );
   }
 
+  /* ---------------- Phân tích vụ việc (4 bước) ---------------- */
+  function renderWizard(step) {
+    treeCtl?.destroy();
+    treeCtl = null;
+    history.replaceState(null, '', '#legal/vu-viec');
+    panes.label('main', 'Phân tích vụ việc');
+    panes.go('main');
+    mountWizard(ctx, main, {
+      step,
+      onExit() {
+        if (sel.dieu && findCrime(sel.dieu)) {
+          history.replaceState(null, '', `#legal/${sel.dieu}`);
+          renderMain();
+        } else renderOverview();
+      },
+      onPlan({ dieu, hanhViIds, lienQuan, quotes }) {
+        sel = { ...sel, dieu, hanhViIds, dinhKhung: [], lienQuan, fromWizard: true };
+        overlay = { removed: [], edited: {}, added: {}, ai: {} };
+        for (const qt of quotes) {
+          const key = qt.dieu === dieu ? `hv-${qt.id}` : `d${qt.dieu}:hv-${qt.id}`;
+          overlay.added[key] = [...new Set([...(overlay.added[key] || []), qt.text])];
+        }
+        editingPlanId = null;
+        sugg = null;
+        treeOpen = null;
+        tab = 'map';
+        persistSel();
+        history.replaceState(null, '', `#legal/${dieu}`);
+        renderTree($('[data-q]', root).value);
+        renderMain();
+        panes.label('main', `Điều ${dieu}`);
+        // Bước ④: đưa thẳng tới sơ đồ cây và câu hỏi.
+        requestAnimationFrame(() => $('[data-result]', main)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      },
+    });
+  }
+
+  /** Thanh bước ở màn hình kế hoạch khi đi từ “Phân tích vụ việc”. */
+  function wizardBarHtml() {
+    if (!sel.fromWizard || !wizardState()) return '';
+    return `<div class="wz-bar">${stepperHtml(4, 4)}<button class="btn btn-ghost btn-sm" type="button" data-wz-close title="Ẩn thanh bước">${icon('x', 'ic-sm')}</button></div>`;
+  }
+
   /** Các điều luật liên quan cùng vụ việc (một người có thể thực hiện hành vi thuộc nhiều điều). */
   function relatedHtml() {
     const list = (sel.lienQuan || []).map((l) => ({ l, c: crimeWithCustomActs(l.dieu) })).filter((x) => x.c);
@@ -305,6 +359,7 @@ export function render(ctx, params = []) {
     plan = computePlan();
 
     main.innerHTML = `
+      ${wizardBarHtml()}
       <nav class="lg-crumbs" aria-label="Đường dẫn">${escapeHtml(domain.ten)} ${icon('chevron-down', 'ic-sm rot')} ${escapeHtml(group.ten)} ${icon('chevron-down', 'ic-sm rot')} <strong>Điều ${crime.dieu}</strong></nav>
       <header class="lg-crime">
         <div class="lg-crime-art">Điều<strong>${crime.dieu}</strong></div>
@@ -379,11 +434,25 @@ export function render(ctx, params = []) {
 
   function renderPanel() {
     const panel = $('[data-panel]', main);
+    treeCtl?.destroy();
+    treeCtl = null;
     if (tab === 'issues') panel.innerHTML = issuesHtml();
     else if (tab === 'map') {
-      panel.innerHTML = mapHtml();
-      requestAnimationFrame(drawMapLinks);
+      treeCtl = mountPlanTree(panel, plan, { onJump: jumpTo, initialOpen: treeOpen });
+      treeOpen = treeCtl.open;
     } else panel.innerHTML = docsHtml();
+  }
+
+  /** Chuyển sang tab câu hỏi và mở đúng vấn đề. */
+  function jumpTo(key) {
+    tab = 'issues';
+    $$('[data-tab]', main).forEach((x) => x.setAttribute('aria-selected', String(x.dataset.tab === 'issues')));
+    renderPanel();
+    openIssues.set(key, true);
+    const el = $(`[data-issue="${CSS.escape(key)}"]`, main);
+    if (!el) return;
+    el.querySelector('details').open = true;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function issuesHtml() {
@@ -491,64 +560,6 @@ export function render(ctx, params = []) {
     x.added = true;
   }
 
-  function mapHtml() {
-    const crime = plan.crime;
-    const domain = DOMAINS.find((d) => d.crimes.some((c) => c.dieu === crime.dieu));
-    const group = domain.groups.find((g) => g.id === crime.nhom);
-    return `<div class="lg-map" data-map>
-      <svg class="lg-map-links" data-links aria-hidden="true"></svg>
-      <div class="lg-map-col">
-        <div class="mm-node mm-domain" data-mm="domain">${icon(domain.icon, 'ic-sm')}${escapeHtml(domain.ten)}</div>
-        <div class="mm-node mm-group" data-mm="group">${escapeHtml(group.ten)}</div>
-        <div class="mm-node mm-root" data-mm="root"><small>Điều ${crime.dieu}</small>${escapeHtml(crime.ten.replace(/^Tội /, ''))}</div>
-        <div class="mm-node mm-role" data-mm="role">${icon('user', 'ic-sm')}${escapeHtml(plan.role.ten.split('/')[0])}</div>
-      </div>
-      <div class="lg-map-col">
-        <h4>Hành vi vi phạm</h4>
-        ${plan.hanhVi.map((h) => `<div class="mm-node mm-act" data-mm="act">${escapeHtml(h.ten)}</div>`).join('')}
-        ${plan.dinhKhung.length ? `<h4>Định khung</h4>${plan.dinhKhung.map((d) => `<div class="mm-node mm-dk" data-mm="act">${escapeHtml(d)}</div>`).join('')}` : ''}
-      </div>
-      <div class="lg-map-col">
-        <h4>Vấn đề cần làm rõ</h4>
-        ${plan.issues.map((is, i) => `<button type="button" class="mm-node mm-issue" data-mm="issue" data-jump="${is.key}"><span>${i + 1}</span>${escapeHtml(is.tieuDe)}<em>${is.cauHoi.length}</em></button>`).join('')}
-      </div>
-    </div>`;
-  }
-
-  function drawMapLinks() {
-    const map = $('[data-map]', main);
-    if (!map) return;
-    const svg = $('[data-links]', map);
-    const box = map.getBoundingClientRect();
-    svg.setAttribute('width', box.width);
-    svg.setAttribute('height', map.scrollHeight);
-    const pt = (el, side) => {
-      const r = el.getBoundingClientRect();
-      return { x: (side === 'r' ? r.right : r.left) - box.left, y: r.top + r.height / 2 - box.top };
-    };
-    const curve = (a, b, cls) => `<path class="${cls}" d="M${a.x},${a.y} C${(a.x + b.x) / 2},${a.y} ${(a.x + b.x) / 2},${b.y} ${b.x},${b.y}"/>`;
-    const nodes = (k) => $$(`[data-mm="${k}"]`, map);
-    const root = nodes('root')[0];
-    let paths = '';
-    const vertical = (a, b) => {
-      const ra = a.getBoundingClientRect();
-      const rb = b.getBoundingClientRect();
-      const x = ra.left + ra.width / 2 - box.left;
-      paths += `<path class="mm-l0" d="M${x},${ra.bottom - box.top} L${x},${rb.top - box.top}"/>`;
-    };
-    vertical(nodes('domain')[0], nodes('group')[0]);
-    vertical(nodes('group')[0], root);
-    vertical(root, nodes('role')[0]);
-    const acts = nodes('act');
-    acts.forEach((n) => (paths += curve(pt(root, 'r'), pt(n, 'l'), 'mm-l1')));
-    const src = acts.length ? acts : [root];
-    nodes('issue').forEach((n, i) => {
-      const from = src[Math.min(src.length - 1, Math.floor((i / nodes('issue').length) * src.length))];
-      paths += curve(pt(from, 'r'), pt(n, 'l'), 'mm-l2');
-    });
-    svg.innerHTML = paths;
-  }
-
   function docsHtml() {
     const crime = plan.crime;
     return `<div class="lg-docs">
@@ -566,6 +577,12 @@ export function render(ctx, params = []) {
   }
 
   function bindMain(crime) {
+    $$('[data-wz-go]', main).forEach((b) => b.addEventListener('click', () => renderWizard(+b.dataset.wzGo)));
+    $('[data-wz-close]', main)?.addEventListener('click', () => {
+      sel.fromWizard = false;
+      persistSel();
+      $('.wz-bar', main)?.remove();
+    });
     $$('[data-hv]', main).forEach((cb) =>
       cb.addEventListener('change', () => {
         const ids = $$('[data-hv]:checked', main).map((x) => x.dataset.hv);
@@ -682,16 +699,7 @@ export function render(ctx, params = []) {
     );
     panel.addEventListener('click', (e) => {
       const jump = e.target.closest('[data-jump]');
-      if (jump) {
-        tab = 'issues';
-        $$('[data-tab]', main).forEach((x) => x.setAttribute('aria-selected', String(x.dataset.tab === 'issues')));
-        renderPanel();
-        openIssues.set(jump.dataset.jump, true);
-        const el = $(`[data-issue="${jump.dataset.jump}"]`, main);
-        el.querySelector('details').open = true;
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        return;
-      }
+      if (jump) return jumpTo(jump.dataset.jump);
       if (e.target.closest('[data-sugg-fresh]')) return suggest(sugg.key, sugg.q, true);
       if (e.target.closest('[data-sugg-close]')) {
         sugg = null;
@@ -1000,10 +1008,12 @@ export function render(ctx, params = []) {
     );
   }
 
-  const onResize = debounce(() => tab === 'map' && drawMapLinks(), 100);
-  window.addEventListener('resize', onResize);
+  root.addEventListener('click', (e) => {
+    if (e.target.closest('[data-wizard]')) renderWizard(wizardState()?.step);
+  });
 
   renderTree();
-  renderMain();
-  return () => window.removeEventListener('resize', onResize);
+  if (params[0] === 'vu-viec') renderWizard();
+  else renderMain();
+  return () => treeCtl?.destroy();
 }

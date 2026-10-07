@@ -51,7 +51,7 @@ test.describe('Giao diện di động', () => {
     await expect(page.locator('[name="trichYeu"]')).toBeFocused();
   });
 
-  for (const view of ['dashboard', 'chat', 'spell', 'summary', 'templates', 'docs', 'settings', 'legal', 'legal/222', 'cases', 'interview', 'help', 'help/kho', 'help/interview', 'pdf']) {
+  for (const view of ['dashboard', 'chat', 'spell', 'summary', 'templates', 'docs', 'settings', 'legal', 'legal/222', 'cases', 'interview', 'help', 'help/kho', 'help/interview', 'pdf', 'legal/vu-viec']) {
     test(`màn hình ${view} không tràn ngang`, async ({ page }) => {
       const t = trackErrors(page);
       await freshApp(page, `#${view}`);

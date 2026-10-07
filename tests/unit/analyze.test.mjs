@@ -45,3 +45,29 @@ test('kế hoạch nhiều điều luật: vấn đề riêng từng điều, kh
   assert.match(planToText(p), /Điều liên quan: Điều 341/);
   assert.ok(p.hanhVi.some((h) => /\(Điều 341\)$/.test(h.ten)));
 });
+
+test('hành vi nhập tay: mỗi dòng một hành vi, khớp hành vi có sẵn hoặc điều gần nhất; không nhầm tội “biến thể”', async () => {
+  const { analyzeActs, mergeResults } = await import('../../assets/js/legal/analyze.js');
+  const r = analyzeActs('Kế toán lập chứng từ chi khống để rút tiền\nThủ quỹ thu tiền nhưng không nhập quỹ\nDùng dao đâm người khác gây thương tích\nVô ý gây thương tích cho người đi đường\nLén lút trộm cắp xe máy của hàng xóm');
+  const by = (s) => r.items.find((x) => x.trich.includes(s) || x.ten.includes(s));
+  assert.equal(by('chi khống').hanhViId, 'chi-khong');
+  assert.equal(by('không nhập quỹ').dieu, '353');
+  assert.equal(by('dao đâm').dieu, '134'); // cố ý — không phải Điều 137 (khi thi hành công vụ)
+  assert.equal(by('Vô ý').dieu, '138');
+  assert.equal(by('trộm cắp').dieu, '173');
+  assert.ok(r.items.every((x) => x.checked));
+  assert.equal(r.crimes[0].dieu, '353');
+  const m = mergeResults(r, analyzeActs('Kế toán lập chứng từ chi khống để rút tiền'));
+  assert.equal(m.items.filter((x) => x.hanhViId === 'chi-khong').length, 1);
+});
+
+test('sơ đồ cây: điều chính, điều liên quan, vấn đề chung, tài liệu; đủ câu hỏi', async () => {
+  const { planToTree } = await import('../../assets/js/views/plan-tree.js');
+  const p = generatePlan({ dieu: '353', hanhViIds: ['chi-khong'], lienQuan: [{ dieu: '341', hanhViIds: [] }] });
+  const t = planToTree(p);
+  const ids = t.children.map((c) => c.id);
+  assert.deepEqual(ids.slice(0, 2), ['crime-353', 'crime-341']);
+  assert.ok(ids.includes('common') && ids.includes('docs'));
+  const count = (n) => (n.kind === 'q' ? 1 : (n.children || []).reduce((s, c) => s + count(c), 0));
+  assert.equal(count(t), p.issues.reduce((s, i) => s + i.cauHoi.length, 0));
+});
