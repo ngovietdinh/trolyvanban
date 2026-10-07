@@ -63,6 +63,9 @@ export function isPrivateEndpoint(url) {
   return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
 }
 
+/** Trình duyệt báo đang mất mạng. */
+export const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+
 /** Ứng dụng gọi khi đọc / lưu cấu hình AI của tài khoản. */
 export function setLocalEndpoint(url) {
   PROVIDERS.local.base = normalizeLocalBase(url) || 'http://localhost:11434/v1';
@@ -191,15 +194,26 @@ export async function streamClaude(opts) {
   // AI trên máy không bao giờ tự chuyển sang dịch vụ trực tuyến: người dùng chọn nó để dữ liệu không rời khỏi máy
   // (phân hệ Tố tụng dựa vào điều này).
   const allowFallback = !opts.noFallback && o.fallback !== false && first.provider !== 'local';
-  const others = allowFallback ? (hooks.chain?.() || []).filter((c) => c.provider !== first.provider && c.apiKey) : [];
+  const chain = (hooks.chain?.() || []).filter((c) => c.apiKey);
+  const others = allowFallback ? chain.filter((c) => c.provider !== first.provider) : [];
+  // Mất mạng → AI trên máy. Dữ liệu không rời khỏi máy nên luôn được phép, kể cả khi tắt “tự chuyển nhà cung cấp”.
+  const localEntry = first.provider !== 'local' && !opts.noFallback ? chain.find((c) => c.provider === 'local') || null : null;
+  let queue = [first, ...others];
+  if (localEntry && isOffline()) {
+    queue = [localEntry];
+    hooks.event?.({ type: 'offline', from: first.provider, to: 'local' });
+  }
   const errors = [];
   const label = (p) => PROVIDERS[p]?.label || p;
   // Lần lượt: nhà cung cấp đang chọn → mô hình dự phòng cùng nhà cung cấp → nhà cung cấp khác.
-  for (const c of [first, ...others]) {
+  for (let qi = 0; qi < queue.length; qi++) {
+    const c = queue[qi];
+    let netDown = false;
     const models = [c.model, ...(allowFallback ? (PROVIDERS[c.provider]?.backup || []).filter((m) => m !== c.model) : [])];
     for (let mi = 0; mi < models.length; mi++) {
       const model = models[mi];
-      const r = await tryWithRetry({ ...opts, provider: c.provider, apiKey: c.apiKey, model });
+      // Có AI trên máy dự phòng: lỗi mạng thì không chờ thử lại, chuyển ngay.
+      const r = await tryWithRetry({ ...opts, provider: c.provider, apiKey: c.apiKey, model, quickNetFail: !!localEntry && c.provider !== 'local' });
       if (r.ok) {
         Object.assign(meta, { provider: c.provider, model, cached: false, switched: c !== first || mi > 0 });
         if (cacheKey && r.text && r.text.trim()) hooks.cacheSet?.(cacheKey, { text: r.text, provider: c.provider, at: Date.now() });
@@ -211,6 +225,7 @@ export async function streamClaude(opts) {
       hooks.event?.({ type: 'error', provider: c.provider, message: `${model}: ${msg}` });
       errors.push(`${label(c.provider)} (${model}): ${msg}`);
       if (/không thể xử lý/.test(msg)) break; // từ chối nội dung: không thử tiếp
+      netDown = err?.status === -1 && c.provider !== 'local';
       // Quá tải / lỗi máy chủ / sai tên mô hình → thử mô hình dự phòng của cùng nhà cung cấp.
       const capacity = [404, 429, 500, 502, 503, 504, -2].includes(err?.status);
       const nextModel = capacity ? models[mi + 1] : undefined;
@@ -221,7 +236,15 @@ export async function streamClaude(opts) {
       }
       break;
     }
-    const next = others[others.indexOf(c) + 1]; // first không nằm trong others → indexOf = -1 → others[0]
+    // Không kết nối được dịch vụ trực tuyến (mất mạng): các dịch vụ trực tuyến khác cũng sẽ lỗi → sang AI trên máy.
+    if (netDown && localEntry) {
+      queue = [...queue.slice(0, qi + 1), localEntry];
+      hooks.event?.({ type: 'offline', from: c.provider, to: 'local' });
+      opts.onSwitch?.(c.provider, 'local', errors.at(-1));
+      opts.onText?.('', '');
+      continue;
+    }
+    const next = queue[qi + 1];
     if (next) {
       hooks.event?.({ type: 'switch', from: c.provider, to: next.provider, message: errors.at(-1) });
       opts.onSwitch?.(c.provider, next.provider, errors.at(-1));
@@ -257,7 +280,7 @@ async function tryWithRetry(opts) {
     } catch (err) {
       lastErr = err;
       if (opts.signal?.aborted) break;
-      const transient = [429, 500, 502, 503, 504, -1, -2].includes(err?.status);
+      const transient = [429, 500, 502, 503, 504, -2, ...(opts.quickNetFail ? [] : [-1])].includes(err?.status);
       if (!transient || gotText || attempt === AI_RETRY.delays.length) break;
       hooks.event?.({ type: 'retry', provider: opts.provider, message: `${err.message} — thử lại lần ${attempt + 1}` });
       await sleep(AI_RETRY.delays[attempt], opts.signal);
@@ -282,9 +305,10 @@ function toOpenAI(messages) {
 }
 const toGeminiParts = (content) => parts(content).map((p) => (p.type === 'image' ? { inline_data: { mime_type: p.mime || 'image/jpeg', data: p.data } } : { text: p.text }));
 
-async function streamAnthropic({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000 }) {
+async function streamAnthropic({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, quickNetFail = false }) {
   const Anthropic = await loadSdk();
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  // quickNetFail: có AI trên máy dự phòng → không để thư viện tự thử lại khi mất mạng.
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true, ...(quickNetFail ? { maxRetries: 0 } : {}) });
   const params = { model, max_tokens: maxTokens, system, messages: toAnthropic(messages) };
   // Opus 5.5 / Sonnet 5.5: bật cơ chế dự phòng phía máy chủ khi yêu cầu bị bộ lọc an toàn từ chối.
   const withFallback = model === 'claude-opus-5-5' || model === 'claude-sonnet-5-5';
@@ -304,7 +328,8 @@ async function streamAnthropic({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_
     if (final.stop_reason === 'max_tokens') text += '\n\n[Nội dung đã đạt giới hạn độ dài.]';
     return text;
   } catch (err) {
-    const st = err?.status === 529 ? 503 : err?.status || 0;
+    // Lỗi kết nối (mất mạng) → -1 như các nhà cung cấp khác, để chuyển ngay sang AI trên máy.
+    const st = err?.status === 529 ? 503 : err?.status || (quickNetFail && err instanceof Anthropic.APIConnectionError && !(err instanceof Anthropic.APIUserAbortError) ? -1 : 0);
     throw aiError(st === 503 ? 'Claude đang quá tải (529/503). Hệ thống sẽ tự thử lại hoặc chuyển mô hình.' : friendlyError(err, Anthropic), st);
   }
 }

@@ -1,9 +1,7 @@
 {
-  "version": "2.13.0",
+  "version": "2.13.1",
   "date": "2026-10-07",
   "notes": [
-    "Kết nối AI chạy trên máy: Ollama, LM Studio, llama.cpp, Jan — không cần API key, không gửi dữ liệu ra ngoài",
-    "Phân hệ Tố tụng dùng được AI trên máy kể cả khi chưa có quyền AI trực tuyến",
-    "AI trên máy không bao giờ tự chuyển sang dịch vụ trực tuyến khi lỗi"
+    "Mất mạng: mọi chức năng AI tự chuyển ngay sang AI chạy trên máy (không chờ thử lại)"
   ]
 }

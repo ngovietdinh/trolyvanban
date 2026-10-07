@@ -554,6 +554,7 @@ export const GUIDES = [
     faq: [
       ['Lỗi 503 / 429 là gì?', '503: máy chủ AI quá tải tạm thời; 429: vượt hạn mức. Phần mềm tự thử lại và chuyển dịch vụ; nếu vẫn lỗi, chờ vài phút hoặc đổi mô hình nhẹ hơn.'],
       ['Có cần Internet không?', 'Chỉ khi dùng AI trực tuyến hoặc cập nhật. AI chạy trên máy và các chức năng khác chạy không cần mạng.'],
+      ['Mất mạng thì AI có tự chuyển sang AI trên máy không?', 'Có, nếu đã kết nối AI chạy trên máy. Khi máy báo mất mạng, mọi chức năng AI dùng ngay AI trên máy; khi gọi Claude, ChatGPT… bị lỗi kết nối, phần mềm chuyển ngay sang AI trên máy, không chờ thử lại (kể cả khi tắt “tự chuyển nhà cung cấp”, vì dữ liệu không rời khỏi máy). Có mạng trở lại thì dùng lại nhà cung cấp mặc định.'],
       ['AI trên máy có tự chuyển sang ChatGPT, Claude khi lỗi không?', 'Không. Khi đã chọn AI trên máy, phần mềm không bao giờ tự gửi nội dung ra dịch vụ trực tuyến — báo lỗi để bạn xử lý.'],
       ['Máy cấu hình thế nào thì chạy được?', 'Mô hình 3B–7B: RAM 8 GB, chạy được trên máy văn phòng (chậm nếu không có card đồ họa). Mô hình 14B: RAM 16 GB. Mac chip Apple chạy nhanh nhất. Chất lượng thấp hơn Claude, ChatGPT — luôn rà soát kết quả.'],
       ['Bản cài đặt khác bản web thế nào?', 'Cùng chức năng. Bản cài đặt chạy như phần mềm trên Windows/macOS, mặc định cấp toàn quyền cho tài khoản tạo trên máy; bản web mặc định là Người dùng, chờ quản trị cấp quyền. Dữ liệu hai bản tách riêng — chuyển bằng Xuất sao lưu / Khôi phục.'],

@@ -121,3 +121,52 @@ test.describe('AI chạy trên máy (Ollama, LM Studio…)', () => {
     expect(await aiOf(page, 'docs')).toBeNull();
   });
 });
+
+test.describe('Mất mạng → tự chuyển sang AI trên máy', () => {
+  const setup = async (page) => {
+    await freshApp(page);
+    await setApiKey(page, 'anthropic', 'sk-ant-test-1234');
+    await page.evaluate(async () => {
+      const { ctx } = await import('/assets/js/app.js');
+      await ctx.saveAiProviders({ ...ctx.aiProviders(), local: { base: 'http://localhost:11434/v1', model: 'qwen2.5:7b' } });
+      ctx.saveSettings({ aiProvider: 'anthropic' });
+    });
+  };
+
+  test('trình duyệt báo mất mạng: dùng ngay AI trên máy, không gọi Claude (kể cả khi tắt tự chuyển)', async ({ page }) => {
+    const claude = await mockClaude(page, () => 'Trả lời từ Claude');
+    const local = await mockLocal(page, { reply: () => 'Trả lời khi mất mạng.' });
+    await setup(page);
+    await page.evaluate(async () => (await import('/assets/js/app.js')).ctx.saveSettings({ aiFallback: false }));
+    expect((await aiOf(page, 'docs'))?.provider).toBe('anthropic');
+    await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'onLine', { get: () => false }));
+    await page.goto('/app.html#chat');
+    await page.reload();
+    await expect(page.locator('[data-ai-status] strong')).toHaveText('Mất mạng · AI trên máy');
+    expect((await aiOf(page, 'docs'))?.provider).toBe('local');
+    const before = claude.length;
+    await page.fill('[data-input]', 'Xin chào bạn');
+    await page.click('[data-send]');
+    await expect(page.locator('.msg.bot .msg-content').last()).toContainText('Trả lời khi mất mạng');
+    expect(claude.length).toBe(before);
+    expect(local.length).toBe(1);
+  });
+
+  test('gọi dịch vụ trực tuyến bị lỗi mạng: chuyển ngay sang AI trên máy, không chờ thử lại', async ({ page }) => {
+    let claudeTries = 0;
+    await page.route('https://api.anthropic.com/**', (route) => {
+      if (route.request().method() !== 'OPTIONS') claudeTries++;
+      return route.abort('internetdisconnected');
+    });
+    await mockLocal(page, { reply: () => 'AI trên máy trả lời thay.' });
+    await setup(page);
+    await page.goto('/app.html#chat');
+    const t0 = Date.now();
+    await page.fill('[data-input]', 'Xin chào');
+    await page.click('[data-send]');
+    await expect(page.locator('.msg.bot .msg-content').last()).toContainText('AI trên máy trả lời thay');
+    expect(Date.now() - t0).toBeLessThan(5000);
+    expect(claudeTries).toBe(1);
+    await expect(page.locator('.toast', { hasText: 'tự chuyển sang AI chạy trên máy' }).first()).toBeVisible();
+  });
+});

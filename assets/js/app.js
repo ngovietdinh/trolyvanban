@@ -1,7 +1,7 @@
 // Ứng dụng chính: khung giao diện, điều hướng theo hash, tài khoản, bảng lệnh.
 import { $, $$, icon, toast, bindThemeToggles, escapeHtml } from './ui.js';
 import { store, docsRepo } from './lib/store.js';
-import { PROVIDERS, setAIHooks, setLocalEndpoint, isPrivateEndpoint } from './lib/ai.js';
+import { PROVIDERS, setAIHooks, setLocalEndpoint, isPrivateEndpoint, isOffline } from './lib/ai.js';
 import { accounts, vault, systemConfig } from './lib/accounts.js';
 import { initUpdates } from './update.js';
 import { desktop, isDesktop } from './lib/platform.js';
@@ -100,6 +100,11 @@ setAIHooks({
       aiLog({ type: 'retry', provider: e.provider, message: e.message });
       toast(`${name(e.provider)}: ${e.message}…`, { type: 'info', timeout: 3500 });
     }
+    if (e.type === 'offline') {
+      aiLog({ type: 'switch', provider: 'local', message: `Mất kết nối mạng — ${name(e.from)} → AI trên máy` });
+      toast('Mất kết nối mạng — tự chuyển sang AI chạy trên máy', { type: 'info', timeout: 5000 });
+      return;
+    }
     if (e.type === 'switch' && e.from === e.to) {
       aiLog({ type: 'switch', provider: e.to, message: `Đổi mô hình: ${e.message}` });
       toast(`${name(e.to)}: ${e.message}`, { type: 'info', timeout: 5000 });
@@ -135,7 +140,8 @@ export const ctx = {
     const localPrivate = aiConfigured('local') && isPrivateEndpoint(aiCache.providers.local.base);
     const allowed = Object.keys(PROVIDERS).filter((p) => aiConfigured(p) && (online || (p === 'local' && localPrivate && user.permSet.has(scope === 'legal' ? 'legal' : 'docs'))));
     const pref = this.settings().aiProvider;
-    const provider = allowed.includes(pref) ? pref : allowed[0];
+    // Mất mạng: dùng ngay AI trên máy (nếu có) thay cho dịch vụ trực tuyến.
+    const provider = isOffline() && allowed.includes('local') ? 'local' : allowed.includes(pref) ? pref : allowed[0];
     return provider ? aiEntry(provider) : null;
   },
   hasAI(scope) {
@@ -292,7 +298,7 @@ function refreshChrome() {
   const st = $('[data-ai-status]');
   const ai = ctx.ai();
   st.classList.toggle('on', !!ai);
-  st.querySelector('strong').textContent = ai ? (ai.local ? 'AI trên máy đã bật' : `AI ${ai.label} đã bật`) : user.permSet.has('ai') ? 'Chế độ cơ bản' : 'AI trực tuyến bị tắt';
+  st.querySelector('strong').textContent = ai ? (ai.local ? (isOffline() ? 'Mất mạng · AI trên máy' : 'AI trên máy đã bật') : `AI ${ai.label} đã bật`) : user.permSet.has('ai') ? 'Chế độ cơ bản' : 'AI trực tuyến bị tắt';
   st.querySelector('small').textContent = ai ? ai.model : user.permSet.has('ai') ? 'Thêm API key để bật AI' : 'Có thể dùng AI trên máy';
   renderUserMenu();
   renderBottomNav();
@@ -553,6 +559,9 @@ function showGate(mode = 'login') {
     }
   });
 }
+
+// Mất mạng / có mạng trở lại: cập nhật trạng thái AI (tự dùng AI trên máy khi mất mạng).
+for (const ev of ['online', 'offline']) window.addEventListener(ev, () => accounts.current() && refreshChrome());
 
 async function enterApp() {
   loadAiCache(await vault.read());
