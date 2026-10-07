@@ -2,10 +2,10 @@
 // Dùng: node scripts/desktop.mjs   (sau đó: cd desktop && npm install && npm run dist:win | dist:mac)
 import { cpSync, rmSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { WEB_FILES as FILES } from './web-manifest.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const out = `${root}desktop/web`;
-const FILES = ['app.html', 'index.html', 'manifest.webmanifest', 'version.json', 'assets'];
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });

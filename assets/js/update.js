@@ -1,9 +1,10 @@
 // Cập nhật phần mềm: đăng ký service worker (dùng ngoại tuyến) và thông báo khi có phiên bản mới.
 import { APP_VERSION } from './version.js';
-import { icon, escapeHtml } from './ui.js';
-import { isDesktop } from './lib/platform.js';
+import { icon, escapeHtml, toast } from './ui.js';
+import { isDesktop, desktop } from './lib/platform.js';
 
-// Bản cài đặt trên máy: so với version.json trên nhánh main, có bản mới thì mở trang tải bộ cài.
+// Bản cài đặt trên máy: cập nhật tại chỗ (chỉ tải tệp mã web thay đổi) qua vỏ ứng dụng; vỏ cũ hoặc bản mới cần vỏ
+// mới thì mở trang tải bộ cài. Vỏ cũ (trước v2.16) không có desktop.update → so với version.json trên main.
 const DESKTOP_VERSION_URL = 'https://raw.githubusercontent.com/ngovietdinh/trolyvanban/main/version.json';
 export const DESKTOP_DOWNLOAD_URL = 'https://github.com/ngovietdinh/trolyvanban/releases/latest';
 
@@ -32,6 +33,8 @@ const lsSet = (k, v) => {
   } catch {}
 };
 const DISMISS_MS = 12 * 60 * 60 * 1000; // “Để sau”: không nhắc lại bản đó trong 12 giờ
+const inPlace = () => !!desktop?.update;
+let needInstaller = false;
 
 function banner(version, notes = []) {
   if (document.querySelector('.update-banner')) return;
@@ -40,7 +43,7 @@ function banner(version, notes = []) {
   const el = document.createElement('div');
   el.className = 'update-banner';
   el.setAttribute('role', 'status');
-  el.innerHTML = `${icon('refresh', 'ic-sm')}<span><strong>Đã có phiên bản mới${version ? ` v${escapeHtml(version)}` : ''}.</strong> ${notes.length ? escapeHtml(notes[0]) : 'Dữ liệu và tài khoản được giữ nguyên.'}</span><button class="btn btn-sm btn-primary" type="button" data-do-update>${isDesktop ? 'Tải bộ cài mới' : 'Cập nhật ngay'}</button><button class="btn btn-sm btn-ghost btn-icon" type="button" aria-label="Để sau" data-dismiss>${icon('x', 'ic-sm')}</button>`;
+  el.innerHTML = `${icon('refresh', 'ic-sm')}<span><strong>Đã có phiên bản mới${version ? ` v${escapeHtml(version)}` : ''}.</strong> ${notes.length ? escapeHtml(notes[0]) : 'Dữ liệu và tài khoản được giữ nguyên.'}</span><button class="btn btn-sm btn-primary" type="button" data-do-update>${isDesktop && (!inPlace() || needInstaller) ? 'Tải bộ cài mới' : 'Cập nhật ngay'}</button><button class="btn btn-sm btn-ghost btn-icon" type="button" aria-label="Để sau" data-dismiss>${icon('x', 'ic-sm')}</button>`;
   document.body.append(el);
   el.querySelector('[data-do-update]').addEventListener('click', applyUpdate);
   el.querySelector('[data-dismiss]').addEventListener('click', () => {
@@ -51,6 +54,15 @@ function banner(version, notes = []) {
 
 /** Kiểm tra version.json trên máy chủ. Trả về { available, latest, notes }. */
 export async function checkForUpdate() {
+  if (inPlace()) {
+    try {
+      const r = await desktop.update.check();
+      needInstaller = !!r.needInstaller;
+      return { available: r.available, latest: r.latest, notes: r.notes || [], needInstaller };
+    } catch {
+      throw new Error('Không kiểm tra được bản cập nhật (đang ngoại tuyến hoặc máy chủ không phản hồi).');
+    }
+  }
   let info;
   try {
     const res = await fetch(`${isDesktop ? DESKTOP_VERSION_URL : 'version.json'}?t=${Date.now()}`, { cache: 'no-store' });
@@ -67,8 +79,11 @@ export async function checkForUpdate() {
 /** Áp dụng bản mới: kích hoạt service worker đang chờ rồi tải lại trang (dữ liệu localStorage giữ nguyên). */
 export async function applyUpdate() {
   if (isDesktop) {
-    window.open(DESKTOP_DOWNLOAD_URL, '_blank');
-    return;
+    if (!inPlace() || needInstaller) {
+      window.open(DESKTOP_DOWNLOAD_URL, '_blank');
+      return;
+    }
+    return applyInPlace();
   }
   const latest = await checkForUpdate().then((r) => r.latest).catch(() => null);
   const prev = lsGet(LS.attempt);
@@ -101,6 +116,40 @@ async function hardRefresh(reg) {
   location.reload();
 }
 
+/** Bản cài đặt: tải phần thay đổi rồi tải lại trang (dữ liệu giữ nguyên). */
+let applying = false;
+async function applyInPlace() {
+  if (applying) return;
+  applying = true;
+  const btns = [...document.querySelectorAll('[data-do-update], [data-apply-update]')];
+  const say = (t) => btns.forEach((b) => ((b.disabled = true), (b.textContent = t)));
+  say('Đang tải…');
+  const off = desktop.update.onProgress(({ done, total }) => say(total ? `Đang tải ${done}/${total} tệp…` : 'Đang kiểm tra…'));
+  try {
+    const r = await desktop.update.apply();
+    if (r.needInstaller) {
+      needInstaller = true;
+      toast('Bản mới cần cài lại bộ cài — đang mở trang tải.', { type: 'info', timeout: 6000 });
+      window.open(DESKTOP_DOWNLOAD_URL, '_blank');
+      return;
+    }
+    if (r.upToDate) {
+      toast('Bạn đang dùng phiên bản mới nhất.');
+      document.querySelector('.update-banner')?.remove();
+      return;
+    }
+    say('Đang khởi động lại…');
+    toast(`Đã cập nhật lên v${r.version} (${r.changed} tệp, ${(r.bytes / 1048576).toFixed(1)} MB) — khởi động lại…`, { timeout: 4000 });
+    setTimeout(() => location.reload(), 900);
+  } catch (err) {
+    toast(`${err.message || 'Cập nhật lỗi'} — có thể tải bộ cài mới ở menu Trợ giúp.`, { type: 'error', timeout: 8000 });
+    btns.forEach((b) => ((b.disabled = false), (b.textContent = 'Cập nhật ngay')));
+  } finally {
+    off();
+    applying = false;
+  }
+}
+
 /** Có service worker mới đang chờ: chỉ báo khi máy chủ thật sự có bản mới hơn; ngược lại kích hoạt ngầm. */
 function notifyIfNewer(reg) {
   checkForUpdate()
@@ -109,6 +158,13 @@ function notifyIfNewer(reg) {
 }
 
 export function initUpdates() {
+  if (inPlace()) {
+    // Bản cài đặt: kiểm tra bản mới khi mở và mỗi 6 giờ (app.js báo “sẵn sàng” cho vỏ ứng dụng sau khi khởi động).
+    const run = () => checkForUpdate().then((r) => r.available && banner(r.latest, r.notes)).catch(() => {});
+    setTimeout(run, 4000);
+    setInterval(run, 6 * 60 * 60 * 1000);
+    return;
+  }
   // Đã lên đúng bản mới → xóa dấu “đang cập nhật”.
   const att = lsGet(LS.attempt);
   if (att?.version && cmp(APP_VERSION, att.version) >= 0) lsSet(LS.attempt, null);

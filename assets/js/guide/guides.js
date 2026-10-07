@@ -540,7 +540,7 @@ export const GUIDES = [
       { t: 'Bật tự chuyển AI và ghi nhớ', d: 'Khi một dịch vụ lỗi (503, quá tải, hết hạn mức), phần mềm tự thử lại, đổi mô hình dự phòng, rồi chuyển sang dịch vụ khác có key. Kết quả AI đã hỏi được **ghi nhớ trên máy** để lần sau trả lời ngay, không tốn lượt.' },
       { t: 'Thông tin đơn vị', d: 'Điền **Thông tin đơn vị mặc định** (văn bản hành chính) và **Cơ quan điều tra** (biên bản, biểu mẫu tố tụng, mẫu số). Bấm lưu.' },
       { t: 'Sao lưu và khôi phục', d: '[[Xuất sao lưu]] tải về tệp .json; ở máy mới đăng nhập rồi bấm [[Khôi phục]] và chọn tệp đó.' },
-      { t: 'Cập nhật', d: '[[Kiểm tra cập nhật]] → [[Cập nhật ngay]] khi có bản mới. Bản cài đặt trên máy thì bấm [[Tải bộ cài mới]] rồi cài đè lên — dữ liệu giữ nguyên.' },
+      { t: 'Cập nhật', d: '[[Kiểm tra cập nhật]] → [[Cập nhật ngay]] khi có bản mới. Bản cài đặt trên máy (từ v2.16.0) cũng bấm [[Cập nhật ngay]]: chỉ tải phần thay đổi rồi tự khởi động lại, không cần tải lại bộ cài — dữ liệu giữ nguyên.' },
       { t: 'Cài lên máy tính (tùy chọn)', d: 'Bấm [[Tải bộ cài Windows / macOS]]: Windows tải tệp **.exe**, máy Mac chip Apple tải **mac-arm64.dmg**, Mac Intel tải **mac-x64.dmg**. Bản cài đặt chạy như phần mềm riêng, dùng được khi mất mạng, và **tài khoản tạo mới có toàn quyền** (kể cả Tố tụng).', tip: 'Windows báo SmartScreen: chọn “Thông tin thêm → Vẫn chạy”. macOS lần đầu báo “Apple không thể kiểm tra phần mềm độc hại”: bấm OK → Cài đặt hệ thống → Quyền riêng tư & Bảo mật → Vẫn mở (Open Anyway), nhập mật khẩu máy. Chỉ làm một lần.' },
     ],
     examples: [],

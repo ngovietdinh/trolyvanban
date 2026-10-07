@@ -1,7 +1,7 @@
 // Bản cài đặt máy tính (Windows/macOS) của Trợ Lý Văn Bản AI.
 // Nạp nguyên mã web trong thư mục web/ qua giao thức riêng app://trolyvanban — một origin cố định, bảo mật
 // (crypto.subtle, Worker, localStorage hoạt động như trên HTTPS) và dữ liệu lưu bền trong thư mục người dùng.
-const { app, BrowserWindow, protocol, shell, Menu, dialog, session } = require('electron');
+const { app, BrowserWindow, protocol, shell, Menu, dialog, session, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 
@@ -9,6 +9,8 @@ const SCHEME = 'app';
 const HOST = 'trolyvanban';
 const ORIGIN = `${SCHEME}://${HOST}`;
 const WEB = path.join(__dirname, 'web');
+const { createUpdater, WATCHDOG_MS } = require('./updater.cjs');
+const updater = createUpdater(WEB);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -40,8 +42,9 @@ async function serve(request) {
   if (url.host !== HOST) return new Response('Not found', { status: 404 });
   let rel = decodeURIComponent(url.pathname);
   if (rel === '/' || rel === '') rel = '/app.html';
-  const file = path.normalize(path.join(WEB, rel));
-  if (file !== WEB && !file.startsWith(WEB + path.sep)) return new Response('Forbidden', { status: 403 });
+  // Bản cập nhật tại chỗ (nếu có) được ưu tiên, còn lại lấy từ bộ cài.
+  const file = updater.resolve(rel);
+  if (!file) return new Response('Forbidden', { status: 403 });
   try {
     const body = await fs.readFile(file);
     return new Response(body, { headers: { 'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-cache' } });
@@ -119,7 +122,30 @@ function createWindow() {
     }
   });
 
+  // Bản vừa cập nhật phải báo “sẵn sàng” (mã web khởi động xong) — nếu không, quay về bản trước.
+  win.webContents.on('did-finish-load', () => {
+    if (!updater.isPending()) return;
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => {
+      if (updater.rollback()) {
+        dialog.showMessageBox(win, { type: 'warning', message: 'Bản cập nhật không chạy được — đã quay về phiên bản trước.', detail: 'Dữ liệu không bị ảnh hưởng. Có thể tải bộ cài mới nhất ở menu Trợ giúp.' });
+        win.reload();
+      }
+    }, WATCHDOG_MS);
+  });
+
   win.loadURL(`${ORIGIN}/app.html`);
+}
+
+let watchdog = null;
+function bindUpdater() {
+  ipcMain.handle('tlvb:update-check', () => updater.check());
+  ipcMain.handle('tlvb:update-apply', (e) => updater.apply((p) => !e.sender.isDestroyed() && e.sender.send('tlvb:update-progress', p)));
+  ipcMain.handle('tlvb:version', () => ({ web: updater.activeVersion(), packaged: updater.packaged(), shell: app.getVersion() }));
+  ipcMain.on('tlvb:ready', () => {
+    clearTimeout(watchdog);
+    updater.confirm().catch(() => {});
+  });
 }
 
 function buildMenu() {
@@ -159,7 +185,7 @@ function buildMenu() {
         { label: 'Mở thư mục dữ liệu', click: () => shell.openPath(app.getPath('userData')) },
         {
           label: 'Phiên bản',
-          click: () => dialog.showMessageBox(win, { type: 'info', title: 'Trợ Lý Văn Bản AI', message: `Trợ Lý Văn Bản AI v${app.getVersion()}`, detail: 'Dữ liệu, tài khoản và API key chỉ lưu trên máy này.' }),
+          click: () => dialog.showMessageBox(win, { type: 'info', title: 'Trợ Lý Văn Bản AI', message: `Trợ Lý Văn Bản AI v${updater.activeVersion()}`, detail: `Bộ cài v${app.getVersion()}${updater.activeVersion() !== updater.packaged() ? ` · đã cập nhật tại chỗ lên v${updater.activeVersion()}` : ''}. Dữ liệu, tài khoản và API key chỉ lưu trên máy này.` }),
         },
       ],
     },
@@ -179,6 +205,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     protocol.handle(SCHEME, serve);
     allowCorsForApp(session.defaultSession);
+    bindUpdater();
     buildMenu();
     createWindow();
     app.on('activate', () => {

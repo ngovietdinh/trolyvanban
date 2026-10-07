@@ -122,6 +122,8 @@ jobs:
         with:
           path: out
           merge-multiple: true
+      - name: Danh sách tệp cho cập nhật tại chỗ
+        run: node scripts/web-manifest.mjs ${{ github.sha }} > out/web-manifest.json
       - name: Đọc phiên bản
         id: v
         run: |
@@ -133,6 +135,7 @@ jobs:
           - **Windows**: tải `TroLyVanBan-…-win-x64.exe`, chạy và làm theo hướng dẫn. Nếu Windows SmartScreen cảnh báo, chọn *Thông tin thêm → Vẫn chạy*.
           - **macOS**: chip Apple (M1, M2…) tải bản `mac-arm64.dmg`, máy Intel tải `mac-x64.dmg`. Kéo ứng dụng vào Applications. Lần đầu mở, macOS báo *không thể mở vì Apple không thể kiểm tra phần mềm độc hại*: bấm *OK*, vào *Cài đặt hệ thống → Quyền riêng tư & Bảo mật*, kéo xuống, bấm *Vẫn mở* (Open Anyway) và nhập mật khẩu máy — chỉ làm một lần. Hoặc chạy trong Terminal: `xattr -cr "/Applications/Tro Ly Van Ban AI.app"`.
           - Bản cài đặt: tài khoản tạo mới có toàn quyền; dữ liệu, tài khoản và API key chỉ lưu trên máy. Cài bản mới đè lên bản cũ, dữ liệu được giữ nguyên.
+          - Đã cài từ v2.16.0 trở lên: không cần tải lại bộ cài — ứng dụng tự báo “Đã có phiên bản mới”, bấm **Cập nhật ngay** để tải phần thay đổi (vài MB) rồi khởi động lại.
           TXT
       - uses: softprops/action-gh-release@v2
         with:

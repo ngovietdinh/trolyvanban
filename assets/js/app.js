@@ -692,3 +692,5 @@ document.addEventListener('docs-changed', refreshChrome);
 initUpdates();
 if (accounts.current()) enterApp();
 else showGate(/^#register/.test(location.hash) ? 'register' : 'login');
+// Bản cài đặt: mã web khởi động được → xác nhận bản cập nhật tại chỗ (không báo thì vỏ ứng dụng tự quay về bản trước).
+desktop?.ready?.();
