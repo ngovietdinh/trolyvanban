@@ -1,5 +1,5 @@
-// Lớp AI: hỗ trợ Claude (Anthropic), ChatGPT (OpenAI), Gemini (Google), Grok (xAI) bằng API key
-// của từng tài khoản. Khi chưa có key hoặc không được cấp quyền, dùng "Trợ lý mẫu" chạy cục bộ.
+// Lớp AI: hỗ trợ Claude (Anthropic), ChatGPT (OpenAI), Gemini (Google), Grok (xAI), Groq bằng API key
+// của từng tài khoản, và AI chạy trên máy (Ollama, LM Studio, llama.cpp…) không cần key. Khi chưa có key hoặc không được cấp quyền, dùng "Trợ lý mẫu" chạy cục bộ.
 
 import { moneyToWords, formatNumberVi, parseNumberInput } from './number-words.js';
 import { summarize } from './summarize.js';
@@ -21,7 +21,52 @@ export const PROVIDERS = {
   grok: { label: 'Grok', vendor: 'xAI', keyHint: 'xai-…', keyPrefix: /^xai-/, console: 'console.x.ai', backup: ['grok-3-mini'], defaultModel: 'grok-3', models: ['grok-3', 'grok-3-mini', 'grok-4'], base: 'https://api.x.ai/v1' },
   // Groq: hạ tầng suy luận rất nhanh cho các mô hình mở (Llama, GPT-OSS, Qwen, Kimi…), giao thức tương thích OpenAI.
   groq: { label: 'Groq', vendor: 'Groq', keyHint: 'gsk_…', keyPrefix: /^gsk_/, console: 'console.groq.com', backup: ['openai/gpt-oss-120b', 'llama-3.1-8b-instant'], defaultModel: 'llama-3.3-70b-versatile', models: ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3-32b', 'moonshotai/kimi-k2-instruct', 'llama-3.1-8b-instant'], base: 'https://api.groq.com/openai/v1', maxTokens: 8192 },
+  // AI chạy trên máy hoặc máy chủ nội bộ (Ollama, LM Studio, llama.cpp, Jan, vLLM…) — giao thức tương thích OpenAI.
+  // Không cần API key; dữ liệu không rời khỏi máy / mạng nội bộ.
+  local: { label: 'AI trên máy', vendor: 'Ollama, LM Studio…', local: true, keyHint: '(không bắt buộc)', keyPrefix: /.*/, console: 'ollama.com', defaultModel: '', models: [], backup: [], base: 'http://localhost:11434/v1', maxTokens: 8192 },
 };
+
+/** Phần mềm chạy AI trên máy phổ biến và địa chỉ mặc định của từng phần mềm. */
+export const LOCAL_PRESETS = [
+  { id: 'ollama', label: 'Ollama', base: 'http://localhost:11434/v1', site: 'ollama.com', hint: 'Cài Ollama, chạy lệnh: ollama pull qwen2.5:7b' },
+  { id: 'lmstudio', label: 'LM Studio', base: 'http://localhost:1234/v1', site: 'lmstudio.ai', hint: 'Mở tab Developer → Start Server, bật “Enable CORS”' },
+  { id: 'llamacpp', label: 'llama.cpp', base: 'http://localhost:8080/v1', site: 'github.com/ggml-org/llama.cpp', hint: 'Chạy: llama-server -m model.gguf --port 8080' },
+  { id: 'jan', label: 'Jan', base: 'http://localhost:1337/v1', site: 'jan.ai', hint: 'Settings → Local API Server → Start Server' },
+];
+
+/** Chuẩn hóa địa chỉ máy chủ AI cục bộ: bỏ “/” cuối, thêm “/v1” nếu chỉ nhập máy và cổng. */
+export function normalizeLocalBase(url) {
+  let s = String(url || '').trim().replace(/\/+$/, '');
+  if (!s) return '';
+  if (!/^https?:\/\//i.test(s)) s = `http://${s}`;
+  try {
+    const u = new URL(s);
+    if (u.pathname === '/' || u.pathname === '') s = `${u.origin}/v1`;
+  } catch {
+    return '';
+  }
+  return s;
+}
+
+/** Địa chỉ thuộc máy này hoặc mạng nội bộ (dữ liệu không ra Internet). */
+export function isPrivateEndpoint(url) {
+  let host;
+  try {
+    host = new URL(normalizeLocalBase(url)).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host === '::1') return true;
+  const m = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (!m) return false;
+  const [a, b] = [+m[1], +m[2]];
+  return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
+}
+
+/** Ứng dụng gọi khi đọc / lưu cấu hình AI của tài khoản. */
+export function setLocalEndpoint(url) {
+  PROVIDERS.local.base = normalizeLocalBase(url) || 'http://localhost:11434/v1';
+}
 
 export const SYSTEM_PROMPT = `Bạn là "Trợ Lý Văn Bản", chuyên gia văn thư - hành chính nhà nước Việt Nam với nhiều năm kinh nghiệm.
 - Luôn trả lời bằng tiếng Việt chuẩn mực, lịch sự, súc tích.
@@ -53,7 +98,7 @@ export function friendlyError(err, Anthropic) {
  */
 function streamOnce(opts) {
   const provider = opts.provider || 'anthropic';
-  if (provider === 'openai' || provider === 'grok' || provider === 'groq') return streamOpenAICompatible({ ...opts, provider });
+  if (provider === 'openai' || provider === 'grok' || provider === 'groq' || provider === 'local') return streamOpenAICompatible({ ...opts, provider });
   if (provider === 'gemini') return streamGemini(opts);
   return streamAnthropic(opts);
 }
@@ -73,6 +118,8 @@ export function setAIHooks(h) {
 }
 
 export const AI_TIMEOUT = { first: 90000, idle: 60000 };
+/** AI trên máy: lần đầu phải nạp mô hình vào bộ nhớ, máy không có GPU chạy chậm — chờ lâu hơn. */
+export const LOCAL_TIMEOUT = { first: 300000, idle: 120000 };
 
 /** Băm ngắn (FNV-1a 53 bit) để làm khóa ghi nhớ. */
 export function hashText(str) {
@@ -89,7 +136,7 @@ export function hashText(str) {
 }
 
 /** Một lần gọi có giới hạn thời gian chờ (chưa có chữ đầu tiên / ngừng giữa chừng). */
-async function streamWithTimeout(opts, timeout = AI_TIMEOUT) {
+async function streamWithTimeout(opts, timeout = opts.provider === 'local' ? LOCAL_TIMEOUT : AI_TIMEOUT) {
   const ctl = new AbortController();
   let timedOut = false;
   let timer;
@@ -141,7 +188,9 @@ export async function streamClaude(opts) {
     }
   }
   const first = { provider: opts.provider || 'anthropic', apiKey: opts.apiKey, model: opts.model || PROVIDERS[opts.provider || 'anthropic']?.defaultModel };
-  const allowFallback = !opts.noFallback && o.fallback !== false;
+  // AI trên máy không bao giờ tự chuyển sang dịch vụ trực tuyến: người dùng chọn nó để dữ liệu không rời khỏi máy
+  // (phân hệ Tố tụng dựa vào điều này).
+  const allowFallback = !opts.noFallback && o.fallback !== false && first.provider !== 'local';
   const others = allowFallback ? (hooks.chain?.() || []).filter((c) => c.provider !== first.provider && c.apiKey) : [];
   const errors = [];
   const label = (p) => PROVIDERS[p]?.label || p;
@@ -271,6 +320,12 @@ export function aiError(message, status = 0) {
 
 function httpError(status, provider, bodyText = '') {
   const label = PROVIDERS[provider]?.label || 'AI';
+  if (provider === 'local') {
+    if (status === 404 || /not found|no such model|model .* not/i.test(bodyText)) return `AI trên máy chưa có mô hình đã chọn. Bấm “Tải danh sách” để chọn mô hình đã cài (Ollama: chạy “ollama pull qwen2.5:7b”).`;
+    if (status === 401 || status === 403) return `Máy chủ AI trên máy từ chối (${status}). Kiểm tra khóa truy cập hoặc cấu hình CORS (Ollama: đặt OLLAMA_ORIGINS=*).`;
+    if (status === 500 && /memory|out of memory|CUDA|alloc/i.test(bodyText)) return 'Máy không đủ bộ nhớ để chạy mô hình này. Chọn mô hình nhỏ hơn (vd: qwen2.5:3b, llama3.2:3b).';
+    return `AI trên máy báo lỗi (${status}). ${bodyText.slice(0, 160)}`;
+  }
   if (status === 503 || /UNAVAILABLE|overloaded/i.test(bodyText)) return `${label} đang quá tải (503 — máy chủ tạm thời không phục vụ). Hệ thống sẽ tự thử lại hoặc chuyển mô hình.`;
   if (status === 401 || status === 403 || /API_KEY_INVALID|invalid api key|incorrect api key/i.test(bodyText)) return `API key ${label} không hợp lệ hoặc không có quyền. Vui lòng kiểm tra trong Cài đặt.`;
   if (status === 404) return `Không tìm thấy mô hình ${label} đã chọn. Kiểm tra lại tên mô hình trong Cài đặt.`;
@@ -304,6 +359,7 @@ async function doFetch(url, init, provider, signal) {
     res = await fetch(url, { ...init, signal });
   } catch (err) {
     if (err?.name === 'AbortError') throw new Error('Đã dừng tạo nội dung.');
+    if (provider === 'local') throw aiError(`Không kết nối được tới AI trên máy (${PROVIDERS.local.base}). Kiểm tra phần mềm (Ollama, LM Studio…) đang chạy, đúng địa chỉ và đã cho phép CORS.`, -1);
     throw aiError(`Không kết nối được tới ${PROVIDERS[provider].label}. Kiểm tra mạng hoặc dịch vụ có cho phép gọi từ trình duyệt không.`, -1);
   }
   if (!res.ok) {
@@ -319,7 +375,7 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
     `${cfg.base}/chat/completions`,
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+      headers: { 'content-type': 'application/json', ...(apiKey && apiKey !== 'local' ? { authorization: `Bearer ${apiKey}` } : {}) },
       body: JSON.stringify({ model: model || cfg.defaultModel, stream: true, max_tokens: Math.min(maxTokens, cfg.maxTokens || 16000), messages: [{ role: 'system', content: system }, ...toOpenAI(messages)] }),
     },
     provider,
@@ -400,8 +456,9 @@ export async function listModels(provider, apiKey) {
   try {
     if (provider === 'anthropic') res = await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } });
     else if (provider === 'gemini') res = await fetch(`${cfg.base}/models?pageSize=200`, { headers: { 'x-goog-api-key': apiKey } });
-    else res = await fetch(`${cfg.base}/models`, { headers: { authorization: `Bearer ${apiKey}` } });
+    else res = await fetch(`${cfg.base}/models`, { headers: apiKey && apiKey !== 'local' ? { authorization: `Bearer ${apiKey}` } : {} });
   } catch {
+    if (provider === 'local') throw new Error(`Không kết nối được tới ${cfg.base}. Kiểm tra phần mềm AI trên máy đang chạy và đã cho phép CORS (Ollama: OLLAMA_ORIGINS=*; LM Studio: bật “Enable CORS”).`);
     throw new Error(`Không kết nối được tới ${cfg.label} để lấy danh sách mô hình.`);
   }
   if (!res.ok) throw new Error(httpError(res.status, provider, await res.text().catch(() => '')));
@@ -410,8 +467,9 @@ export async function listModels(provider, apiKey) {
   if (provider === 'gemini') ids = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m) => String(m.name).replace(/^models\//, ''));
   else ids = (j.data || []).map((m) => m.id);
   if (provider === 'openai') ids = ids.filter((id) => /^(gpt|o\d|chatgpt)/.test(id) && !/(audio|realtime|transcribe|tts|image|search|embedding)/.test(id));
+  if (provider === 'local') ids = ids.filter((id) => !/(embed|bge-|nomic-embed|rerank|whisper)/i.test(id));
   if (provider === 'groq') ids = (j.data || []).filter((m) => m.active !== false).map((m) => m.id).filter((id) => !/(whisper|tts|guard|playai|distil|orpheus)/i.test(id));
-  return [...new Set(ids.filter(Boolean))].sort((a, b) => b.localeCompare(a));
+  return [...new Set(ids.filter(Boolean))].sort((a, b) => (provider === 'local' ? a.localeCompare(b) : b.localeCompare(a)));
 }
 
 /** Tìm khối JSON đầu tiên trong câu trả lời của mô hình. */

@@ -1,7 +1,7 @@
 // Ứng dụng chính: khung giao diện, điều hướng theo hash, tài khoản, bảng lệnh.
 import { $, $$, icon, toast, bindThemeToggles, escapeHtml } from './ui.js';
 import { store, docsRepo } from './lib/store.js';
-import { PROVIDERS, setAIHooks } from './lib/ai.js';
+import { PROVIDERS, setAIHooks, setLocalEndpoint, isPrivateEndpoint } from './lib/ai.js';
 import { accounts, vault, systemConfig } from './lib/accounts.js';
 import { initUpdates } from './update.js';
 import { desktop, isDesktop } from './lib/platform.js';
@@ -56,6 +56,19 @@ let view = $('#view');
 let cleanup = null;
 let currentRoute = null;
 let aiCache = { providers: {} }; // Kho API key đã giải mã của tài khoản hiện tại (chỉ trong bộ nhớ).
+/** Đã cấu hình nhà cung cấp: dịch vụ trực tuyến cần API key; AI trên máy chỉ cần địa chỉ và mô hình. */
+const aiConfigured = (p) => {
+  const c = aiCache.providers?.[p];
+  return p === 'local' ? !!(c?.base && c?.model) : !!c?.key;
+};
+const aiEntry = (p) => {
+  const c = aiCache.providers[p];
+  return { provider: p, apiKey: c.key || (p === 'local' ? 'local' : ''), model: c.model || PROVIDERS[p].defaultModel, label: PROVIDERS[p].label, ...(p === 'local' ? { local: true } : {}) };
+};
+function loadAiCache(data) {
+  aiCache = data && typeof data === 'object' ? { providers: {}, ...data } : { providers: {} };
+  setLocalEndpoint(aiCache.providers?.local?.base);
+}
 
 /* ---------- Độ tin cậy AI: dự phòng nhà cung cấp, ghi nhớ kết quả, nhật ký ---------- */
 const AI_CACHE_MAX = 300;
@@ -64,8 +77,7 @@ function aiLog(entry) {
 }
 setAIHooks({
   chain() {
-    const order = Object.keys(PROVIDERS);
-    return order.filter((p) => aiCache.providers?.[p]?.key).map((p) => ({ provider: p, apiKey: aiCache.providers[p].key, model: aiCache.providers[p].model || PROVIDERS[p].defaultModel, label: PROVIDERS[p].label }));
+    return Object.keys(PROVIDERS).filter(aiConfigured).map(aiEntry);
   },
   options() {
     const st = ctx.settings();
@@ -111,25 +123,27 @@ export const ctx = {
     return next;
   },
   /**
-   * Cấu hình AI đang dùng: { provider, apiKey, model, label } hoặc null nếu chưa có key / không có quyền.
-   * scope = 'legal' yêu cầu quyền “AI trực tuyến trong Tố tụng” (mặc định tắt).
+   * Cấu hình AI đang dùng: { provider, apiKey, model, label, local? } hoặc null nếu chưa có / không có quyền.
+   * - Dịch vụ trực tuyến: cần quyền “AI trực tuyến” ('ai'); scope = 'legal' cần “AI trực tuyến trong Tố tụng”.
+   * - AI trên máy (địa chỉ máy này / mạng nội bộ): dữ liệu không ra Internet nên chỉ cần quyền dùng phân hệ
+   *   ('docs' hoặc 'legal'). Địa chỉ ngoài mạng nội bộ được coi như dịch vụ trực tuyến.
    */
   ai(scope = 'docs') {
     const user = accounts.current();
-    if (!user || !user.permSet.has(scope === 'legal' ? 'legal.ai' : 'ai')) return null;
-    const configured = Object.keys(PROVIDERS).filter((p) => aiCache.providers?.[p]?.key);
+    if (!user) return null;
+    const online = user.permSet.has(scope === 'legal' ? 'legal.ai' : 'ai');
+    const localPrivate = aiConfigured('local') && isPrivateEndpoint(aiCache.providers.local.base);
+    const allowed = Object.keys(PROVIDERS).filter((p) => aiConfigured(p) && (online || (p === 'local' && localPrivate && user.permSet.has(scope === 'legal' ? 'legal' : 'docs'))));
     const pref = this.settings().aiProvider;
-    const provider = configured.includes(pref) ? pref : configured[0];
-    if (!provider) return null;
-    const cfg = aiCache.providers[provider];
-    return { provider, apiKey: cfg.key, model: cfg.model || PROVIDERS[provider].defaultModel, label: PROVIDERS[provider].label };
+    const provider = allowed.includes(pref) ? pref : allowed[0];
+    return provider ? aiEntry(provider) : null;
   },
   hasAI(scope) {
     return !!this.ai(scope);
   },
   aiProviders: () => aiCache.providers || {},
   async saveAiProviders(providers) {
-    aiCache = { ...aiCache, providers };
+    loadAiCache({ ...aiCache, providers });
     await vault.write(aiCache);
     refreshChrome();
   },
@@ -278,8 +292,8 @@ function refreshChrome() {
   const st = $('[data-ai-status]');
   const ai = ctx.ai();
   st.classList.toggle('on', !!ai);
-  st.querySelector('strong').textContent = ai ? `AI ${ai.label} đã bật` : user.permSet.has('ai') ? 'Chế độ cơ bản' : 'AI trực tuyến bị tắt';
-  st.querySelector('small').textContent = ai ? ai.model : user.permSet.has('ai') ? 'Thêm API key để bật AI' : 'Chưa được cấp quyền';
+  st.querySelector('strong').textContent = ai ? (ai.local ? 'AI trên máy đã bật' : `AI ${ai.label} đã bật`) : user.permSet.has('ai') ? 'Chế độ cơ bản' : 'AI trực tuyến bị tắt';
+  st.querySelector('small').textContent = ai ? ai.model : user.permSet.has('ai') ? 'Thêm API key để bật AI' : 'Có thể dùng AI trên máy';
   renderUserMenu();
   renderBottomNav();
 }
@@ -348,7 +362,7 @@ function renderUserMenu() {
   });
   host.querySelector('[data-logout]').addEventListener('click', () => {
     accounts.logout();
-    aiCache = { providers: {} };
+    loadAiCache(null);
     toast('Đã đăng xuất');
     showGate();
   });
@@ -541,7 +555,7 @@ function showGate(mode = 'login') {
 }
 
 async function enterApp() {
-  aiCache = await vault.read();
+  loadAiCache(await vault.read());
   if (gateEl) gateEl.hidden = true;
   shell.hidden = false;
   refreshChrome();

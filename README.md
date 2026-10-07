@@ -54,6 +54,16 @@ Nền tảng soạn thảo văn bản hành chính tiếng Việt, trình bày �
 - Khi máy chủ có bản mới, ứng dụng hiện thông báo **“Đã có phiên bản mới — Cập nhật ngay”**; cũng có thể kiểm tra trong **Cài đặt → Phiên bản & cập nhật**. Cập nhật chỉ thay mã nguồn, dữ liệu trên máy giữ nguyên.
 - Phát hành bản mới: `npm run release -- 2.1.0 "Ghi chú thay đổi"` (đồng bộ `version.json`, `sw.js`, `assets/js/version.js`), rồi triển khai lên máy chủ tĩnh.
 
+## AI chạy trên máy (Ollama, LM Studio, llama.cpp, Jan)
+
+**Cài đặt → Trí tuệ nhân tạo → AI chạy trên máy**: kết nối mô hình AI cài trên máy này hoặc máy chủ trong mạng nội bộ qua giao thức tương thích OpenAI. Không cần API key, không mất phí, dùng được khi mất mạng.
+
+- Chọn phần mềm (Ollama `http://localhost:11434/v1`, LM Studio `:1234`, llama.cpp `:8080`, Jan `:1337`) hoặc nhập địa chỉ máy chủ nội bộ → **Tải danh sách** mô hình đã cài → **Kiểm tra kết nối**. Chọn “AI trên máy” làm nhà cung cấp mặc định.
+- **Phân quyền**: địa chỉ trên máy hoặc mạng nội bộ (localhost, 127.x, 10.x, 172.16–31.x, 192.168.x, *.local) không đưa dữ liệu ra Internet nên chỉ cần quyền dùng phân hệ — **phân hệ Tố tụng dùng được AI trên máy kể cả khi chưa có quyền “AI trực tuyến trong Tố tụng”**; tài khoản bị tắt AI trực tuyến vẫn dùng được cho văn bản. Địa chỉ ngoài mạng nội bộ được coi như dịch vụ trực tuyến.
+- AI trên máy **không bao giờ tự chuyển** sang Claude, ChatGPT… khi lỗi. Thời gian chờ dài hơn (5 phút) vì lần đầu phải nạp mô hình.
+- Gợi ý mô hình hiểu tiếng Việt: `qwen2.5:7b` (RAM 8 GB), `qwen2.5:14b` (16 GB), `gemma3:12b` (đọc được ảnh — dùng cho “AI đọc ảnh” trong PDF sang Word). Văn bản dài: đặt `OLLAMA_CONTEXT_LENGTH=16384`.
+- Bản cài đặt kết nối được ngay với Ollama (và máy chủ AI khác trong mạng nội bộ). Bản web: đặt `OLLAMA_ORIGINS=*` (LM Studio: bật “Enable CORS”); trình duyệt chỉ cho trang web gọi `localhost`.
+
 ## Bản cài đặt trên máy tính (Windows, macOS)
 
 Ngoài bản web, ứng dụng có **bộ cài đặt** chạy như phần mềm riêng (Electron, thư mục `desktop/`), dùng được khi không có mạng.

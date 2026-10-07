@@ -165,7 +165,7 @@ export function render(ctx, params = []) {
     <aside class="iv-ai" aria-label="Trợ lý phân tích lời khai">
       <div class="iv-ai-head">
         <strong>${icon('sparkles', 'ic-sm')}Trợ lý phân tích</strong>
-        <span class="badge ${ctx.hasAI('legal') ? 'badge-success' : ''}" data-ai-mode title="${ctx.hasAI('legal') ? 'Nội dung lời khai sẽ được gửi tới dịch vụ AI bên ngoài' : 'Phân tích chạy hoàn toàn trên máy, không gửi dữ liệu ra ngoài'}">${ctx.hasAI('legal') ? escapeHtml(ctx.ai('legal').label) : 'Ngoại tuyến'}</span>
+        <span class="badge ${ctx.hasAI('legal') ? 'badge-success' : ''}" data-ai-mode title="${ctx.hasAI('legal') ? (ctx.ai('legal').local ? 'AI chạy trên máy / mạng nội bộ — lời khai không gửi ra Internet' : 'Nội dung lời khai sẽ được gửi tới dịch vụ AI bên ngoài') : 'Phân tích chạy hoàn toàn trên máy, không gửi dữ liệu ra ngoài'}">${ctx.hasAI('legal') ? escapeHtml(ctx.ai('legal').label) : 'Ngoại tuyến'}</span>
       </div>
       <div class="tabs iv-ai-tabs" role="tablist">
         <button class="tab" role="tab" data-aitab="suggest">Gợi ý hỏi</button>

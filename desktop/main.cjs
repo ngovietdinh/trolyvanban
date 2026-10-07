@@ -71,6 +71,9 @@ function createWindow() {
       sandbox: true,
       nodeIntegration: false,
       spellcheck: false,
+      // Cho phép gọi máy chủ AI trong mạng nội bộ qua http:// (vd: Ollama ở http://192.168.1.10:11434)
+      // từ trang app:// (bảo mật). Trang chỉ nạp mã của chính ứng dụng, liên kết ngoài mở bằng trình duyệt.
+      allowRunningInsecureContent: true,
     },
   });
   win.once('ready-to-show', () => win.show());

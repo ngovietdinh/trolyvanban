@@ -2797,6 +2797,35 @@ mark.err-mark.is-ai {
 }
 
 /* ---------- Cài đặt AI: mô hình, bộ nhớ, nhật ký ---------- */
+/* AI chạy trên máy */
+.local-more summary,
+.local-help summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-2);
+  list-style: none;
+}
+.local-more summary::-webkit-details-marker,
+.local-help summary::-webkit-details-marker { display: none; }
+.local-more summary::before,
+.local-help summary::before { content: '▸'; font-size: 0.75rem; transition: transform 0.15s var(--ease); }
+.local-more[open] summary::before,
+.local-help[open] summary::before { transform: rotate(90deg); }
+.local-more .field { margin-top: 8px; }
+.local-help {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+.local-help ol { margin: 10px 0 6px; padding-left: 1.3em; font-size: 0.86rem; line-height: 1.6; color: var(--text-2); }
+.local-help li + li { margin-top: 4px; }
+.local-help code { font-size: 0.8rem; padding: 1px 5px; border-radius: 4px; background: var(--surface); border: 1px solid var(--line); white-space: nowrap; }
+.local-help .hint { margin: 0; }
 .model-row {
   display: flex;
   gap: 8px;

@@ -1,7 +1,9 @@
 {
-  "version": "2.12.1",
-  "date": "2026-10-06",
+  "version": "2.13.0",
+  "date": "2026-10-07",
   "notes": [
-    "Sửa bản macOS bị tắt ngay khi mở (tên gói ứng dụng có dấu tiếng Việt)"
+    "Kết nối AI chạy trên máy: Ollama, LM Studio, llama.cpp, Jan — không cần API key, không gửi dữ liệu ra ngoài",
+    "Phân hệ Tố tụng dùng được AI trên máy kể cả khi chưa có quyền AI trực tuyến",
+    "AI trên máy không bao giờ tự chuyển sang dịch vụ trực tuyến khi lỗi"
   ]
 }

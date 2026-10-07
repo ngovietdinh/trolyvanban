@@ -1,7 +1,7 @@
 // Cài đặt: AI (API key mã hóa theo tài khoản, đa nhà cung cấp), thông tin đơn vị, giao diện, cập nhật, dữ liệu.
 import { $, $$, icon, toast, escapeHtml, setTheme, downloadBlob } from '../ui.js';
 import { store, docsRepo, WIPE_KEYS } from '../lib/store.js';
-import { PROVIDERS, MODELS, testApiKey, listModels } from '../lib/ai.js';
+import { PROVIDERS, MODELS, LOCAL_PRESETS, testApiKey, listModels, normalizeLocalBase, isPrivateEndpoint } from '../lib/ai.js';
 import { learnedBank } from '../legal/repo.js';
 import { khoDb } from '../lib/kho-db.js';
 import { relativeTime } from '../lib/vn-date.js';
@@ -43,7 +43,8 @@ const LEGAL_FIELDS = [
 export function render(ctx) {
   const s = ctx.settings();
   const providers = { ...ctx.aiProviders() };
-  let activeTab = s.aiProvider && PROVIDERS[s.aiProvider] ? s.aiProvider : 'anthropic';
+  const ONLINE = Object.entries(PROVIDERS).filter(([, p]) => !p.local);
+  let activeTab = s.aiProvider && PROVIDERS[s.aiProvider] && !PROVIDERS[s.aiProvider].local ? s.aiProvider : 'anthropic';
   const org = s.org || {};
   const legalOrg = s.legalOrg || {};
   const theme = document.documentElement.dataset.theme || 'system';
@@ -59,16 +60,20 @@ export function render(ctx) {
             ? `<div class="setting-row">
           <div><h3>API key của tôi</h3><p>Mỗi tài khoản tự nhập API key. Khóa được mã hóa (AES-GCM) bằng mật khẩu của bạn — quản trị viên và tài khoản khác không xem được.</p></div>
           <div class="setting-ctl">
-            <div class="seg prov-tabs" role="tablist" aria-label="Nhà cung cấp AI">${Object.entries(PROVIDERS).map(([id, p]) => `<button type="button" role="tab" data-prov="${id}" aria-pressed="${id === activeTab}">${p.label}${providers[id]?.key ? ' <span class="dot" style="color:var(--success)"></span>' : ''}</button>`).join('')}</div>
+            <div class="seg prov-tabs" role="tablist" aria-label="Nhà cung cấp AI">${ONLINE.map(([id, p]) => `<button type="button" role="tab" data-prov="${id}" aria-pressed="${id === activeTab}">${p.label}${providers[id]?.key ? ' <span class="dot" style="color:var(--success)"></span>' : ''}</button>`).join('')}</div>
             <div data-prov-form></div>
-            <div class="field"><label for="ai-default">Nhà cung cấp mặc định</label><select class="select" id="ai-default" data-default-prov>${Object.entries(PROVIDERS).map(([id, p]) => `<option value="${id}" ${id === (s.aiProvider || 'anthropic') ? 'selected' : ''}>${p.label} (${p.vendor})</option>`).join('')}</select></div>
+            <div class="field"><label for="ai-default">Nhà cung cấp mặc định</label><select class="select" id="ai-default" data-default-prov>${Object.entries(PROVIDERS).map(([id, p]) => `<option value="${id}" ${id === (s.aiProvider || 'anthropic') ? 'selected' : ''}>${p.label} (${p.vendor})</option>`).join('')}</select><span class="hint">Chọn “AI trên máy” để mọi yêu cầu chạy trên máy của bạn, không gửi ra Internet.</span></div>
             <label class="check"><input type="checkbox" data-ai-fallback ${s.aiFallback !== false ? 'checked' : ''} />Tự chuyển sang nhà cung cấp khác (đã nhập key) khi AI lỗi, quá tải hoặc không phản hồi</label>
             <label class="check"><input type="checkbox" data-ai-cache ${s.aiCache !== false ? 'checked' : ''} />Ghi nhớ kết quả AI trên máy — yêu cầu giống hệt lần trước dùng lại kết quả, không gửi lại</label>
             <div class="note">${icon('info', 'ic-sm')}<span>Yêu cầu AI được gửi trực tiếp từ trình duyệt tới nhà cung cấp qua HTTPS. ${ctx.can('legal') ? (ctx.can('legal.ai') ? 'Bạn được phép dùng AI trực tuyến trong phân hệ Tố tụng.' : '<strong>Phân hệ Tố tụng luôn chạy ngoại tuyến</strong> — không gửi lời khai, hồ sơ ra ngoài (chưa được cấp quyền AI trực tuyến).') : ''}</span></div>
           </div>
         </div>`
-            : `<div class="panel-body"><p class="note">${icon('lock', 'ic-sm')}<span>Tài khoản chưa được cấp quyền dùng AI trực tuyến. Các tính năng vẫn hoạt động ở chế độ cơ bản, chạy hoàn toàn trên máy.</span></p></div>`
+            : `<div class="panel-body"><p class="note">${icon('lock', 'ic-sm')}<span>Tài khoản chưa được cấp quyền dùng AI trực tuyến. Bạn vẫn có thể dùng <strong>AI chạy trên máy</strong> bên dưới — dữ liệu không gửi ra ngoài.</span></p></div>`
         }
+        <div class="setting-row" data-local-row>
+          <div><h3>AI chạy trên máy <span class="badge badge-success">Không gửi ra ngoài</span></h3><p>Kết nối với mô hình AI cài trên máy này hoặc máy chủ trong mạng nội bộ (Ollama, LM Studio, llama.cpp, Jan…). Không cần API key, không mất phí, dùng được khi mất mạng. ${ctx.can('legal') ? 'Được phép dùng cả trong <strong>phân hệ Tố tụng</strong> vì lời khai, hồ sơ không rời khỏi máy.' : ''}</p></div>
+          <div class="setting-ctl" data-local-form></div>
+        </div>
       </section>
 
       <section class="panel">
@@ -298,6 +303,145 @@ export function render(ctx) {
       toast(`Đã gỡ API key ${p.label}`);
     });
   }
+
+  function renderLocalForm() {
+    const host = $('[data-local-form]', root);
+    if (!host) return;
+    const cur = providers.local || {};
+    const base = cur.base || LOCAL_PRESETS[0].base;
+    const preset = LOCAL_PRESETS.find((x) => x.base === base);
+    const models = [...new Set([...(cur.models || []), ...(cur.model ? [cur.model] : [])])];
+    const priv = isPrivateEndpoint(base);
+    host.innerHTML = `
+      <div class="seg" role="group" aria-label="Phần mềm chạy AI trên máy">${LOCAL_PRESETS.map((x) => `<button type="button" data-local-preset="${x.id}" aria-pressed="${preset?.id === x.id}">${x.label}</button>`).join('')}</div>
+      <div class="field"><label for="local-base">Địa chỉ máy chủ</label>
+        <input class="input" id="local-base" data-local-base value="${escapeHtml(base)}" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false" />
+        <span class="hint" data-local-hint>${preset ? escapeHtml(preset.hint) + '. ' : ''}${priv ? 'Địa chỉ trên máy / mạng nội bộ — dữ liệu không ra Internet.' : '<strong>Địa chỉ ngoài mạng nội bộ</strong>: được coi như dịch vụ trực tuyến (cần quyền AI trực tuyến).'}</span></div>
+      <div class="field"><label for="local-model-sel">Mô hình</label>
+        <div class="model-row">
+          <select class="select" id="local-model-sel" data-local-model-sel>${models.length ? models.map((m) => `<option value="${escapeHtml(m)}" ${m === cur.model ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('') : '<option value="">— Bấm “Tải danh sách” —</option>'}<option value="__custom">Khác — tự nhập tên mô hình…</option></select>
+          <button class="btn btn-sm" type="button" data-local-list>${icon('refresh', 'ic-sm')}Tải danh sách</button>
+        </div>
+        <input class="input" data-local-model value="${escapeHtml(cur.model || '')}" placeholder="vd: qwen2.5:7b" autocomplete="off" spellcheck="false" hidden aria-label="Tên mô hình tự nhập" /></div>
+      <details class="local-more"><summary>Khóa truy cập (chỉ khi máy chủ yêu cầu)</summary>
+        <div class="field"><input class="input" type="password" data-local-key value="${escapeHtml(cur.key || '')}" placeholder="Để trống nếu không cần" autocomplete="off" spellcheck="false" aria-label="Khóa truy cập máy chủ AI" /></div></details>
+      <div class="inline">
+        <button class="btn btn-primary btn-sm" type="button" data-local-save>${icon('save', 'ic-sm')}Lưu</button>
+        <button class="btn btn-sm" type="button" data-local-test>${icon('zap', 'ic-sm')}Kiểm tra kết nối</button>
+        ${cur.base ? `<button class="btn btn-ghost btn-sm" type="button" data-local-remove>${icon('trash', 'ic-sm')}Gỡ kết nối</button>` : ''}
+      </div>
+      <details class="local-help"><summary>${icon('help', 'ic-sm')}Hướng dẫn cài AI trên máy</summary>
+        <ol>
+          <li>Tải <strong>Ollama</strong> tại ollama.com và cài đặt (Windows, macOS, Linux).</li>
+          <li>Mở Terminal / Command Prompt, tải một mô hình hiểu tiếng Việt tốt: <code>ollama pull qwen2.5:7b</code> (máy RAM 8 GB) hoặc <code>ollama pull qwen2.5:14b</code> (RAM 16 GB trở lên). Đọc ảnh, PDF quét bằng AI: <code>ollama pull gemma3:12b</code>.</li>
+          <li>Chọn <strong>Ollama</strong> ở trên → <strong>Tải danh sách</strong> → chọn mô hình → <strong>Kiểm tra kết nối</strong>.</li>
+          <li>${isDesktop ? 'Bản cài đặt kết nối được ngay với Ollama.' : 'Bản web: cho phép trang này gọi Ollama bằng cách đặt biến môi trường <code>OLLAMA_ORIGINS=*</code> rồi khởi động lại Ollama; trình duyệt có thể hỏi quyền “truy cập thiết bị trong mạng cục bộ” — chọn Cho phép. Máy chủ AI ở máy khác trong mạng nội bộ chỉ dùng được từ bản cài đặt.'}</li>
+          <li>Văn bản dài: đặt <code>OLLAMA_CONTEXT_LENGTH=16384</code> để mô hình đọc được nhiều chữ hơn. LM Studio: tab Developer → Start Server và bật “Enable CORS”.</li>
+        </ol>
+        <p class="hint">Tốc độ phụ thuộc máy: có card đồ họa (GPU) hoặc Mac chip Apple chạy nhanh; máy chỉ có CPU chạy chậm, nên dùng mô hình nhỏ (3B–7B). Chất lượng thấp hơn Claude, ChatGPT — luôn rà soát kết quả.</p>
+      </details>`;
+    const baseInput = $('[data-local-base]', host);
+    const sel = $('[data-local-model-sel]', host);
+    const modelInput = $('[data-local-model]', host);
+    const keyInput = $('[data-local-key]', host);
+    const readModel = () => (sel.value === '__custom' ? modelInput.value.trim() : sel.value);
+    const readBase = () => normalizeLocalBase(baseInput.value);
+    $$('[data-local-preset]', host).forEach((b) =>
+      b.addEventListener('click', () => {
+        const x = LOCAL_PRESETS.find((y) => y.id === b.dataset.localPreset);
+        providers.local = { ...cur, base: x.base, models: cur.base === x.base ? cur.models : [] };
+        if (!cur.base) delete providers.local.model;
+        Object.assign(cur, providers.local);
+        renderLocalForm();
+      }),
+    );
+    sel.addEventListener('change', () => {
+      modelInput.hidden = sel.value !== '__custom';
+      if (!modelInput.hidden) modelInput.focus();
+    });
+    const busy = (btn, on, label) => {
+      btn.disabled = on;
+      btn.innerHTML = on ? `${icon('refresh', 'ic-sm spin')}${label}` : btn.dataset.label;
+    };
+    $$('button', host).forEach((b) => (b.dataset.label = b.innerHTML));
+    $('[data-local-list]', host).addEventListener('click', async (e) => {
+      const b = readBase();
+      if (!b) return toast('Địa chỉ máy chủ không hợp lệ', { type: 'error' });
+      const btn = e.currentTarget;
+      busy(btn, true, 'Đang tải…');
+      const prevBase = PROVIDERS.local.base;
+      PROVIDERS.local.base = b;
+      try {
+        const list = await listModels('local', keyInput.value.trim() || 'local');
+        if (!list.length) throw new Error('Máy chủ chưa có mô hình nào. Ollama: chạy “ollama pull qwen2.5:7b”.');
+        providers.local = { ...cur, base: b, models: list, model: list.includes(cur.model) ? cur.model : list[0] };
+        Object.assign(cur, providers.local);
+        if (cur.base && (providers.local.model || '')) await ctx.saveAiProviders(providers);
+        renderLocalForm();
+        syncState();
+        toast(`Đã tìm thấy ${list.length} mô hình trên máy`);
+      } catch (err) {
+        PROVIDERS.local.base = prevBase;
+        toast(err.message, { type: 'error', timeout: 8000 });
+        busy(btn, false);
+      }
+    });
+    const save = async () => {
+      const b = readBase();
+      const m = readModel();
+      if (!b) throw new Error('Địa chỉ máy chủ không hợp lệ');
+      if (!m) throw new Error('Chọn hoặc nhập tên mô hình');
+      const key = keyInput.value.trim();
+      providers.local = { ...cur, base: b, model: m, ...(key ? { key } : {}) };
+      if (!key) delete providers.local.key;
+      await ctx.saveAiProviders(providers);
+      Object.assign(cur, providers.local);
+      if (!ctx.hasAI() || !ctx.settings().aiProvider || !ctx.aiProviders()[ctx.settings().aiProvider]) ctx.saveSettings({ aiProvider: 'local' });
+      const dp = $('[data-default-prov]', root);
+      if (dp) dp.value = ctx.settings().aiProvider || 'local';
+    };
+    $('[data-local-save]', host).addEventListener('click', async () => {
+      try {
+        await save();
+        audit('Cập nhật AI trên máy', `${readBase()} · ${readModel()}`);
+        renderLocalForm();
+        syncState();
+        toast('Đã lưu kết nối AI trên máy');
+      } catch (err) {
+        toast(err.message, { type: 'error' });
+      }
+    });
+    $('[data-local-test]', host).addEventListener('click', async (e) => {
+      const b = readBase();
+      const m = readModel();
+      if (!b || !m) return toast(!b ? 'Địa chỉ máy chủ không hợp lệ' : 'Chọn hoặc nhập tên mô hình', { type: 'error' });
+      const btn = e.currentTarget;
+      busy(btn, true, 'Đang kiểm tra… (lần đầu có thể mất 1–2 phút)');
+      const prevBase = PROVIDERS.local.base;
+      PROVIDERS.local.base = b;
+      try {
+        await testApiKey(keyInput.value.trim() || 'local', m, 'local');
+        await save();
+        renderLocalForm();
+        syncState();
+        toast(`Kết nối AI trên máy thành công (${m})`);
+      } catch (err) {
+        PROVIDERS.local.base = prevBase;
+        toast(err.message, { type: 'error', timeout: 8000 });
+        busy(btn, false);
+      }
+    });
+    $('[data-local-remove]', host)?.addEventListener('click', async () => {
+      delete providers.local;
+      await ctx.saveAiProviders(providers);
+      if (ctx.settings().aiProvider === 'local') ctx.saveSettings({ aiProvider: Object.keys(providers).find((p) => providers[p]?.key) || 'anthropic' });
+      audit('Gỡ AI trên máy');
+      renderLocalForm();
+      syncState();
+      toast('Đã gỡ kết nối AI trên máy');
+    });
+  }
+  renderLocalForm();
 
   $$('[data-prov]', root).forEach((t) =>
     t.addEventListener('click', () => {

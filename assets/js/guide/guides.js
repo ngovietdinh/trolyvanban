@@ -527,11 +527,12 @@ export const GUIDES = [
     route: '#settings',
     icon: 'settings',
     title: 'Cài đặt, AI & dữ liệu',
-    summary: 'Nhập API key (mã hóa riêng từng tài khoản), chọn mô hình, tự chuyển AI khi lỗi, thông tin đơn vị, sao lưu – khôi phục, cập nhật phần mềm.',
+    summary: 'Nhập API key (mã hóa riêng từng tài khoản) hoặc kết nối AI chạy trên máy (Ollama, LM Studio), chọn mô hình, tự chuyển AI khi lỗi, thông tin đơn vị, sao lưu – khôi phục, cập nhật phần mềm.',
     time: '4 phút',
     when: ['Lần đầu bật AI', 'AI báo lỗi, cần đổi mô hình', 'Chuyển sang máy khác'],
     steps: [
       { t: 'Thêm API key', d: 'Mục **Trí tuệ nhân tạo** → **API key của tôi**: dán key của ChatGPT (sk-…), Gemini (AIza…), Groq (gsk_…), Grok (xai-…) hoặc Claude (sk-ant-…). Key được mã hóa bằng mật khẩu của bạn; quản trị viên cũng không xem được.', tip: 'Groq và Gemini có gói dùng miễn phí — phù hợp để bắt đầu.' },
+      { t: 'Hoặc dùng AI chạy trên máy', d: 'Mục **AI chạy trên máy**: chọn [[Ollama]] (hoặc LM Studio, llama.cpp, Jan) → [[Tải danh sách]] → chọn mô hình → [[Kiểm tra kết nối]]. Không cần API key, không mất phí, dữ liệu không rời khỏi máy — dùng được cả trong phân hệ Tố tụng.', tip: 'Cài Ollama tại ollama.com rồi chạy “ollama pull qwen2.5:7b” (máy RAM 8 GB). Máy mạnh hơn: qwen2.5:14b.' },
       { t: 'Chọn mô hình và kiểm tra', d: 'Bấm [[Tải danh sách]] để lấy các mô hình key của bạn được dùng, chọn mô hình, rồi [[Kiểm tra kết nối]]. Chọn [[Khác — tự nhập tên mô hình…]] để gõ tên mô hình tùy ý.' },
       { t: 'Bật tự chuyển AI và ghi nhớ', d: 'Khi một dịch vụ lỗi (503, quá tải, hết hạn mức), phần mềm tự thử lại, đổi mô hình dự phòng, rồi chuyển sang dịch vụ khác có key. Kết quả AI đã hỏi được **ghi nhớ trên máy** để lần sau trả lời ngay, không tốn lượt.' },
       { t: 'Thông tin đơn vị', d: 'Điền **Thông tin đơn vị mặc định** (văn bản hành chính) và **Cơ quan điều tra** (biên bản, biểu mẫu tố tụng, mẫu số). Bấm lưu.' },
@@ -548,10 +549,13 @@ export const GUIDES = [
     mistakes: [
       ['Dán key có khoảng trắng thừa', 'Sao chép lại đúng key; hệ thống kiểm tra tiền tố (sk-, AIza, gsk_…) và báo nếu sai.'],
       ['Chỉ nhập một dịch vụ AI', 'Nhập từ 2 dịch vụ trở lên để khi một dịch vụ quá tải, phần mềm tự chuyển sang dịch vụ còn lại.'],
+      ['AI trên máy báo “không kết nối được”', 'Kiểm tra Ollama/LM Studio đang chạy và đúng địa chỉ. Bản web cần cho phép CORS: đặt biến môi trường OLLAMA_ORIGINS=* rồi khởi động lại Ollama (LM Studio: bật “Enable CORS”). Bản cài đặt kết nối được ngay.'],
     ],
     faq: [
       ['Lỗi 503 / 429 là gì?', '503: máy chủ AI quá tải tạm thời; 429: vượt hạn mức. Phần mềm tự thử lại và chuyển dịch vụ; nếu vẫn lỗi, chờ vài phút hoặc đổi mô hình nhẹ hơn.'],
-      ['Có cần Internet không?', 'Chỉ khi dùng AI hoặc cập nhật. Các chức năng khác chạy trên máy.'],
+      ['Có cần Internet không?', 'Chỉ khi dùng AI trực tuyến hoặc cập nhật. AI chạy trên máy và các chức năng khác chạy không cần mạng.'],
+      ['AI trên máy có tự chuyển sang ChatGPT, Claude khi lỗi không?', 'Không. Khi đã chọn AI trên máy, phần mềm không bao giờ tự gửi nội dung ra dịch vụ trực tuyến — báo lỗi để bạn xử lý.'],
+      ['Máy cấu hình thế nào thì chạy được?', 'Mô hình 3B–7B: RAM 8 GB, chạy được trên máy văn phòng (chậm nếu không có card đồ họa). Mô hình 14B: RAM 16 GB. Mac chip Apple chạy nhanh nhất. Chất lượng thấp hơn Claude, ChatGPT — luôn rà soát kết quả.'],
       ['Bản cài đặt khác bản web thế nào?', 'Cùng chức năng. Bản cài đặt chạy như phần mềm trên Windows/macOS, mặc định cấp toàn quyền cho tài khoản tạo trên máy; bản web mặc định là Người dùng, chờ quản trị cấp quyền. Dữ liệu hai bản tách riêng — chuyển bằng Xuất sao lưu / Khôi phục.'],
     ],
     related: ['admin', 'batdau'],
