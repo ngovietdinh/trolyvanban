@@ -90,7 +90,7 @@ export function newRecord({ caseItem = null, person = null, roleId = 'bi-can', p
     daThongBaoQuyen: false,
     ghiAmGhiHinh: false,
     qa: [],
-    plan: plan ? { dieu: plan.crime?.dieu || plan.dieu, roleId: plan.role?.id || plan.roleId, hanhViIds: (plan.hanhVi || []).map((h) => h.id || h), dinhKhung: plan.dinhKhung || [], issues: plan.issues } : null,
+    plan: plan ? { dieu: plan.crime?.dieu || plan.dieu, roleId: plan.role?.id || plan.roleId, hanhViIds: (plan.hanhVi || []).filter((h) => !h.dieu).map((h) => h.id || h), lienQuan: (plan.lienQuan || []).map((r) => (r.crime ? { dieu: r.crime.dieu, hanhViIds: r.hanhVi.map((h) => h.id) } : r)), dinhKhung: plan.dinhKhung || [], issues: plan.issues } : null,
     coverage: {},
     soBan: 2,
     canCu: '',
@@ -209,7 +209,7 @@ export function qaToText(rec) {
 /** Kế hoạch lấy lời khai → doc model để in/xuất Word. */
 export function buildPlanDocument(plan, { coQuan = '', coQuanCapTren = '', tenVu = '', dieuTraVien = '' } = {}) {
   const body = [];
-  body.push(para([run('Tội danh: ', { bold: true }), run(`Điều ${plan.crime.dieu} Bộ luật Hình sự — ${plan.crime.ten}.`)]));
+  body.push(para([run('Tội danh: ', { bold: true }), run(`Điều ${plan.crime.dieu} Bộ luật Hình sự — ${plan.crime.ten}${(plan.lienQuan || []).map((r) => `; Điều ${r.crime.dieu} — ${r.crime.ten}`).join('')}.`)]));
   if (tenVu) body.push(para([run('Vụ án/vụ việc: ', { bold: true }), run(tenVu)]));
   body.push(para([run('Đối tượng lấy lời khai: ', { bold: true }), run(plan.role.ten + '.')]));
   body.push(para([run('Hành vi cần làm rõ: ', { bold: true }), run(plan.hanhVi.map((h) => h.ten).join('; ') + '.')]));

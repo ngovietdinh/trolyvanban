@@ -14,22 +14,23 @@ import { streamClaude, extractJson, PROVIDERS } from '../lib/ai.js';
 import { INVESTIGATOR_SYSTEM } from '../legal/assist.js';
 import { store, uid } from '../lib/store.js';
 import { mobilePanes } from '../lib/panes.js';
+import { openAnalyzeDialog } from './legal-analyze.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 export function render(ctx, params = []) {
   // Trạng thái lựa chọn (ghi nhớ giữa các lần mở).
   const saved = store.get('legal-selection', {});
-  let sel = { dieu: null, hanhViIds: [], dinhKhung: [], roleId: 'bi-can', ...saved };
+  let sel = { dieu: null, hanhViIds: [], dinhKhung: [], roleId: 'bi-can', lienQuan: [], ...saved };
   let editingPlanId = null;
   if (params[0] === 'plan' && params[1]) {
     const p = plansRepo.get(params[1]);
     if (p) {
-      sel = { dieu: p.dieu, hanhViIds: p.hanhViIds, dinhKhung: p.dinhKhung, roleId: p.roleId };
+      sel = { dieu: p.dieu, hanhViIds: p.hanhViIds, dinhKhung: p.dinhKhung, roleId: p.roleId, lienQuan: p.lienQuan || [] };
       editingPlanId = p.id;
     }
   } else if (params[0] && findCrime(params[0])) {
-    if (sel.dieu !== params[0]) sel = { ...sel, dieu: params[0], hanhViIds: [findCrime(params[0]).hanhVi[0].id], dinhKhung: [] };
+    if (sel.dieu !== params[0]) sel = { ...sel, dieu: params[0], hanhViIds: [findCrime(params[0]).hanhVi[0].id], dinhKhung: [], lienQuan: [] };
   }
 
   // Lớp chỉnh sửa của người dùng áp lên kế hoạch được sinh tự động.
@@ -107,7 +108,7 @@ export function render(ctx, params = []) {
 
   function selectCrime(dieu) {
     const crime = findCrime(dieu);
-    sel = { ...sel, dieu, hanhViIds: [crime.hanhVi[0].id], dinhKhung: [] };
+    sel = { ...sel, dieu, hanhViIds: [crime.hanhVi[0].id], dinhKhung: [], lienQuan: [] };
     overlay = { removed: [], edited: {}, added: {}, ai: {} };
     editingPlanId = null;
     sugg = null;
@@ -275,6 +276,27 @@ export function render(ctx, params = []) {
     );
   }
 
+  /** Các điều luật liên quan cùng vụ việc (một người có thể thực hiện hành vi thuộc nhiều điều). */
+  function relatedHtml() {
+    const list = (sel.lienQuan || []).map((l) => ({ l, c: crimeWithCustomActs(l.dieu) })).filter((x) => x.c);
+    if (!list.length) return '';
+    return `<div class="lg-related" data-related>
+      <h3>${icon('layers', 'ic-sm')}Điều luật liên quan cùng vụ việc <small>câu hỏi được sinh thêm theo từng điều</small></h3>
+      ${list
+        .map(
+          ({ l, c }) => `<div class="lg-related-item" data-lq="${c.dieu}">
+            <div class="lg-related-head"><strong>Điều ${c.dieu}</strong><span>${escapeHtml(c.ten)}</span>
+              <button type="button" class="btn btn-ghost btn-sm" data-lq-open="${c.dieu}" title="Mở Điều ${c.dieu} trên cây hỏi đáp">${icon('book', 'ic-sm')}Mở</button>
+              <button type="button" class="btn btn-ghost btn-sm btn-icon" data-lq-del="${c.dieu}" aria-label="Bỏ Điều ${c.dieu} khỏi kế hoạch">${icon('x', 'ic-sm')}</button></div>
+            <div class="lg-acts lg-acts-sm">${c.hanhVi
+              .map((h) => `<label class="lg-act ${l.hanhViIds.includes(h.id) ? 'on' : ''} ${h.custom ? 'custom' : ''}"><input type="checkbox" data-hv2="${c.dieu}|${h.id}" ${l.hanhViIds.includes(h.id) ? 'checked' : ''}/><span>${escapeHtml(h.ten)}</span><small>${h.custom ? '<em class="badge">Tự thêm</em> ' : ''}${h.cauHoi.length} câu hỏi đặc thù</small></label>`)
+              .join('')}</div>
+          </div>`,
+        )
+        .join('')}
+    </div>`;
+  }
+
   function renderMain() {
     const crime = sel.dieu && crimeWithCustomActs(sel.dieu);
     if (!crime) return renderOverview();
@@ -310,7 +332,8 @@ export function render(ctx, params = []) {
                 h.custom ? `<span class="lg-act-tools"><button type="button" class="btn btn-ghost btn-sm btn-icon" data-act-edit="${h.id}" aria-label="Sửa hành vi ${escapeHtml(h.ten)}">${icon('wand', 'ic-sm')}</button><button type="button" class="btn btn-ghost btn-sm btn-icon" data-act-del="${h.id}" aria-label="Xóa hành vi ${escapeHtml(h.ten)}">${icon('trash', 'ic-sm')}</button></span>` : ''
               }</label>`,
             )
-            .join('')}<button type="button" class="lg-act lg-act-add" data-act-add>${icon('plus', 'ic-sm')}<span>Thêm hành vi thủ công</span><small>Tự định nghĩa hành vi và câu hỏi đặc thù</small></button></div>
+            .join('')}<button type="button" class="lg-act lg-act-add lg-act-file" data-act-file>${icon('upload', 'ic-sm')}<span>Thêm hành vi từ tài liệu</span><small>Tải đơn, báo cáo, kết luận… — tự tóm tắt, liệt kê hành vi theo điều luật</small></button><button type="button" class="lg-act lg-act-add" data-act-add>${icon('plus', 'ic-sm')}<span>Thêm hành vi thủ công</span><small>Tự định nghĩa hành vi và câu hỏi đặc thù</small></button></div>
+          ${relatedHtml()}
         </section>
         <section class="lg-step">
           <h2><span>2</span>Tình tiết định khung cần làm rõ <small>tùy chọn</small></h2>
@@ -559,6 +582,51 @@ export function render(ctx, params = []) {
       }),
     );
     $('[data-act-add]', main).addEventListener('click', () => actDialog(crime));
+    $('[data-act-file]', main).addEventListener('click', () =>
+      openAnalyzeDialog(ctx, {
+        crime,
+        roleId: sel.roleId,
+        selected: sel.hanhViIds,
+        onAdd({ primaryIds, related, quotes = [] }) {
+          sel.hanhViIds = [...new Set([...sel.hanhViIds, ...primaryIds])];
+          for (const qt of quotes) {
+            const key = qt.dieu === crime.dieu ? `hv-${qt.id}` : `d${qt.dieu}:hv-${qt.id}`;
+            overlay.added[key] = [...new Set([...(overlay.added[key] || []), qt.text])];
+          }
+          const lq = [...(sel.lienQuan || [])];
+          for (const r of related) {
+            const cur = lq.find((x) => x.dieu === r.dieu);
+            if (cur) cur.hanhViIds = [...new Set([...cur.hanhViIds, ...r.hanhViIds])];
+            else lq.push({ dieu: r.dieu, hanhViIds: r.hanhViIds });
+          }
+          sel.lienQuan = lq;
+          persistSel();
+          renderMain();
+        },
+      }),
+    );
+    $$('[data-hv2]', main).forEach((cb) =>
+      cb.addEventListener('change', () => {
+        const [d, id] = cb.dataset.hv2.split('|');
+        const l = sel.lienQuan.find((x) => x.dieu === d);
+        if (!l) return;
+        l.hanhViIds = cb.checked ? [...new Set([...l.hanhViIds, id])] : l.hanhViIds.filter((x) => x !== id);
+        if (!l.hanhViIds.length) sel.lienQuan = sel.lienQuan.filter((x) => x !== l);
+        persistSel();
+        if (!l.hanhViIds.length) return renderMain();
+        cb.closest('.lg-act').classList.toggle('on', cb.checked);
+        refresh();
+      }),
+    );
+    $$('[data-lq-del]', main).forEach((b) =>
+      b.addEventListener('click', () => {
+        sel.lienQuan = sel.lienQuan.filter((x) => x.dieu !== b.dataset.lqDel);
+        persistSel();
+        renderMain();
+        toast(`Đã bỏ Điều ${b.dataset.lqDel} khỏi kế hoạch hỏi`);
+      }),
+    );
+    $$('[data-lq-open]', main).forEach((b) => b.addEventListener('click', () => selectCrime(b.dataset.lqOpen)));
     $$('[data-act-edit]', main).forEach((b) =>
       b.addEventListener('click', (e) => {
         e.preventDefault();
@@ -856,7 +924,7 @@ export function render(ctx, params = []) {
   }
 
   function snapshot() {
-    return { dieu: sel.dieu, hanhViIds: sel.hanhViIds, dinhKhung: sel.dinhKhung, roleId: sel.roleId, overlay };
+    return { dieu: sel.dieu, hanhViIds: sel.hanhViIds, dinhKhung: sel.dinhKhung, roleId: sel.roleId, lienQuan: sel.lienQuan || [], overlay };
   }
 
   function savePlanDialog() {

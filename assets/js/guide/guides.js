@@ -227,6 +227,7 @@ export const GUIDES = [
     steps: [
       { t: 'Tìm tội danh', d: 'Ở cây bên trái, mở **lĩnh vực → nhóm → điều luật**, hoặc gõ vào ô tìm kiếm: số điều (“353”), tên tội (“tham ô”), hay hành vi (“đấu thầu”).', tip: 'Điều có ký hiệu “cần đối chiếu” nên kiểm tra lại tên điều theo văn bản chính thức.' },
       { t: '① Chọn hành vi vi phạm', d: 'Tích một hay nhiều hành vi phù hợp vụ việc. Không có hành vi phù hợp? Bấm [[Thêm hành vi thủ công]] để tự định nghĩa hành vi và câu hỏi đặc thù.' },
+      { t: 'Hoặc thêm hành vi từ tài liệu', d: 'Bấm [[Thêm hành vi từ tài liệu]], tải đơn tố giác, báo cáo xác minh, kết luận thanh tra (PDF, Word, ảnh chụp) hoặc dán nội dung → [[Phân tích]]. Hệ thống tóm tắt, liệt kê từng hành vi kèm **đoạn trích làm căn cứ** và **điều luật** tương ứng (có thể nhiều điều). Tích / bỏ tích, sửa tên, đổi điều luật, xem và sửa câu hỏi sẽ sinh → [[Thêm hành vi]]. Hành vi thuộc điều khác được thêm thành **Điều luật liên quan**, câu hỏi sinh theo từng điều.', tip: 'Kết nối AI chạy trên máy (Cài đặt) để phân tích sâu mà tài liệu không ra khỏi máy.' },
       { t: '② Chọn tình tiết định khung (nếu có)', d: 'Bấm các tình tiết cần làm rõ (vd: “chiếm đoạt từ 500 triệu đồng trở lên”, “có tổ chức”). Hệ thống thêm vấn đề và câu hỏi tương ứng.' },
       { t: '③ Chọn đối tượng lấy lời khai', d: 'Bị can, người làm chứng, bị hại, người có quyền lợi nghĩa vụ liên quan… Câu hỏi và phần quyền, nghĩa vụ đổi theo đối tượng.' },
       { t: 'Xem và chỉnh bộ câu hỏi', d: 'Thẻ [[Vấn đề & câu hỏi]]: sửa, xóa, thêm câu hỏi cho từng vấn đề; bấm [[Gợi ý câu hỏi]] / [[AI gợi ý thêm]] để có câu chuyên sâu. Thẻ [[Sơ đồ cây]] xem tổng quan; thẻ [[Tài liệu & giám định]] liệt kê tài liệu cần thu thập, trưng cầu giám định, định giá.' },
@@ -248,6 +249,8 @@ export const GUIDES = [
     ],
     faq: [
       ['Nội dung pháp lý có thay thế văn bản chính thức không?', 'Không. Đây là công cụ hỗ trợ nghiệp vụ; cần đối chiếu văn bản pháp luật hiện hành.'],
+      ['Vụ việc liên quan nhiều điều luật thì sao?', 'Khi thêm hành vi từ tài liệu, hành vi thuộc điều khác (vd: tham ô kèm làm giả tài liệu, thiếu trách nhiệm) được thêm vào mục **Điều luật liên quan cùng vụ việc**. Kế hoạch hỏi có thêm các vấn đề “[Điều …] Hành vi…”, “[Điều …] Lỗi…” bám dấu hiệu của từng điều; bỏ một điều bằng nút ✕.'],
+      ['Phân tích tài liệu có chính xác không?', 'Hệ thống chỉ đề xuất, dựa trên tên tội danh, điều luật được viện dẫn và hành vi đã có trong hệ thống (có AI thì phân tích sâu hơn). Mỗi hành vi kèm đoạn trích để đối chiếu; điều tra viên quyết định chọn hay bỏ.'],
       ['Sửa kế hoạch đã lưu thế nào?', 'Mở hồ sơ vụ án → mục Kế hoạch hỏi → [[Lập kế hoạch]] hoặc bấm vào kế hoạch; chỉnh rồi bấm [[Cập nhật kế hoạch]].'],
     ],
     related: ['interview', 'cases', 'quytrinh'],

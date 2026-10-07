@@ -1,8 +1,8 @@
 {
-  "version": "2.14.0",
+  "version": "2.15.0",
   "date": "2026-10-07",
   "notes": [
-    "Kết nối BionicGPT và các nền tảng AI tự dựng của cơ quan (LiteLLM, vLLM, Open WebUI…) bằng khóa API",
-    "Bản cài đặt tự xử lý CORS: kết nối được mọi máy chủ AI nội bộ"
+    "Tố tụng: thêm hành vi từ tài liệu — tải đơn, báo cáo, kết luận; tự tóm tắt, liệt kê hành vi theo điều luật, chọn / sửa rồi thêm",
+    "Một vụ việc nhiều điều luật: điều liên quan cùng vụ việc, câu hỏi sinh theo từng điều"
   ]
 }

@@ -304,7 +304,7 @@ export function render(ctx, params = []) {
             let plan = null;
             if (v.startsWith('plan:')) {
               const sp = plansRepo.get(v.slice(5));
-              plan = generatePlan({ dieu: sp.dieu, hanhViIds: sp.hanhViIds, dinhKhung: sp.dinhKhung, roleId: person.roleId });
+              plan = generatePlan({ dieu: sp.dieu, hanhViIds: sp.hanhViIds, dinhKhung: sp.dinhKhung, roleId: person.roleId, lienQuan: sp.lienQuan || [] });
               applyOverlay(plan, sp.overlay);
             } else if (v.startsWith('auto:')) plan = generatePlan({ dieu: v.slice(5), roleId: person.roleId });
             const rec = newRecord({ caseItem: c, person, plan, settings: ctx.settings() });

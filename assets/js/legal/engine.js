@@ -296,16 +296,33 @@ export function localFollowUps(question, role = 'bi-can') {
  * @param {object} opts { dieu, hanhViIds: string[], dinhKhung: string[], roleId, custom: {[key]: string[]} }
  * @returns { crime, role, hanhVi, issues, taiLieu, giamDinh, stats }
  */
-export function generatePlan({ dieu, hanhViIds = [], dinhKhung = [], roleId = 'bi-can', custom = {}, customActs, learned = {} } = {}) {
+/**
+ * Kế hoạch hỏi. lienQuan: các điều luật khác cùng vụ việc [{ dieu, hanhViIds }] — một người có thể thực hiện
+ * nhiều hành vi thuộc nhiều điều (vd: tham ô + làm giả tài liệu). Vấn đề riêng của từng điều liên quan
+ * (hành vi, mặt chủ quan) được thêm vào với khóa có tiền tố “d<điều>:”; vấn đề chung không lặp lại.
+ */
+export function generatePlan({ dieu, hanhViIds = [], dinhKhung = [], roleId = 'bi-can', custom = {}, customActs, learned = {}, lienQuan = [] } = {}) {
   const crime = crimeWithCustomActs(dieu, customActs);
   if (!crime) throw new Error(`Không tìm thấy Điều ${dieu}`);
   const role = getRole(roleId);
   const hanhViList = hanhViIds.length ? crime.hanhVi.filter((h) => hanhViIds.includes(h.id)) : crime.hanhVi;
-  const experts = (crime.chuyenMon || []).map((k) => EXPERTISE[k]).filter(Boolean);
+  const related = (lienQuan || [])
+    .filter((l) => l && String(l.dieu) !== crime.dieu)
+    .map((l) => {
+      const c = crimeWithCustomActs(l.dieu, customActs);
+      if (!c) return null;
+      const hv = (l.hanhViIds || []).length ? c.hanhVi.filter((h) => l.hanhViIds.includes(h.id)) : c.hanhVi;
+      return { crime: c, hanhVi: hv };
+    })
+    .filter(Boolean);
+  const tag = (c, is) => is && { ...is, key: `d${c.dieu}:${is.key}`, tieuDe: `[Điều ${c.dieu}] ${is.tieuDe}`, dieu: c.dieu };
+  const relatedIssues = related.flatMap(({ crime: c, hanhVi }) => [...hanhVi.map((h) => tag(c, issueHanhVi(c, h, role))), tag(c, issueChuQuan(c, role))]);
+  const experts = [...new Set([crime, ...related.map((r) => r.crime)].flatMap((c) => c.chuyenMon || []))].map((k) => EXPERTISE[k]).filter(Boolean);
 
   const issues = [
     issueNhanThan(crime, role),
     ...hanhViList.map((h) => issueHanhVi(crime, h, role)),
+    ...relatedIssues,
     issueHauQua(crime, role),
     issueChuQuan(crime, role),
     issueDongPham(role),
@@ -331,15 +348,19 @@ export function generatePlan({ dieu, hanhViIds = [], dinhKhung = [], roleId = 'b
       .forEach((x) => is.cauHoi.push({ ...q(x.text, 'hoc', x.n > 1 ? 'high' : 'normal'), uses: x.n }));
   }
 
-  const taiLieu = [...new Set([...hanhViList.flatMap((h) => h.taiLieu || []), ...experts.flatMap((e) => e.taiLieu)])];
+  const allActs = [...hanhViList, ...related.flatMap((r) => r.hanhVi)];
+  const taiLieu = [...new Set([...allActs.flatMap((h) => h.taiLieu || []), ...experts.flatMap((e) => e.taiLieu)])];
   const giamDinh = [...new Set(experts.flatMap((e) => e.giamDinh))];
   const total = issues.reduce((s, i) => s + i.cauHoi.length, 0);
-  return { crime, role, hanhVi: hanhViList, dinhKhung, issues, taiLieu, giamDinh, stats: { issues: issues.length, questions: total } };
+  const hanhVi = [...hanhViList, ...related.flatMap((r) => r.hanhVi.map((h) => ({ ...h, ten: `${h.ten} (Điều ${r.crime.dieu})`, dieu: r.crime.dieu })))];
+  return { crime, role, hanhVi, lienQuan: related, dinhKhung, issues, taiLieu, giamDinh, stats: { issues: issues.length, questions: total } };
 }
 
 /** Văn bản thuần của kế hoạch hỏi (để in, sao chép, gửi AI). */
 export function planToText(plan) {
-  const out = [`KẾ HOẠCH LẤY LỜI KHAI — ${plan.role.ten.toUpperCase()}`, `Tội danh: Điều ${plan.crime.dieu} BLHS — ${plan.crime.ten}`, ''];
+  const out = [`KẾ HOẠCH LẤY LỜI KHAI — ${plan.role.ten.toUpperCase()}`, `Tội danh: Điều ${plan.crime.dieu} BLHS — ${plan.crime.ten}`];
+  (plan.lienQuan || []).forEach((r) => out.push(`Điều liên quan: Điều ${r.crime.dieu} BLHS — ${r.crime.ten}`));
+  out.push('');
   out.push('HÀNH VI CẦN LÀM RÕ:', ...plan.hanhVi.map((h) => `- ${h.ten}`), '');
   plan.issues.forEach((is, i) => {
     out.push(`${i + 1}. ${is.tieuDe} (${is.canCu})`);
