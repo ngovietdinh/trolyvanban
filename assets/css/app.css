@@ -3146,3 +3146,66 @@ mark.err-mark.is-ai {
     position: static;
   }
 }
+
+/* ---------- Tải ứng dụng máy tính ---------- */
+.sb-download {
+  color: var(--accent) !important;
+  font-weight: 600;
+}
+.dl-modal {
+  width: min(100%, 620px);
+}
+.dl-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.dl-cards {
+  display: grid;
+  gap: 8px;
+}
+.dl-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: transform 0.15s var(--ease), border-color 0.15s, box-shadow 0.15s;
+}
+.dl-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
+  box-shadow: 0 8px 20px -14px rgba(0, 0, 0, 0.4);
+}
+.dl-card > span {
+  flex: 1;
+  display: grid;
+}
+.dl-card small {
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.dl-card.rec {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  background: var(--accent-soft);
+}
+.dl-help summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.dl-help ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.dl-help code {
+  font-size: 12px;
+  word-break: break-all;
+}

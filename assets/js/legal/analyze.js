@@ -257,6 +257,60 @@ export function mergeResults(...rs) {
   return { tomTat: list.map((r) => r.tomTat).filter(Boolean).join(' '), keywords: list.flatMap((r) => r.keywords || []), crimes: [...cs.values()].sort((a, b) => b.score - a.score), items, ai: list.some((r) => r.ai) };
 }
 
+/**
+ * Đối chiếu dấu hiệu định tội của điều luật (trong phần mềm) với nội dung vụ việc: dấu hiệu nào có cụm từ xuất hiện.
+ * Trả về [{ text, hit }].
+ */
+const UNIT = { 'nghìn': 1e3, 'ngàn': 1e3, 'triệu': 1e6, 'tỷ': 1e9, 'tỉ': 1e9 };
+const num = (v) => parseFloat(String(v).replace(/\.(?=\d{3}\b)/g, '').replace(',', '.'));
+/** Các số tiền nêu trong nội dung (đồng): “1,2 tỷ đồng”, “300 triệu”, “50.000.000 đồng”. */
+export function amountsIn(text) {
+  const out = [];
+  const re = /(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(nghìn|ngàn|triệu|tỷ|tỉ)?\s*(?:đồng|VNĐ|VND|đ\b)?/giu;
+  let m;
+  while ((m = re.exec(String(text)))) {
+    const unit = m[2] && UNIT[m[2].toLowerCase()];
+    const v = unit ? num(m[1]) * unit : /\d[.,]\d{3}/.test(m[1]) && /đồng|VN|đ\b/i.test(m[0]) ? num(m[1].replace(/[.,]/g, '')) : null;
+    if (v && v >= 1000) out.push({ v, raw: m[0].trim() });
+  }
+  return out;
+}
+const fmtMoney = (v) => (v >= 1e9 ? `${(v / 1e9).toLocaleString('vi-VN')} tỷ đồng` : `${(v / 1e6).toLocaleString('vi-VN')} triệu đồng`);
+
+export function signCoverage(crime, text) {
+  const t = termsOf(text);
+  const money = amountsIn(text);
+  const maxMoney = money.length ? Math.max(...money.map((x) => x.v)) : 0;
+  return (crime?.dauHieu || []).map((d) => {
+    // Ngưỡng giá trị (“từ 2 triệu đồng trở lên”): so với số tiền lớn nhất nêu trong nội dung.
+    const th = d.match(/từ\s+([\d.,]+)\s*(nghìn|ngàn|triệu|tỷ|tỉ)\s*đồng\s*trở lên/iu);
+    if (th && maxMoney) {
+      const need = num(th[1]) * UNIT[th[2].toLowerCase()];
+      return { text: d, hit: maxMoney >= need, note: `${maxMoney >= need ? 'Có' : 'Chưa đủ'}: số tiền ${fmtMoney(maxMoney)} ${maxMoney >= need ? '≥' : '<'} ${fmtMoney(need)}` };
+    }
+    const st = termsOf(d.replace(/theo mô tả tại khoản \d+ Điều \d+\w* BLHS/i, ''));
+    let b = 0;
+    st.bi.forEach((x) => t.bi.has(x) && b++);
+    return { text: d, hit: st.bi.size ? b >= 2 && b / st.bi.size >= 0.2 : false };
+  });
+}
+
+/** Gắn kết quả đối chiếu dấu hiệu cho từng điều được đề xuất và cách xác định từng hành vi. */
+export function annotateResult(result, text, method) {
+  const crimes = result.crimes.map((c) => {
+    const crime = findCrime(c.dieu);
+    return crime ? { ...c, signs: signCoverage(crime, text) } : c;
+  });
+  const items = result.items.map((x) => {
+    const crime = crimeWithCustomActs(x.dieu);
+    const known = crime && x.hanhViId ? crime.hanhVi.find((h) => h.id === x.hanhViId) : null;
+    // Cách xác định: khớp hành vi có sẵn trong Bộ luật của phần mềm, AI đề xuất (đã kiểm tra điều luật), hay nhập mới.
+    const doiChieu = known ? 'khop' : crime ? 'moi' : 'ngoai';
+    return { ...x, doiChieu };
+  });
+  return { ...result, crimes, items, method };
+}
+
 /* ---------------- AI ---------------- */
 
 export const ANALYZE_SYSTEM = `Bạn là điều tra viên, kiểm sát viên giàu kinh nghiệm, nắm vững Bộ luật Hình sự 2015 (sửa đổi 2017, 2025). Nhiệm vụ: đọc tài liệu vụ việc, tóm tắt, rồi liệt kê từng hành vi có dấu hiệu tội phạm, đối chiếu với điều luật cụ thể.

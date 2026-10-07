@@ -8,7 +8,8 @@ import { relativeTime } from '../lib/vn-date.js';
 import { audit } from '../lib/accounts.js';
 import { APP_VERSION } from '../version.js';
 import { isDesktop } from '../lib/platform.js';
-import { checkForUpdate, applyUpdate, DESKTOP_DOWNLOAD_URL } from '../update.js';
+import { checkForUpdate, applyUpdate } from '../update.js';
+import { openDownloadApp } from '../download-app.js';
 
 const BACKUP_KEYS = { docs: 'docs', cases: 'cases', records: 'records', plans: 'plans' };
 
@@ -137,7 +138,7 @@ export function render(ctx) {
         </div>
         ${isDesktop ? '' : `<div class="setting-row">
           <div><h3>Bản cài đặt cho máy tính</h3><p>Cài ứng dụng trên Windows hoặc macOS: chạy như phần mềm riêng, dùng được khi không có mạng, tài khoản tạo mới có toàn quyền (kể cả phân hệ Tố tụng).</p></div>
-          <div class="setting-ctl"><a class="btn btn-sm" href="${DESKTOP_DOWNLOAD_URL}" target="_blank" rel="noopener" data-desktop-dl>${icon('download', 'ic-sm')}Tải bộ cài Windows / macOS</a></div>
+          <div class="setting-ctl"><button class="btn btn-sm btn-primary" type="button" data-desktop-dl>${icon('download', 'ic-sm')}Tải ứng dụng Windows / macOS</button></div>
         </div>`}
       </section>
 
@@ -510,6 +511,7 @@ export function render(ctx) {
   }
   renderMemory();
 
+  $('[data-desktop-dl]', root)?.addEventListener('click', () => openDownloadApp(ctx));
   $('[data-check-update]', root).addEventListener('click', async (e) => {
     const out = $('[data-update-out]', root);
     const btn = e.currentTarget;

@@ -88,7 +88,7 @@ test.describe('Thêm hành vi từ tài liệu (Tố tụng)', () => {
     await page.goto('/app.html#legal/353');
     await page.click('[data-act-file]');
     const dlg = page.locator('.la-modal');
-    await expect(dlg.locator('[data-use-ai]')).toBeChecked();
+    await expect(dlg.locator('[data-method][value="ket-hop"]')).toBeChecked();
     await dlg.locator('[data-text]').fill(HO_SO);
     await dlg.locator('[data-analyze]').click();
     await expect(dlg.locator('.la-sum')).toContainText('Kế toán trưởng lập chứng từ khống');

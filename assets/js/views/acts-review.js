@@ -110,7 +110,7 @@ export function rowHtml(r, ds) {
         ${known ? `<span class="badge badge-success" title="Dùng bộ câu hỏi có sẵn của hành vi này">Có trong hệ thống</span>` : `<span class="badge badge-accent" title="Sẽ được lưu thành hành vi tự thêm của Điều ${r.dieu}">Hành vi mới</span>`}
         ${r.daCo ? '<span class="badge">Đã có trong kế hoạch</span>' : ''}
         ${r.ngoaiDanhMuc ? `<span class="badge badge-warning">Điều ${escapeHtml(r.dieu)} chưa có trong hệ thống — chọn điều khác</span>` : ''}
-        ${r.nguon === 'ai' ? '<span class="badge">AI</span>' : ''}
+        ${r.nguon === 'ai' ? `<span class="badge" title="${known ? 'AI xác định, đã khớp hành vi trong Bộ luật của phần mềm' : 'AI đề xuất — chưa có trong Bộ luật của phần mềm, kiểm tra kỹ'}">${known ? 'AI · khớp Bộ luật' : 'AI đề xuất'}</span>` : r.nguon === 'tu-nhap' ? '' : '<span class="badge" title="Xác định bằng đối chiếu với Bộ luật trong phần mềm">Đối chiếu Bộ luật</span>'}
         <small>${c ? escapeHtml(c.ten) : ''}</small>
       </div>
       ${r.trich ? `<blockquote class="la-quote">${icon('quote', 'ic-sm')}${escapeHtml(r.trich)}</blockquote>` : ''}

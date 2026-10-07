@@ -4,10 +4,9 @@
 // (màn hình kế hoạch của cây hỏi đáp, có thanh bước để quay lại).
 import { $, $$, icon, toast, escapeHtml } from '../ui.js';
 import { findCrime, crimeWithCustomActs, searchCrimes } from '../legal/engine.js';
-import { analyzeActs, analyzeOffline, analyzeWithAi, mergeResults } from '../legal/analyze.js';
+import { analyzeActs, analyzeOffline, mergeResults } from '../legal/analyze.js';
 import { store } from '../lib/store.js';
-import { streamAI } from '../lib/ai.js';
-import { aiModeHtml } from './legal-analyze.js';
+import { aiModeHtml, bindMethod, readMethod, runMethod, METHOD_LABEL } from './legal-analyze.js';
 import { dropzoneHtml, bindDropzone, readAll, toRows, newRow, rowHtml, bindRows, commitRows } from './acts-review.js';
 
 export const WIZARD_STEPS = ['Hành vi', 'Điều luật đề xuất', 'Hành vi theo điều', 'Câu hỏi & sơ đồ cây'];
@@ -92,9 +91,13 @@ export function mountWizard(ctx, host, { step, onPlan, onExit } = {}) {
           <details class="wz-paste" ${s.docText ? 'open' : ''}><summary>Hoặc dán nội dung tài liệu</summary><textarea class="textarea" rows="5" data-doc placeholder="Dán nội dung tài liệu…">${escapeHtml(s.docText)}</textarea></details>
         </div>
       </div>
-      <div class="la-mode">${aiModeHtml(ai)}</div>
+      <div class="la-mode">${aiModeHtml(ai, s.method)}</div>
       <p class="hint" data-progress hidden></p>`;
     dz = bindDropzone(body);
+    bindMethod(body, (m) => {
+      s.method = m;
+      persist();
+    });
     foot(`<button class="btn btn-ghost" type="button" data-exit>${icon('chevron-left', 'ic-sm')}Về cây hỏi đáp</button><span class="spacer"></span><button class="btn btn-primary" type="button" data-analyze>${icon('sparkles', 'ic-sm')}Phân tích &amp; đề xuất điều luật</button>`);
     $('[data-exit]', host).addEventListener('click', () => onExit?.());
     $('[data-manual]', body).addEventListener('input', (e) => (s.manual = e.target.value));
@@ -120,17 +123,10 @@ export function mountWizard(ctx, host, { step, onPlan, onExit } = {}) {
       say('Đang đối chiếu với các điều luật trong hệ thống…');
       const manualRes = s.manual ? analyzeActs(s.manual) : null;
       const docRes = doc.replace(/\s/g, '').length >= 40 ? analyzeOffline(doc, { primary: manualRes?.crimes[0]?.dieu }) : null;
-      let result = mergeResults(manualRes, docRes);
-      if (ai && $('[data-use-ai]', body)?.checked) {
-        say(`${ai.local ? 'AI trên máy' : ai.label} đang phân tích… (có thể mất 1–2 phút)`);
-        try {
-          const text = [s.manual && `CÁC HÀNH VI ĐƯỢC NÊU:\n${s.manual}`, doc].filter(Boolean).join('\n\n');
-          const r = await analyzeWithAi((o) => streamAI({ ...ctx.ai('legal'), ...o }), text, { primary: result.crimes[0]?.dieu || '', offline: result, role: 'người được hỏi' });
-          result = mergeResults(r, manualRes);
-        } catch (err) {
-          toast(`${err.message} — dùng kết quả phân tích trên máy.`, { type: 'info', timeout: 6000 });
-        }
-      }
+      const base = mergeResults(manualRes, docRes);
+      s.method = readMethod(body);
+      const text = [s.manual && `CÁC HÀNH VI ĐƯỢC NÊU:\n${s.manual}`, doc].filter(Boolean).join('\n\n');
+      const result = await runMethod(ctx, s.method, { text, base, extraBase: manualRes, role: 'người được hỏi', say });
       say('');
       if (!result.items.length && !result.crimes.length) toast('Chưa xác định được điều luật — tìm và thêm điều luật ở bước sau.', { type: 'info', timeout: 5000 });
       s.result = result;
@@ -157,6 +153,15 @@ export function mountWizard(ctx, host, { step, onPlan, onExit } = {}) {
     return list.filter((c) => !seen.has(c.dieu) && seen.add(c.dieu));
   }
 
+  /** Đối chiếu dấu hiệu định tội của điều (Bộ luật trong phần mềm) với nội dung vụ việc. */
+  function signsHtml(c, crime) {
+    const signs = c.signs || crime.dauHieu.map((text) => ({ text, hit: false }));
+    const hit = signs.filter((x) => x.hit).length;
+    return `<details class="wz-signs" ${hit ? 'open' : ''}><summary>Đối chiếu dấu hiệu định tội: <strong>${hit}/${signs.length}</strong> có trong nội dung</summary>
+      <ul>${signs.map((x) => `<li class="${x.hit ? 'hit' : ''}">${icon(x.hit ? 'check-circle' : 'help', 'ic-sm')}<span>${escapeHtml(x.text)}${x.note ? ` <em>— ${escapeHtml(x.note)}</em>` : ''}</span></li>`).join('')}</ul>
+      <p class="hint">Chủ thể: ${escapeHtml(crime.chuThe)} · Lỗi: ${escapeHtml(crime.loi)}. Dấu hiệu chưa thấy trong nội dung cần làm rõ khi lấy lời khai.</p></details>`;
+  }
+
   function step2() {
     const body = $('[data-wz-body]', host);
     const list = suggested();
@@ -164,6 +169,7 @@ export function mountWizard(ctx, host, { step, onPlan, onExit } = {}) {
     const nActs = (d) => s.rows.filter((r) => r.dieu === d).length;
     body.innerHTML = `
       ${s.result?.tomTat ? `<section class="la-sum"><h3>${icon('file', 'ic-sm')}Tóm tắt tài liệu${s.result.ai ? ' <span class="badge">AI</span>' : ''}</h3><p>${escapeHtml(s.result.tomTat)}</p></section>` : ''}
+      <p class="la-method-used">${icon('check-circle', 'ic-sm')}Phân tích bằng: <strong>${METHOD_LABEL[s.result?.method] || METHOD_LABEL['doi-chieu']}</strong> <button type="button" class="btn btn-ghost btn-sm" data-redo>${icon('refresh', 'ic-sm')}Đổi cách phân tích</button></p>
       <h3 class="wz-h">${icon('book', 'ic-sm')}Điều luật đề xuất <small>tích các điều áp dụng · chọn một điều chính · có thể chọn nhiều điều</small></h3>
       <div class="wz-crimes">${
         list
@@ -176,7 +182,7 @@ export function mountWizard(ctx, host, { step, onPlan, onExit } = {}) {
                 <h4>${escapeHtml(crime.ten)}</h4>
                 <div class="wz-meter" title="Mức độ phù hợp"><span style="width:${Math.round(((c.score || 0) / max) * 100)}%"></span></div>
                 <ul class="wz-reasons">${(c.reasons || []).map((r) => `<li>${escapeHtml(r)}</li>`).join('')}${nActs(c.dieu) && !(c.reasons || []).some((r) => /hành vi/.test(r)) ? `<li><strong>${nActs(c.dieu)}</strong> hành vi đề xuất</li>` : ''}</ul>
-                <details><summary>Dấu hiệu định tội (${crime.dauHieu.length})</summary><ul>${crime.dauHieu.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ul><p class="hint">Chủ thể: ${escapeHtml(crime.chuThe)} · Lỗi: ${escapeHtml(crime.loi)}</p></details>
+                ${signsHtml(c, crime)}
               </div>
               <label class="wz-primary" title="Điều chính của kế hoạch hỏi"><input type="radio" name="wz-primary" data-primary="${c.dieu}" ${s.primary === c.dieu ? 'checked' : ''} ${on ? '' : 'disabled'} />Điều chính</label>
             </article>`;
@@ -202,6 +208,7 @@ export function mountWizard(ctx, host, { step, onPlan, onExit } = {}) {
       foot2();
     };
     $$('[data-pick]', body).forEach((cb) => cb.addEventListener('change', sync));
+    $('[data-redo]', body).addEventListener('click', () => go(1));
     $$('[data-primary]', body).forEach((r) =>
       r.addEventListener('change', () => {
         s.primary = r.dataset.primary;

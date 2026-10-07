@@ -1,8 +1,9 @@
 {
-  "version": "2.17.0",
+  "version": "2.18.0",
   "date": "2026-10-07",
   "notes": [
-    "Tố tụng: Phân tích vụ việc 4 bước — nhập hành vi / tải Word, PDF → đề xuất điều luật → chọn hành vi → câu hỏi & sơ đồ cây",
-    "Sơ đồ cây mới: chi tiết đến từng câu hỏi, mở / thu gọn, hiệu ứng, tìm, phóng to, toàn màn hình"
+    "Phân tích vụ việc: chọn Đối chiếu Bộ luật trong phần mềm, AI phân tích hoặc Kết hợp; đối chiếu dấu hiệu định tội (kể cả ngưỡng số tiền)",
+    "Nút Tải ứng dụng máy tính: tự nhận biết Windows / Mac chip Apple / Intel",
+    "Sơ đồ cây: Toàn màn hình · Trình bày, làm nổi nhánh đang trình bày, phím tắt"
   ]
 }

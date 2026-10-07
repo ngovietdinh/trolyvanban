@@ -91,10 +91,90 @@ test.describe('Phân tích vụ việc 4 bước + sơ đồ cây', () => {
     await expect(tree.locator('.pt-li')).toHaveCount(1 + (await tree.locator('[data-node="root"] > .pt-kids > ul > .pt-li').count()));
     await page.locator('[data-pt-zoom="1"]').click();
     await expect(page.locator('[data-pt-canvas]')).toHaveAttribute('style', /--zoom: 1\.15/);
+    // Toàn màn hình · trình bày: tiêu đề vụ việc, phóng to, làm nổi nhánh, phím tắt.
+    await expect(page.locator('[data-pt-full]')).toHaveText(/Toàn màn hình · Trình bày/);
     await page.click('[data-pt-full]');
-    await expect(page.locator('.pt-wrap.full')).toBeVisible();
+    const full = page.locator('.pt-wrap.full');
+    await expect(full).toBeVisible();
+    await expect(full.locator('.pt-present-title')).toContainText('Điều 174');
+    await page.locator('[data-pt-spot]').check();
+    await tree.locator('[data-node="crime-174"] > .pt-node').click();
+    await expect(tree).toHaveClass(/pt-dim/);
+    await expect(tree.locator('[data-node="crime-174"]')).toHaveClass(/focus/);
+    await page.locator('[data-pt-view]').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('e');
+    expect(await tree.locator('.pt-q').count()).toBeGreaterThan(10);
     await page.keyboard.press('Escape');
     await expect(page.locator('.pt-wrap.full')).toHaveCount(0);
+    await expect(tree).not.toHaveClass(/pt-dim/);
     t.assertClean();
+  });
+});
+
+test.describe('Cách phân tích và tải ứng dụng', () => {
+  const VU_VIEC = 'Kế toán trưởng lập chứng từ chi khống để rút tiền chiếm đoạt 1,2 tỷ đồng\nThủ quỹ thu tiền nhưng không nhập quỹ';
+
+  test('chưa có AI: chỉ đối chiếu Bộ luật; bước 2 đối chiếu dấu hiệu định tội, ngưỡng số tiền', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#legal/vu-viec');
+    await expect(page.locator('[data-method][value="doi-chieu"]')).toBeChecked();
+    await expect(page.locator('[data-method][value="ai"]')).toBeDisabled();
+    await expect(page.locator('[data-method][value="ket-hop"]')).toBeDisabled();
+    await page.fill('[data-manual]', VU_VIEC);
+    await page.click('[data-analyze]');
+    await expect(page.locator('.la-method-used')).toContainText('Đối chiếu Bộ luật trong phần mềm');
+    const signs = page.locator('[data-crime-card="353"] .wz-signs');
+    await expect(signs.locator('summary')).toContainText(/\d\/\d có trong nội dung/);
+    await expect(signs.locator('li.hit').filter({ hasText: '1,2 tỷ đồng ≥ 2 triệu đồng' })).toHaveCount(1);
+    await page.click('[data-next]');
+    await expect(page.locator('.la-row').first()).toContainText('Đối chiếu Bộ luật');
+    t.assertClean();
+  });
+
+  test('chọn “AI phân tích”: chỉ dùng kết quả AI (điều luật vẫn kiểm tra với Bộ luật trong phần mềm)', async ({ page }) => {
+    const { mockClaude, setApiKey } = await import('./helpers.mjs');
+    await mockClaude(page, () => JSON.stringify({ tomTat: 'Kế toán trưởng chi khống.', hanhVi: [{ ten: 'Lập chứng từ chi khống', dieu: '353', hanhViId: 'chi-khong', trich: 'lập chứng từ chi khống', lyDo: 'Có trách nhiệm quản lý' }] }));
+    await freshApp(page);
+    await setApiKey(page, 'anthropic', 'sk-ant-test-1234');
+    await page.goto('/app.html#legal/vu-viec');
+    await page.reload();
+    await page.locator('[data-method][value="ai"]').check();
+    await page.fill('[data-manual]', VU_VIEC);
+    await page.click('[data-analyze]');
+    await expect(page.locator('.la-method-used')).toContainText('AI phân tích');
+    await page.click('[data-next]');
+    // Chỉ hành vi AI xác định (không thêm “thu tiền không nhập quỹ” từ đối chiếu); có nhãn đã khớp Bộ luật.
+    await expect(page.locator('.la-row')).toHaveCount(1);
+    await expect(page.locator('.la-row')).toContainText('AI · khớp Bộ luật');
+  });
+
+  test('nút tải ứng dụng: bản phát hành mới nhất, đủ Windows / macOS chip Apple / Intel, hướng dẫn cài', async ({ page }) => {
+    await page.route('https://api.github.com/repos/ngovietdinh/trolyvanban/releases/latest', (r) =>
+      r.fulfill({
+        status: 200,
+        headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+        body: JSON.stringify({
+          tag_name: 'v9.1.0',
+          html_url: 'https://github.com/ngovietdinh/trolyvanban/releases/tag/v9.1.0',
+          assets: ['win-x64.exe', 'mac-arm64.dmg', 'mac-x64.dmg', 'web-manifest.json'].map((x) => ({ name: `TroLyVanBan-9.1.0-${x}`, size: 125829120, browser_download_url: `https://github.com/ngovietdinh/trolyvanban/releases/download/v9.1.0/TroLyVanBan-9.1.0-${x}` })),
+        }),
+      }),
+    );
+    await freshApp(page);
+    const btn = page.locator('.sidebar [data-download-app], [data-download-app]').first();
+    await expect(btn).toBeVisible();
+    await btn.click();
+    const dlg = page.locator('.dl-modal');
+    await expect(dlg).toContainText('v9.1.0');
+    await expect(dlg.locator('[data-dl="win"]')).toHaveAttribute('href', /TroLyVanBan-9\.1\.0-win-x64\.exe$/);
+    await expect(dlg.locator('[data-dl="macArm"]')).toHaveAttribute('href', /mac-arm64\.dmg$/);
+    await expect(dlg.locator('[data-dl="macIntel"]')).toHaveAttribute('href', /mac-x64\.dmg$/);
+    await expect(dlg.locator('[data-dl="win"]')).toContainText('120 MB');
+    await expect(dlg.locator('.dl-help')).toContainText('xattr -cr');
+    // Cài đặt cũng mở cùng hộp thoại.
+    await page.keyboard.press('Escape');
+    await page.goto('/app.html#settings');
+    await page.locator('[data-desktop-dl]').click();
+    await expect(page.locator('.dl-modal')).toBeVisible();
   });
 });

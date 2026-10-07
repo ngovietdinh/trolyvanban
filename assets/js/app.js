@@ -5,6 +5,7 @@ import { PROVIDERS, setAIHooks, setLocalEndpoint, isPrivateEndpoint, isOffline }
 import { accounts, vault, systemConfig } from './lib/accounts.js';
 import { initUpdates } from './update.js';
 import { desktop, isDesktop } from './lib/platform.js';
+import { openDownloadApp } from './download-app.js';
 import { DOC_TYPES } from './lib/doc-types.js';
 import { ALL_CRIMES } from './legal/engine.js';
 
@@ -682,6 +683,15 @@ document.addEventListener('keydown', (e) => {
     if (palette.hidden) openPalette();
     else closePalette();
   }
+});
+
+/* ---------- Tải ứng dụng máy tính (chỉ hiện trên bản web) ---------- */
+$$('[data-download-app]').forEach((el) => {
+  el.hidden = isDesktop;
+  el.addEventListener('click', (e) => {
+    e.preventDefault();
+    openDownloadApp(ctx);
+  });
 });
 
 /* ---------- Khởi động ---------- */

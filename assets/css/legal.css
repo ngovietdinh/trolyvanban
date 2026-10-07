@@ -3325,3 +3325,178 @@ body.pt-fullscreen {
     grid-row: auto;
   }
 }
+
+/* ---------- Cách phân tích: đối chiếu Bộ luật / AI / kết hợp ---------- */
+.la-methods {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.la-methods legend {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.la-method {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px 10px 36px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.la-method input {
+  position: absolute;
+  left: 12px;
+  top: 13px;
+  accent-color: var(--accent);
+}
+.la-method strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+}
+.la-method small {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.45;
+}
+.la-method.on {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: var(--accent-soft);
+}
+.la-method.off {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.la-method-used {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.wz-signs summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.wz-signs ul {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.wz-signs li {
+  display: flex;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.wz-signs li .ic {
+  flex: none;
+  margin-top: 2px;
+}
+.wz-signs li.hit {
+  color: var(--text);
+}
+.wz-signs li.hit .ic {
+  color: var(--success);
+}
+.wz-signs em {
+  font-style: normal;
+  color: var(--success);
+  font-weight: 600;
+}
+@media (max-width: 760px) {
+  .la-methods {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Sơ đồ cây: toàn màn hình · trình bày ---------- */
+.pt-present-head {
+  display: none;
+}
+.pt-wrap.full {
+  grid-template-rows: auto auto auto 1fr;
+}
+.pt-wrap.full .pt-present-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--surface)), var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+.pt-present-title {
+  display: grid;
+  flex: 1;
+  min-width: 240px;
+}
+.pt-present-title strong {
+  font-family: var(--font-serif, serif);
+  font-size: 20px;
+}
+.pt-present-title small {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.pt-keys {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.pt-keys kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 4px;
+  margin: 0 1px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font: 600 11px/16px var(--font-sans, sans-serif);
+  text-align: center;
+  background: var(--surface);
+}
+.pt-wrap.full .pt-full-btn {
+  display: none;
+}
+.pt-wrap:fullscreen {
+  padding: 16px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.pt-wrap.full .pt-viewport {
+  min-height: 0;
+}
+/* Làm nổi nhánh đang trình bày */
+.pt-tree.pt-dim .pt-li > .pt-node {
+  opacity: 0.22;
+  filter: saturate(0.4);
+  transition: opacity 0.3s var(--ease), filter 0.3s var(--ease);
+}
+.pt-tree.pt-dim .pt-li.focus .pt-node,
+.pt-tree.pt-dim .pt-li.path > .pt-node {
+  opacity: 1;
+  filter: none;
+}
+.pt-tree.pt-dim .pt-li.focus > .pt-node {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 50%, transparent), 0 10px 24px -14px var(--accent);
+}
+.pt-tree.pt-dim .pt-li.path::before,
+.pt-tree.pt-dim .pt-li.path::after,
+.pt-tree.pt-dim .pt-li.focus::before {
+  border-color: var(--accent);
+}

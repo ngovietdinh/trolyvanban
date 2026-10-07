@@ -4,15 +4,55 @@
 import { $, $$, icon, toast, escapeHtml } from '../ui.js';
 import { findCrime } from '../legal/engine.js';
 import { getRole } from '../legal/roles.js';
-import { analyzeOffline, analyzeWithAi } from '../legal/analyze.js';
+import { analyzeOffline, analyzeWithAi, annotateResult, mergeResults } from '../legal/analyze.js';
 import { streamAI } from '../lib/ai.js';
+import { store } from '../lib/store.js';
 import { dropzoneHtml, bindDropzone, readAll, toRows, newRow, rowHtml, bindRows, commitRows } from './acts-review.js';
 
-/** Hộp chọn chế độ phân tích (AI nếu có). */
-export function aiModeHtml(ai) {
-  return ai
-    ? `<label class="check"><input type="checkbox" data-use-ai checked />Phân tích sâu bằng <strong>${escapeHtml(ai.local ? 'AI trên máy' : ai.label)}</strong>${ai.local ? ' — tài liệu không ra khỏi máy / mạng nội bộ' : ' — nội dung tài liệu sẽ được gửi tới dịch vụ AI'}</label>`
-    : `<p class="note">${icon('lock', 'ic-sm')}<span>Phân tích chạy hoàn toàn trên máy (đối chiếu tên tội danh, điều luật được viện dẫn, hành vi trong hệ thống). Kết nối <a class="link" href="#settings">AI chạy trên máy</a> để phân tích sâu hơn mà không gửi dữ liệu ra ngoài.</span></p>`;
+export const METHOD_LABEL = { 'doi-chieu': 'Đối chiếu Bộ luật trong phần mềm', ai: 'AI phân tích', 'ket-hop': 'Kết hợp AI + đối chiếu Bộ luật' };
+
+/** Chọn cách phân tích: đối chiếu Bộ luật trong phần mềm (luôn có, chạy trên máy), AI, hoặc kết hợp. */
+export function aiModeHtml(ai, mode) {
+  const m = mode || (ai ? 'ket-hop' : 'doi-chieu');
+  const name = ai ? (ai.local ? 'AI trên máy' : ai.label) : '';
+  const opt = (id, title, desc, ok = true) => `<label class="la-method ${m === id && ok ? 'on' : ''} ${ok ? '' : 'off'}"><input type="radio" name="la-method" value="${id}" data-method ${m === id && ok ? 'checked' : ''} ${ok ? '' : 'disabled'} /><strong>${title}</strong><small>${desc}</small></label>`;
+  return `<fieldset class="la-methods"><legend>Cách phân tích</legend>
+    ${opt('doi-chieu', `${icon('book', 'ic-sm')}Đối chiếu Bộ luật`, 'So nội dung với các điều luật, hành vi, dấu hiệu định tội có trong phần mềm. Chạy trên máy, không gửi dữ liệu.')}
+    ${opt('ai', `${icon('sparkles', 'ic-sm')}AI phân tích`, ai ? `${escapeHtml(name)} đọc và suy luận; điều luật AI nêu được kiểm tra với Bộ luật trong phần mềm.${ai.local ? '' : ' Nội dung được gửi tới dịch vụ AI.'}` : 'Chưa kết nối AI — vào Cài đặt để thêm API key hoặc AI chạy trên máy.', !!ai)}
+    ${opt('ket-hop', `${icon('layers', 'ic-sm')}Kết hợp`, ai ? `AI phân tích, bổ sung hành vi đối chiếu được mà AI bỏ sót. Chính xác nhất.` : 'Cần kết nối AI.', !!ai)}
+  </fieldset>`;
+}
+export function readMethod(box) {
+  return $('[data-method]:checked', box)?.value || 'doi-chieu';
+}
+export function bindMethod(box, onChange = () => {}) {
+  $$('[data-method]', box).forEach((r) =>
+    r.addEventListener('change', () => {
+      $$('.la-method', box).forEach((l) => l.classList.toggle('on', l.querySelector('input').checked));
+      onChange(r.value);
+    }),
+  );
+}
+
+/**
+ * Chạy phân tích theo cách đã chọn. base: kết quả đối chiếu (luôn tính — dùng làm danh mục ứng viên cho AI).
+ * Trả về kết quả đã gắn đối chiếu dấu hiệu định tội.
+ */
+export async function runMethod(ctx, method, { text, base, extraBase = null, primary, role, signal, say }) {
+  let result = base;
+  if (method !== 'doi-chieu' && ctx.ai('legal')) {
+    const ai = ctx.ai('legal');
+    say?.(`${ai.local ? 'AI trên máy' : ai.label} đang phân tích… (có thể mất 1–2 phút)`);
+    try {
+      const offline = method === 'ai' ? { ...base, items: [] } : base;
+      const r = await analyzeWithAi((o) => streamAI({ ...ctx.ai('legal'), ...o }), text, { primary: primary || base.crimes[0]?.dieu || '', offline, role, signal });
+      result = method === 'ket-hop' ? mergeResults(r, extraBase) : r;
+    } catch (err) {
+      if (!signal?.aborted) toast(`${err.message} — dùng kết quả đối chiếu Bộ luật.`, { type: 'info', timeout: 6000 });
+      method = 'doi-chieu';
+    }
+  }
+  return annotateResult(result, text, method);
 }
 
 /**
@@ -31,7 +71,7 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
     <div class="la-body" data-step="input">
       ${dropzoneHtml()}
       <div class="field"><label for="la-text">Hoặc dán nội dung</label><textarea class="textarea" rows="5" id="la-text" data-text placeholder="Dán nội dung đơn, báo cáo, lời khai…"></textarea></div>
-      <div class="la-mode">${aiModeHtml(ai)}</div>
+      <div class="la-mode">${aiModeHtml(ai, store.get('legal-method', null))}</div>
       <p class="hint" data-progress hidden></p>
     </div>
     <div class="la-body" data-step="review" hidden></div>
@@ -44,6 +84,7 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
       label: 'Thêm hành vi từ tài liệu',
       onMount(box, close) {
         const dz = bindDropzone(box);
+        bindMethod(box, (m) => store.set('legal-method', m));
         const progress = $('[data-progress]', box);
         const say = (t) => {
           progress.hidden = !t;
@@ -69,18 +110,13 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
             if (text.replace(/\s/g, '').length < 40) throw new Error('Tài liệu quá ngắn hoặc không đọc được chữ.');
             say('Đang đối chiếu với các điều luật trong hệ thống…');
             const offline = analyzeOffline(text, { primary: crime.dieu });
-            result = offline;
-            if (ai && $('[data-use-ai]', box)?.checked) {
-              say(`${ai.local ? 'AI trên máy' : ai.label} đang phân tích tài liệu… (có thể mất 1–2 phút)`);
+            const method = readMethod(box);
+            if (method !== 'doi-chieu') {
               controller = new AbortController();
-              setActions(`<span class="spacer"></span><button class="btn" type="button" data-stop>${icon('stop', 'ic-sm')}Dừng, dùng kết quả trên máy</button>`);
+              setActions(`<span class="spacer"></span><button class="btn" type="button" data-stop>${icon('stop', 'ic-sm')}Dừng, dùng kết quả đối chiếu</button>`);
               $('[data-stop]', actions).addEventListener('click', () => controller.abort());
-              try {
-                result = await analyzeWithAi((o) => streamAI({ ...ctx.ai('legal'), ...o }), text, { primary: crime.dieu, offline, role: getRole(roleId).ten, signal: controller.signal });
-              } catch (err) {
-                if (!controller.signal.aborted) toast(`${err.message} — dùng kết quả phân tích trên máy.`, { type: 'info', timeout: 6000 });
-              }
             }
+            result = await runMethod(ctx, method, { text, base: offline, primary: crime.dieu, role: getRole(roleId).ten, signal: controller?.signal, say });
             say('');
             rows = toRows(result.items, { [crime.dieu]: selected });
             $('[data-step="input"]', box).hidden = true;
@@ -102,6 +138,7 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
           const groups = ds.map((d) => ({ d, items: rows.filter((r) => r.dieu === d) })).filter((g) => g.items.length);
           const orphan = rows.filter((r) => !ds.includes(r.dieu));
           step.innerHTML = `
+            <p class="la-method-used">${icon('check-circle', 'ic-sm')}Phân tích bằng: <strong>${METHOD_LABEL[result.method] || METHOD_LABEL['doi-chieu']}</strong></p>
             ${result.tomTat ? `<section class="la-sum"><h3>${icon('file', 'ic-sm')}Tóm tắt tài liệu${result.ai ? ' <span class="badge">AI</span>' : ''}</h3><p>${escapeHtml(result.tomTat)}</p></section>` : ''}
             <section class="la-crimes"><h3>${icon('book', 'ic-sm')}Điều luật liên quan (${result.crimes.length})</h3>
               <div class="la-chips">${result.crimes.map((c) => `<span class="la-chip ${c.dieu === crime.dieu ? 'primary' : ''}" title="${escapeHtml((c.reasons || []).join(' · '))}"><strong>Điều ${c.dieu}</strong> ${escapeHtml(c.ten.replace(/^Tội /, ''))}${c.dieu === crime.dieu ? ' <em>(đang mở)</em>' : ''}</span>`).join('') || '<small class="hint">Chưa xác định được điều luật nào — chọn điều cho từng hành vi bên dưới.</small>'}</div>

@@ -62,6 +62,8 @@ test('mở bằng giao thức app:// và nhận biết bản cài đặt', async
   assert.ok(page.url().startsWith('app://trolyvanban/'), page.url());
   assert.equal(await page.evaluate(() => window.tlvbDesktop?.platform), process.platform);
   assert.match(await page.locator('.gate').innerText(), /toàn quyền/);
+  // Đã là bản cài đặt → không hiện nút “Tải ứng dụng máy tính”.
+  assert.equal(await page.locator('[data-download-app]').first().isHidden(), true);
 });
 
 test('tài khoản đầu tiên: quản trị tối cao, toàn quyền, Tố tụng hiện sẵn', async () => {

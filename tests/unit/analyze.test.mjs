@@ -71,3 +71,17 @@ test('sơ đồ cây: điều chính, điều liên quan, vấn đề chung, tà
   const count = (n) => (n.kind === 'q' ? 1 : (n.children || []).reduce((s, c) => s + count(c), 0));
   assert.equal(count(t), p.issues.reduce((s, i) => s + i.cauHoi.length, 0));
 });
+
+test('đối chiếu dấu hiệu định tội: số tiền trong nội dung so với ngưỡng của điều luật', async () => {
+  const { amountsIn, signCoverage, annotateResult, analyzeActs } = await import('../../assets/js/legal/analyze.js');
+  assert.deepEqual(amountsIn('chiếm đoạt 1,2 tỷ đồng, thêm 50.000.000 đồng và 300 triệu').map((x) => x.v), [1.2e9, 5e7, 3e8]);
+  assert.deepEqual(amountsIn('Điều 353 năm 2023'), []);
+  const s1 = signCoverage(findCrime('353'), 'Kế toán chiếm đoạt 1,2 tỷ đồng');
+  assert.ok(s1.some((x) => x.hit && /1,2 tỷ đồng ≥ 2 triệu đồng/.test(x.note)));
+  const s2 = signCoverage(findCrime('353'), 'chiếm đoạt 500 nghìn đồng');
+  assert.ok(s2.some((x) => !x.hit && /Chưa đủ/.test(x.note || '')));
+  const r = annotateResult(analyzeActs('Kế toán lập chứng từ chi khống để rút tiền'), 'Kế toán lập chứng từ chi khống để rút tiền', 'doi-chieu');
+  assert.equal(r.method, 'doi-chieu');
+  assert.equal(r.items[0].doiChieu, 'khop');
+  assert.ok(Array.isArray(r.crimes[0].signs));
+});

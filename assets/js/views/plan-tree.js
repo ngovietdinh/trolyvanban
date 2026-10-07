@@ -92,7 +92,13 @@ export function mountPlanTree(host, plan, { onJump, initialOpen } = {}) {
       <span class="spacer"></span>
       <button class="btn btn-ghost btn-sm btn-icon" type="button" data-pt-zoom="-1" aria-label="Thu nhỏ">${icon('zoom-out', 'ic-sm')}</button>
       <button class="btn btn-ghost btn-sm btn-icon" type="button" data-pt-zoom="1" aria-label="Phóng to">${icon('zoom-in', 'ic-sm')}</button>
-      <button class="btn btn-ghost btn-sm btn-icon" type="button" data-pt-full aria-label="Toàn màn hình">${icon('panel', 'ic-sm')}</button>
+      <button class="btn btn-sm btn-primary pt-full-btn" type="button" data-pt-full title="Hiển thị sơ đồ toàn màn hình để phân tích, trình bày (phím F)">${icon('panel', 'ic-sm')}Toàn màn hình · Trình bày</button>
+    </div>
+    <div class="pt-present-head">
+      <div class="pt-present-title"><strong>Kế hoạch hỏi — ${escapeHtml(plan.role.ten.split('/')[0].trim())}</strong><small>${[plan.crime, ...(plan.lienQuan || []).map((r) => r.crime)].map((c) => `Điều ${c.dieu} — ${escapeHtml(c.ten.replace(/^Tội /, ''))}`).join(' · ')}</small></div>
+      <label class="check pt-spot" title="Bấm vào một nhánh để làm nổi nhánh đó, làm mờ phần còn lại"><input type="checkbox" data-pt-spot />Làm nổi nhánh đang trình bày</label>
+      <span class="pt-keys">Phím: <kbd>+</kbd><kbd>−</kbd> phóng to/thu nhỏ · <kbd>E</kbd> mở hết · <kbd>C</kbd> thu gọn · <kbd>Esc</kbd> thoát</span>
+      <button class="btn btn-sm" type="button" data-pt-exit>${icon('x', 'ic-sm')}Thoát</button>
     </div>
     <div class="pt-legend">
       <span class="lg-k pt-k-crime">Điều chính</span><span class="lg-k pt-k-rel">Điều liên quan</span><span class="lg-k pt-k-act">Hành vi</span><span class="lg-k pt-k-issue">Vấn đề</span><span class="lg-k pt-k-q">Câu hỏi <i class="pt-dot hi"></i> quan trọng</span>
@@ -124,6 +130,7 @@ export function mountPlanTree(host, plan, { onJump, initialOpen } = {}) {
       draw.done = true;
     }
     if (query) highlight();
+    if (spotId && treeEl.classList.contains('pt-dim')) spot(spotId);
   };
   const toggle = (id) => {
     if (open.has(id)) {
@@ -202,23 +209,78 @@ export function mountPlanTree(host, plan, { onJump, initialOpen } = {}) {
       treeEl.querySelector('.pt-li.hit')?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
     } else highlight();
   });
-  $$('[data-pt-zoom]', host).forEach((b) =>
-    b.addEventListener('click', () => {
-      zoom = Math.max(0.6, Math.min(1.6, zoom + +b.dataset.ptZoom * 0.15));
-      canvas.style.setProperty('--zoom', zoom);
-    }),
-  );
-  $('[data-pt-full]', host).addEventListener('click', () => {
-    wrap.classList.toggle('full');
-    document.body.classList.toggle('pt-fullscreen', wrap.classList.contains('full'));
+  $$('[data-pt-zoom]', host).forEach((b) => b.addEventListener('click', () => setZoom(zoom + +b.dataset.ptZoom * 0.15)));
+  /* ---------- Toàn màn hình · trình bày ---------- */
+  const setZoom = (z) => {
+    zoom = Math.max(0.6, Math.min(2, z));
+    canvas.style.setProperty('--zoom', zoom);
+  };
+  let zoomBefore = 1;
+  const isFull = () => wrap.classList.contains('full');
+  function enterFull() {
+    if (isFull()) return;
+    zoomBefore = zoom;
+    wrap.classList.add('full');
+    document.body.classList.add('pt-fullscreen');
+    setZoom(Math.max(zoom, 1.15));
+    // Toàn màn hình thật của màn hình (trình chiếu); trình duyệt không cho thì vẫn phủ kín cửa sổ.
+    wrap.requestFullscreen?.().catch(() => {});
+  }
+  function exitFull() {
+    if (!isFull()) return;
+    wrap.classList.remove('full');
+    document.body.classList.remove('pt-fullscreen');
+    setZoom(zoomBefore);
+    spot(null);
+    $('[data-pt-spot]', host).checked = false;
+    treeEl.classList.remove('pt-dim');
+    if (document.fullscreenElement === wrap) document.exitFullscreen?.().catch(() => {});
+  }
+  const onFsChange = () => !document.fullscreenElement && isFull() && exitFull();
+  document.addEventListener('fullscreenchange', onFsChange);
+  $('[data-pt-full]', host).addEventListener('click', () => (isFull() ? exitFull() : enterFull()));
+  $('[data-pt-exit]', host).addEventListener('click', exitFull);
+
+  // Làm nổi nhánh: nhánh đang chọn và đường đi từ gốc rõ nét, phần còn lại mờ đi.
+  let spotId = null;
+  function spot(id) {
+    spotId = id;
+    $$('.pt-li.focus, .pt-li.path', treeEl).forEach((x) => x.classList.remove('focus', 'path'));
+    if (!id || !treeEl.classList.contains('pt-dim')) return;
+    treeEl.querySelector(`[data-node="${CSS.escape(id)}"]`)?.classList.add('focus');
+    ancestors(id).forEach((a) => treeEl.querySelector(`[data-node="${CSS.escape(a)}"]`)?.classList.add('path'));
+  }
+  $('[data-pt-spot]', host).addEventListener('change', (e) => {
+    treeEl.classList.toggle('pt-dim', e.target.checked);
+    spot(e.target.checked ? spotId || 'root' : null);
   });
-  const onKey = (e) => e.key === 'Escape' && wrap.classList.contains('full') && (wrap.classList.remove('full'), document.body.classList.remove('pt-fullscreen'));
+  treeEl.addEventListener('click', (e) => {
+    const li = e.target.closest('.pt-li');
+    if (li && treeEl.classList.contains('pt-dim')) requestAnimationFrame(() => spot(li.dataset.node));
+  });
+
+  const onKey = (e) => {
+    if (e.target.matches?.('input, textarea, select')) return;
+    if (e.key === 'Escape' && isFull()) return exitFull();
+    if (!isFull() && !(e.key === 'f' && wrap.contains(document.activeElement))) return;
+    const k = e.key.toLowerCase();
+    if (k === 'f') isFull() ? exitFull() : enterFull();
+    else if (k === '+' || k === '=') setZoom(zoom + 0.15);
+    else if (k === '-' || k === '_') setZoom(zoom - 0.15);
+    else if (k === '0') setZoom(1.15);
+    else if (k === 'e') $('[data-pt-all]', host).click();
+    else if (k === 'c') $('[data-pt-none]', host).click();
+    else return;
+    e.preventDefault();
+  };
   document.addEventListener('keydown', onKey);
 
   draw(null);
   return {
     destroy() {
+      exitFull();
       document.removeEventListener('keydown', onKey);
+      document.removeEventListener('fullscreenchange', onFsChange);
       document.body.classList.remove('pt-fullscreen');
     },
     open,
