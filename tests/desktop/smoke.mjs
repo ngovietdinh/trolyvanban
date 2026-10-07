@@ -8,6 +8,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
+import http from 'node:http';
 
 const root = new URL('../..', import.meta.url).pathname;
 const tmp = mkdtempSync(join(tmpdir(), 'tlvb-desktop-'));
@@ -92,6 +93,31 @@ test('PDF quét → nhận dạng chữ trên máy chạy được trong bản c
   await pv.waitFor({ timeout: 180000 });
   const text = await pv.innerText();
   for (const s of ['CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM', 'Độc lập - Tự do - Hạnh phúc', 'Nguyễn Văn An']) assert.ok(text.includes(s), `thiếu “${s}”`);
+});
+
+test('máy chủ AI nội bộ không bật CORS (kiểu BionicGPT): vẫn tải mô hình và trò chuyện được', async () => {
+  const srv = http.createServer((req, res) => {
+    if (req.method === 'OPTIONS') return res.writeHead(405).end(); // không hỗ trợ preflight, không có header CORS
+    if (req.headers.authorization !== 'Bearer bn-khoa') return res.writeHead(401).end('{"error":"unauthorized"}');
+    if (req.url === '/v1/models') return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ data: [{ id: 'llama-3-70b' }] }));
+    req.resume();
+    req.on('end', () => res.writeHead(200, { 'content-type': 'text/event-stream' }).end(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Chào từ máy chủ nội bộ' } }] })}\n\ndata: [DONE]\n\n`));
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${srv.address().port}/v1`;
+  try {
+    const out = await page.evaluate(async (b) => {
+      const m = await import('/assets/js/lib/ai.js');
+      m.setLocalEndpoint(b);
+      const models = await m.listModels('local', 'bn-khoa');
+      const text = await m.streamAI({ provider: 'local', apiKey: 'bn-khoa', model: models[0], messages: [{ role: 'user', content: 'Chào' }] });
+      return { models, text };
+    }, base);
+    assert.deepEqual(out.models, ['llama-3-70b']);
+    assert.equal(out.text, 'Chào từ máy chủ nội bộ');
+  } finally {
+    srv.close();
+  }
 });
 
 test('dữ liệu lưu bền sau khi khởi động lại ứng dụng', async () => {

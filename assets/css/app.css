@@ -2798,6 +2798,7 @@ mark.err-mark.is-ai {
 
 /* ---------- Cài đặt AI: mô hình, bộ nhớ, nhật ký ---------- */
 /* AI chạy trên máy */
+.seg.local-presets { flex-wrap: wrap; max-width: 100%; }
 .local-more summary,
 .local-help summary {
   display: inline-flex;

@@ -32,6 +32,8 @@ export const LOCAL_PRESETS = [
   { id: 'lmstudio', label: 'LM Studio', base: 'http://localhost:1234/v1', site: 'lmstudio.ai', hint: 'Mở tab Developer → Start Server, bật “Enable CORS”' },
   { id: 'llamacpp', label: 'llama.cpp', base: 'http://localhost:8080/v1', site: 'github.com/ggml-org/llama.cpp', hint: 'Chạy: llama-server -m model.gguf --port 8080' },
   { id: 'jan', label: 'Jan', base: 'http://localhost:1337/v1', site: 'jan.ai', hint: 'Settings → Local API Server → Start Server' },
+  // Nền tảng AI tự dựng cho cơ quan: kết nối nhiều mô hình, phân quyền, kho tài liệu. Cần khóa API.
+  { id: 'bionic', label: 'BionicGPT', base: 'http://localhost:3000/v1', site: 'bionic-gpt.com', needKey: true, hint: 'Nhập địa chỉ máy chủ BionicGPT của cơ quan (thêm /v1). Tạo khóa: Admin Panel → API Keys → Create Assistant Key, dán vào “Khóa truy cập”' },
 ];
 
 /** Chuẩn hóa địa chỉ máy chủ AI cục bộ: bỏ “/” cuối, thêm “/v1” nếu chỉ nhập máy và cổng. */
@@ -347,7 +349,7 @@ function httpError(status, provider, bodyText = '') {
   const label = PROVIDERS[provider]?.label || 'AI';
   if (provider === 'local') {
     if (status === 404 || /not found|no such model|model .* not/i.test(bodyText)) return `AI trên máy chưa có mô hình đã chọn. Bấm “Tải danh sách” để chọn mô hình đã cài (Ollama: chạy “ollama pull qwen2.5:7b”).`;
-    if (status === 401 || status === 403) return `Máy chủ AI trên máy từ chối (${status}). Kiểm tra khóa truy cập hoặc cấu hình CORS (Ollama: đặt OLLAMA_ORIGINS=*).`;
+    if (status === 401 || status === 403) return `Máy chủ AI từ chối (${status}): khóa truy cập sai hoặc thiếu (BionicGPT: Admin Panel → API Keys), hoặc chưa cho phép CORS (Ollama: OLLAMA_ORIGINS=*).`;
     if (status === 500 && /memory|out of memory|CUDA|alloc/i.test(bodyText)) return 'Máy không đủ bộ nhớ để chạy mô hình này. Chọn mô hình nhỏ hơn (vd: qwen2.5:3b, llama3.2:3b).';
     return `AI trên máy báo lỗi (${status}). ${bodyText.slice(0, 160)}`;
   }

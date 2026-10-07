@@ -1,7 +1,7 @@
 // Bản cài đặt máy tính (Windows/macOS) của Trợ Lý Văn Bản AI.
 // Nạp nguyên mã web trong thư mục web/ qua giao thức riêng app://trolyvanban — một origin cố định, bảo mật
 // (crypto.subtle, Worker, localStorage hoạt động như trên HTTPS) và dữ liệu lưu bền trong thư mục người dùng.
-const { app, BrowserWindow, protocol, shell, Menu, dialog } = require('electron');
+const { app, BrowserWindow, protocol, shell, Menu, dialog, session } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 
@@ -53,6 +53,35 @@ async function serve(request) {
 const isExternal = (u) => /^(https?:|mailto:|tel:)/i.test(u) && !u.startsWith(ORIGIN);
 
 let win = null;
+
+/**
+ * Bỏ chặn CORS cho các yêu cầu do chính trang ứng dụng gửi đi: máy chủ AI nội bộ (BionicGPT, LiteLLM, vLLM,
+ * LocalAI, Open WebUI…) thường không gửi header CORS cho origin app://trolyvanban. Chỉ áp dụng cho yêu cầu
+ * từ trang app:// (mã của chính ứng dụng), không ảnh hưởng trình duyệt hay ứng dụng khác.
+ */
+function allowCorsForApp(ses) {
+  const fromApp = (d) => String(d.referrer || '').startsWith(ORIGIN) || String(d.frame?.url || '').startsWith(ORIGIN);
+  const asked = new Map(); // id yêu cầu → header mà preflight xin phép
+  const filter = { urls: ['http://*/*', 'https://*/*'] };
+  ses.webRequest.onBeforeSendHeaders(filter, (d, cb) => {
+    if (fromApp(d) && d.method === 'OPTIONS') {
+      const h = Object.entries(d.requestHeaders).find(([k]) => k.toLowerCase() === 'access-control-request-headers');
+      if (h) asked.set(d.id, h[1]);
+    }
+    cb({ requestHeaders: d.requestHeaders });
+  });
+  ses.webRequest.onHeadersReceived(filter, (d, cb) => {
+    if (!fromApp(d)) return cb({});
+    const headers = Object.fromEntries(Object.entries(d.responseHeaders || {}).filter(([k]) => !k.toLowerCase().startsWith('access-control-')));
+    headers['Access-Control-Allow-Origin'] = [ORIGIN];
+    headers['Access-Control-Allow-Methods'] = ['GET, POST, OPTIONS'];
+    headers['Access-Control-Allow-Headers'] = [asked.get(d.id) || 'authorization, content-type'];
+    headers['Access-Control-Max-Age'] = ['600'];
+    asked.delete(d.id);
+    // Máy chủ không hỗ trợ preflight (OPTIONS trả 404/405) → coi như cho phép.
+    cb(d.method === 'OPTIONS' ? { responseHeaders: headers, statusLine: 'HTTP/1.1 204 No Content' } : { responseHeaders: headers });
+  });
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -149,6 +178,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     protocol.handle(SCHEME, serve);
+    allowCorsForApp(session.defaultSession);
     buildMenu();
     createWindow();
     app.on('activate', () => {

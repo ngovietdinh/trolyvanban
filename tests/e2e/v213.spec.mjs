@@ -170,3 +170,38 @@ test.describe('Mất mạng → tự chuyển sang AI trên máy', () => {
     await expect(page.locator('.toast', { hasText: 'tự chuyển sang AI chạy trên máy' }).first()).toBeVisible();
   });
 });
+
+test('BionicGPT: bắt buộc khóa truy cập, gửi khóa khi tải mô hình và trò chuyện', async ({ page }) => {
+  const t = trackErrors(page);
+  const BIONIC = 'http://192.168.1.10:3000';
+  const seen = [];
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS' };
+  await page.route(`${BIONIC}/**`, async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    seen.push({ url: req.url(), auth: req.headers().authorization });
+    if (req.headers().authorization !== 'Bearer bn-khoa-123') return route.fulfill({ status: 401, headers: cors, body: '{"error":"unauthorized"}' });
+    if (req.url().endsWith('/v1/models')) return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ data: [{ id: 'llama-3-70b' }, { id: 'text-embedding-ada-002' }] }) });
+    return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'text/event-stream' }, body: `data: ${JSON.stringify({ choices: [{ delta: { content: 'Trả lời từ BionicGPT của cơ quan.' } }] })}\n\ndata: [DONE]\n\n` });
+  });
+  await freshApp(page, '#settings');
+  const form = page.locator('[data-local-form]');
+  await form.locator('[data-local-preset="bionic"]').click();
+  await expect(form.locator('details.local-more')).toHaveAttribute('open', '');
+  await form.locator('[data-local-base]').fill(`${BIONIC}/v1`);
+  await form.locator('[data-local-list]').click();
+  await expect(page.locator('.toast', { hasText: 'BionicGPT cần khóa truy cập' }).last()).toBeVisible();
+  expect(seen).toHaveLength(0);
+  await form.locator('[data-local-key]').fill('bn-khoa-123');
+  await form.locator('[data-local-list]').click();
+  await expect(page.locator('.toast', { hasText: 'Đã tìm thấy 1 mô hình' }).last()).toBeVisible();
+  await form.locator('[data-local-test]').click();
+  await expect(page.locator('.toast', { hasText: 'Kết nối AI trên máy thành công' }).last()).toBeVisible();
+  expect((await aiOf(page, 'legal'))?.provider).toBe('local'); // máy chủ nội bộ → dùng được trong Tố tụng
+  await page.goto('/app.html#chat');
+  await page.fill('[data-input]', 'Xin chào');
+  await page.click('[data-send]');
+  await expect(page.locator('.msg.bot .msg-content').last()).toContainText('BionicGPT của cơ quan');
+  expect(seen.every((x) => x.auth === 'Bearer bn-khoa-123')).toBe(true);
+  t.assertClean();
+});

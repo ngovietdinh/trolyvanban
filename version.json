@@ -1,7 +1,8 @@
 {
-  "version": "2.13.1",
+  "version": "2.14.0",
   "date": "2026-10-07",
   "notes": [
-    "Mất mạng: mọi chức năng AI tự chuyển ngay sang AI chạy trên máy (không chờ thử lại)"
+    "Kết nối BionicGPT và các nền tảng AI tự dựng của cơ quan (LiteLLM, vLLM, Open WebUI…) bằng khóa API",
+    "Bản cài đặt tự xử lý CORS: kết nối được mọi máy chủ AI nội bộ"
   ]
 }
