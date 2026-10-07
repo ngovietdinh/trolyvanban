@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GUIDES, GROUPS, findGuide, guideForRoute, visibleGuides, searchGuides, inline } from '../../assets/js/guide/guides.js';
 
-const ROUTES = ['dashboard', 'compose', 'legal', 'interview', 'cases', 'forms', 'kho', 'chat', 'spell', 'summary', 'number', 'templates', 'tpl', 'docs', 'admin', 'settings'];
+const ROUTES = ['dashboard', 'compose', 'legal', 'interview', 'cases', 'forms', 'kho', 'chat', 'spell', 'summary', 'number', 'templates', 'tpl', 'docs', 'admin', 'settings', 'theo-doi'];
 
 test('mỗi màn hình đều có hướng dẫn theo ngữ cảnh', () => {
   for (const r of ROUTES) assert.ok(guideForRoute(r), `thiếu hướng dẫn cho #${r}`);
@@ -22,7 +22,7 @@ test('cấu trúc hướng dẫn hợp lệ', () => {
       if (e.fill) assert.ok(['#kho', '#chat', '#spell'].includes(e.fill), `${g.id}: “Thử ngay” chỉ dùng cho màn hình có ô nhập`);
     }
     for (const r of g.related || []) assert.ok(findGuide(r), `${g.id}: liên kết tới hướng dẫn không tồn tại ${r}`);
-    assert.ok(/^#[a-z]+$/.test(g.route), `${g.id}: route không hợp lệ`);
+    assert.ok(/^#[a-z-]+$/.test(g.route), `${g.id}: route không hợp lệ`);
   }
 });
 

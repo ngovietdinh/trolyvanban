@@ -23,6 +23,7 @@ function renderFormHtml(doc) {
   const formNo = doc.formNo?.length ? `<div class="vb-form-no">${doc.formNo.map((l) => `<div>${tx(l)}</div>`).join('')}</div>` : '';
   const body = doc.body
     .map((p) => {
+      if (p.table) return dataTableHtml(p.table);
       const cls = ['vb-p', `al-${p.align || 'justify'}`, p.indent ? 'ind' : '', p.spaceBefore ? 'sb' : '', p.spaceAfter ? 'sa' : '', p.cls || ''].filter(Boolean).join(' ');
       return `<p class="${cls}">${runsHtml(p.runs)}</p>`;
     })
@@ -36,6 +37,12 @@ function renderFormHtml(doc) {
     <div class="vb-form-title">${tx(doc.title.name)} ${note}</div>${doc.title.subject ? `<div class="vb-form-title">${tx(doc.title.subject)}</div>` : ''}
     <div class="vb-body">${body}</div>${sign}
     ${doc.title.note ? `<div class="vb-footnote"><sup>(1)</sup> ${tx(doc.title.note)}</div>` : ''}</article>`;
+}
+
+/** Bảng số liệu có kẻ ô trong báo cáo. */
+function dataTableHtml({ widths = [], header = [], rows = [] }) {
+  const cell = (t) => String(t ?? '').split('\n').map(tx).join('<br>');
+  return `<table class="vb-table">${widths.length ? `<colgroup>${widths.map((w) => `<col style="width:${Math.round(w * 100)}%">`).join('')}</colgroup>` : ''}${header.length ? `<thead><tr>${header.map((h) => `<th>${cell(h)}</th>`).join('')}</tr></thead>` : ''}<tbody>${rows.map((row) => `<tr>${row.map((c) => `<td>${cell(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
 export function renderDocumentHtml(doc) {
@@ -80,6 +87,7 @@ export function renderDocumentHtml(doc) {
 
   const body = doc.body
     .map((p) => {
+      if (p.table) return dataTableHtml(p.table);
       const cls = ['vb-p', `al-${p.align || 'justify'}`, p.indent ? 'ind' : '', p.spaceBefore ? 'sb' : '', p.cls || ''].filter(Boolean).join(' ');
       return `<p class="${cls}">${runsHtml(p.runs)}</p>`;
     })

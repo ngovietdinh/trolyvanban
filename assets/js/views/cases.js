@@ -10,6 +10,7 @@ import { findCrime, generatePlan } from '../legal/engine.js';
 import { localContradictions, aiContradictions } from '../legal/assist.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { uid } from '../lib/store.js';
+import { openRecordUpload } from './record-upload.js';
 
 function caseForm(ctx, existing, onSaved) {
   const org = ctx.settings().legalOrg || {};
@@ -176,6 +177,7 @@ export function render(ctx, params = []) {
           ${c.tomTat ? `<p style="margin-top:12px;color:var(--text-2)">${escapeHtml(c.tomTat)}</p>` : ''}
         </div>
         <div class="inline" style="align-self:flex-start">
+          <a class="btn btn-sm btn-primary" href="#theo-doi/${c.id}">${icon('activity', 'ic-sm')}Theo dõi tiến độ</a>
           <button class="btn btn-sm" type="button" data-edit>${icon('wand', 'ic-sm')}Sửa</button>
           <button class="btn btn-sm btn-ghost" type="button" data-del>${icon('trash', 'ic-sm')}Xóa</button>
         </div>
@@ -211,7 +213,7 @@ export function render(ctx, params = []) {
             : `<div class="empty"><p>Chưa có người tham gia tố tụng. Thêm bị can, người làm chứng, bị hại…</p></div>`
         }`;
     } else if (tab === 'records') {
-      body.innerHTML = `<div class="panel-head"><h2>${icon('message', 'ic-sm')}Biên bản lời khai</h2></div>${
+      body.innerHTML = `<div class="panel-head"><h2>${icon('message', 'ic-sm')}Biên bản lời khai</h2><button class="btn btn-sm" type="button" data-upload-rec>${icon('upload', 'ic-sm')}Tải biên bản lên</button></div>${
         recs.length
           ? `<ul class="doc-list">${recs
               .map((r) => `<li class="doc-item"><span class="doc-icon">${r.roleId === 'bi-can' ? 'HC' : 'LK'}</span><div class="doc-meta"><a href="#interview/${r.id}">${escapeHtml(r.nguoiKhai?.hoTen || 'Chưa ghi tên')} — lần ${r.lan || 1}</a><small>${escapeHtml(getRole(r.roleId).ten.split('/')[0])} · ${r.ngay ? r.ngay.split('-').reverse().join('/') : ''} · ${(r.qa || []).length} lượt hỏi – đáp</small></div><span class="badge ${r.status === 'hoan-thanh' ? 'badge-success' : 'badge-warning'}">${r.status === 'hoan-thanh' ? 'Hoàn thành' : 'Đang ghi'}</span><button class="btn btn-ghost btn-sm btn-icon" type="button" data-del-rec="${r.id}" aria-label="Xóa biên bản ${escapeHtml(r.nguoiKhai?.hoTen || '')}" title="Xóa biên bản">${icon('trash', 'ic-sm')}</button></li>`)
@@ -250,6 +252,7 @@ export function render(ctx, params = []) {
       ctx.navigate('#cases');
     });
     $('[data-add-person]', v)?.addEventListener('click', () => personForm(ctx, c, null, () => draw()));
+    $('[data-upload-rec]', v)?.addEventListener('click', () => openRecordUpload(ctx, { caseId: c.id, onSaved: () => draw() }));
     v.querySelectorAll('[data-pid]').forEach((li) => {
       const p = c.persons.find((x) => x.id === li.dataset.pid);
       li.querySelector('[data-edit-person]').addEventListener('click', () => personForm(ctx, c, p, () => draw()));
@@ -308,6 +311,7 @@ export function render(ctx, params = []) {
               applyOverlay(plan, sp.overlay);
             } else if (v.startsWith('auto:')) plan = generatePlan({ dieu: v.slice(5), roleId: person.roleId });
             const rec = newRecord({ caseItem: c, person, plan, settings: ctx.settings() });
+            if (v.startsWith('plan:')) rec.planId = v.slice(5);
             rec.lan = recordsRepo.list((r) => r.caseId === c.id && r.personId === person.id).length + 1;
             const saved = recordsRepo.save(rec);
             close();

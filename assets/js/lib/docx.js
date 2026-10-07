@@ -191,6 +191,20 @@ function table(cells) {
 
 const c = (runs, o = {}) => p(runs, { align: 'center', after: 0, line: 240, ...o });
 
+/** Bảng số liệu có kẻ ô (báo cáo): { widths: [tỷ lệ], header: [..], rows: [[..]] }. Ô nhiều dòng tách bằng \n. */
+function dataTable({ widths = [], header = [], rows = [] }) {
+  const n = Math.max(header.length, ...rows.map((x) => x.length));
+  const ws = Array.from({ length: n }, (_, i) => Math.round(TEXT_W * (widths[i] || 1 / n)));
+  const cell = (text, w, bold) =>
+    `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/></w:tcPr>${String(text ?? '')
+      .split('\n')
+      .map((l) => p(r(l, { bold, size: 24 }), { align: 'left', after: 0, line: 252 }))
+      .join('')}</w:tc>`;
+  const tr = (cells, bold) => `<w:tr>${bold ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}${ws.map((w, i) => cell(cells[i], w, bold)).join('')}</w:tr>`;
+  const b = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map((x) => `<w:${x} w:val="single" w:sz="4" w:space="0" w:color="000000"/>`).join('');
+  return `<w:tbl><w:tblPr><w:tblW w:w="${TEXT_W}" w:type="dxa"/><w:tblBorders>${b}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${ws.map((w) => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>${header.length ? tr(header, true) : ''}${rows.map((x) => tr(x, false)).join('')}</w:tbl>${p(r(''), { after: 60, line: 240 })}`;
+}
+
 /* ----- Bố cục biểu mẫu tố tụng (Mẫu số 140 — TT 128/2025/TT-BCA) ----- */
 const FORM_LINE = 269; // giãn dòng như mẫu gốc (≈1,12)
 
@@ -265,6 +279,10 @@ export function buildDocumentXml(doc) {
   }
 
   for (const para of doc.body) {
+    if (para.table) {
+      out.push(dataTable(para.table));
+      continue;
+    }
     const align = { justify: 'both', center: 'center', left: 'left', right: 'right' }[para.align || 'justify'];
     out.push(p(para.runs.map((x) => r(x.text, { bold: x.bold, italic: x.italic, size: 28 })), { align, indent: para.indent ? 567 : 0, before: para.spaceBefore ? 120 : 0, after: 120, line: 312 }));
   }

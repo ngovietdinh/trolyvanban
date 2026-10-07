@@ -3209,3 +3209,175 @@ mark.err-mark.is-ai {
   font-size: 12px;
   word-break: break-all;
 }
+
+/* ================= Nút “Tính năng” và danh mục tính năng (v2.19) ================= */
+.feat-fab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text-2);
+  font: 600 12.5px/1 var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.feat-fab:hover,
+.feat-fab:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.feat-fab .ic {
+  width: 15px;
+  height: 15px;
+}
+.fc-modal {
+  width: min(960px, calc(100vw - 32px));
+}
+.fc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.fc-head > div {
+  flex: 1;
+}
+.fc-head small {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.fc-head .modal-title {
+  margin: 0;
+}
+.fc-head .modal-close {
+  position: static;
+}
+.fc-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 12px 0 10px;
+}
+.lg-search.fc-search {
+  flex: 1 1 260px;
+  margin: 0;
+  padding: 0;
+  border-bottom: 0;
+}
+.lg-search.fc-search .ic {
+  left: 12px;
+}
+.fc-groups {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.fc-new {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.fc-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-height: min(60vh, 640px);
+  overflow: auto;
+  padding: 2px;
+}
+.fc-item {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: var(--surface);
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.fc-item header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.fc-item h3 {
+  margin: 0;
+  font-size: 14.5px;
+}
+.fc-item dl {
+  margin: 0;
+  display: grid;
+  gap: 3px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.fc-item dl div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+}
+.fc-item dt {
+  color: var(--text-3);
+}
+.fc-item dd {
+  margin: 0;
+}
+.fc-track {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.fc-track .select {
+  flex: none;
+  width: 150px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 12.5px;
+}
+.fc-track .input {
+  flex: 1;
+  min-width: 0;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 12.5px;
+}
+.fc-st-tot {
+  border-left-color: var(--success);
+}
+.fc-st-bo-sung,
+.fc-st-de-xuat {
+  border-left-color: var(--warning);
+}
+.fc-st-loi {
+  border-left-color: var(--danger);
+}
+@media (max-width: 760px) {
+  .feat-fab {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+    flex: none;
+  }
+  .feat-fab span {
+    display: none;
+  }
+  .fc-list {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: none;
+  }
+  .fc-track {
+    flex-wrap: wrap;
+  }
+  .fc-track .select {
+    width: 100%;
+  }
+}

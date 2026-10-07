@@ -2,20 +2,26 @@
 // kèm nhánh vấn đề chung (Điều 85 BLTTHS) và tài liệu, giám định. Mở / thu gọn từng nhánh, hiệu ứng hiện dần,
 // làm nổi đường đi khi rê chuột, tìm trong sơ đồ, phóng to / thu nhỏ, toàn màn hình.
 import { $, $$, icon, escapeHtml } from '../ui.js';
+import { Q_STATUS, Q_STATUS_ORDER } from '../legal/tracking.js';
 
 const COMMON = ['nhan-than', 'dong-pham', 'tai-lieu', 'tang-nang-giam-nhe', 'loai-tru', 'nguyen-nhan'];
 
-/** Dữ liệu cây từ kế hoạch (generatePlan + lớp chỉnh sửa). */
-export function planToTree(plan) {
-  const issueNode = (is, kind) => ({
-    id: is.key,
-    kind,
-    label: is.tieuDe.replace(/^\[Điều \d+\w*\]\s*/, '').replace(/^Hành vi:\s*/, ''),
-    sub: is.canCu,
-    count: is.cauHoi.length,
-    jump: is.key,
-    children: is.cauHoi.map((c, i) => ({ id: `${is.key}#${i}`, kind: 'q', label: c.text, src: c.src, high: c.priority === 'high', jump: is.key })),
-  });
+/** Dữ liệu cây từ kế hoạch (generatePlan + lớp chỉnh sửa). track: trạng thái câu hỏi (trackPlan) — tùy chọn. */
+export function planToTree(plan, track = null) {
+  const tOf = (key) => track?.issues.find((x) => x.key === key);
+  const issueNode = (is, kind) => {
+    const ti = tOf(is.key);
+    return {
+      id: is.key,
+      kind,
+      label: is.tieuDe.replace(/^\[Điều \d+\w*\]\s*/, '').replace(/^Hành vi:\s*/, ''),
+      sub: is.canCu,
+      count: ti ? `${ti.done}/${ti.total}` : is.cauHoi.length,
+      level: ti?.level,
+      jump: is.key,
+      children: is.cauHoi.map((c, i) => ({ id: `${is.key}#${i}`, kind: 'q', label: c.text, src: c.src, high: c.priority === 'high', jump: is.key, st: ti?.items[i]?.status })),
+    };
+  };
   const crimeNode = (crime, keys, primary) => {
     const its = plan.issues.filter((is) => keys(is.key));
     const acts = its.filter((is) => /(^|:)hv-/.test(is.key));
@@ -56,9 +62,9 @@ function nodeHtml(n, depth, open, idx) {
   const kids = n.children || [];
   const isOpen = open.has(n.id);
   const leaf = !kids.length;
-  return `<li class="pt-li pt-${n.kind} ${isOpen ? 'open' : ''} ${leaf ? 'leaf' : ''}" data-node="${escapeHtml(n.id)}" style="--i:${idx}">
+  return `<li class="pt-li pt-${n.kind} ${isOpen ? 'open' : ''} ${leaf ? 'leaf' : ''} ${n.st ? `pt-st-${n.st}` : ''} ${n.level ? `pt-lv-${n.level}` : ''}" data-node="${escapeHtml(n.id)}" style="--i:${idx}">
     <div class="pt-node" ${leaf ? '' : `role="button" tabindex="0" aria-expanded="${isOpen}"`} ${n.jump && n.kind !== 'q' ? `data-jump-key="${escapeHtml(n.jump)}"` : ''} title="${escapeHtml(n.kind === 'q' ? n.label : `${n.label}${n.sub ? ` — ${n.sub}` : ''}`)}">
-      ${n.kind === 'q' ? `<span class="pt-dot ${n.high ? 'hi' : ''}"></span>` : KIND_ICON[n.kind] ? icon(KIND_ICON[n.kind], 'ic-sm') : ''}
+      ${n.kind === 'q' ? `<span class="pt-dot ${n.high ? 'hi' : ''} ${n.st ? `tk-dot tk-st-${n.st}` : ''}" ${n.st ? `title="${escapeHtml(Q_STATUS[n.st].label)}"` : ''}></span>` : KIND_ICON[n.kind] ? icon(KIND_ICON[n.kind], 'ic-sm') : ''}
       <span class="pt-text"><span class="pt-label">${escapeHtml(n.label)}</span>${n.sub ? `<small>${escapeHtml(n.sub)}</small>` : ''}</span>
       ${n.badge ? `<em class="pt-badge">${escapeHtml(n.badge)}</em>` : ''}
       ${n.count != null && !leaf ? `<span class="pt-count">${n.count}</span>` : ''}
@@ -71,8 +77,8 @@ function nodeHtml(n, depth, open, idx) {
 /**
  * Gắn sơ đồ vào host. Trả về { destroy }. onJump(issueKey) khi bấm vào vấn đề / câu hỏi (chuyển sang tab câu hỏi).
  */
-export function mountPlanTree(host, plan, { onJump, initialOpen } = {}) {
-  const tree = planToTree(plan);
+export function mountPlanTree(host, plan, { onJump, initialOpen, track } = {}) {
+  const tree = planToTree(plan, track);
   const byId = new Map();
   const parent = new Map();
   (function index(n, p) {
@@ -102,6 +108,7 @@ export function mountPlanTree(host, plan, { onJump, initialOpen } = {}) {
     </div>
     <div class="pt-legend">
       <span class="lg-k pt-k-crime">Điều chính</span><span class="lg-k pt-k-rel">Điều liên quan</span><span class="lg-k pt-k-act">Hành vi</span><span class="lg-k pt-k-issue">Vấn đề</span><span class="lg-k pt-k-q">Câu hỏi <i class="pt-dot hi"></i> quan trọng</span>
+      ${track ? `<span class="pt-legend-st">${Q_STATUS_ORDER.map((k) => `<span><i class="tk-dot tk-st-${k}"></i>${Q_STATUS[k].short}</span>`).join('')}</span>` : ''}
       <small>Bấm vào nút để mở / thu gọn · bấm câu hỏi để đến bộ câu hỏi</small>
     </div>
     <div class="pt-viewport" data-pt-view><div class="pt-canvas" data-pt-canvas><ul class="pt-tree" data-pt-tree></ul></div></div>

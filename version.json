@@ -1,9 +1,9 @@
 {
-  "version": "2.18.0",
+  "version": "2.19.0",
   "date": "2026-10-07",
   "notes": [
-    "Phân tích vụ việc: chọn Đối chiếu Bộ luật trong phần mềm, AI phân tích hoặc Kết hợp; đối chiếu dấu hiệu định tội (kể cả ngưỡng số tiền)",
-    "Nút Tải ứng dụng máy tính: tự nhận biết Windows / Mac chip Apple / Intel",
-    "Sơ đồ cây: Toàn màn hình · Trình bày, làm nổi nhánh đang trình bày, phím tắt"
+    "Theo dõi & báo cáo: trạng thái từng câu hỏi, tiến độ, cảnh báo, kết luận, báo cáo Word",
+    "Tải biên bản có sẵn (Word, PDF, ảnh) lên để theo dõi",
+    "Danh mục tính năng: làm gì, ai dùng, mục đích — ghi chú theo dõi, đề xuất"
   ]
 }

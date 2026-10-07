@@ -17,6 +17,8 @@ import { mobilePanes } from '../lib/panes.js';
 import { openAnalyzeDialog } from './legal-analyze.js';
 import { mountPlanTree } from './plan-tree.js';
 import { mountWizard, stepperHtml, wizardState } from './legal-wizard.js';
+import { trackPlan, recordsForPlan, Q_STATUS, Q_STATUS_ORDER, qKey } from '../legal/tracking.js';
+import { statusSelectHtml, setQuestionStatus } from './tracking.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -42,6 +44,8 @@ export function render(ctx, params = []) {
   const openIssues = new Map(); // key → true/false (người dùng đã mở/đóng)
   let openTree = new Set(store.get('legal-open', ['kinh-te', 'kinh-te/dau-thau']));
   let plan = null;
+  let track = null; // trạng thái từng câu hỏi theo các biên bản đã ghi
+  let trackRecs = [];
   let treeCtl = null; // sơ đồ cây đang hiển thị
   let treeOpen = null; // nhánh đang mở của sơ đồ (giữ khi cập nhật kế hoạch)
   /** Hộp gợi ý đang mở: { key, q (câu hỏi gốc hoặc null = cả vấn đề), items: [{ text, added }], loading, offline, error } */
@@ -432,13 +436,32 @@ export function render(ctx, params = []) {
     $('[data-stats]', main).innerHTML = `<span><strong>${plan.issues.length}</strong> vấn đề</span><span><strong>${plan.stats.questions}</strong> câu hỏi</span><span>${escapeHtml(getRole(sel.roleId).ten.split('/')[0])}</span>`;
   }
 
+  /** Trạng thái câu hỏi: kế hoạch đã lưu → các biên bản của kế hoạch; chưa lưu → biên bản cùng Điều, cùng đối tượng. */
+  function computeTrack() {
+    const saved = editingPlanId && plansRepo.get(editingPlanId);
+    trackRecs = saved ? recordsForPlan(saved, recordsRepo.list()) : recordsRepo.list((r) => r.plan && String(r.plan.dieu) === String(sel.dieu) && r.roleId === sel.roleId);
+    track = trackPlan(plan, trackRecs, overlay.track || {});
+  }
+
+  function trackBarHtml() {
+    const t = track.totals;
+    const saved = editingPlanId && plansRepo.get(editingPlanId);
+    return `<div class="lg-track" data-track>
+      <span class="tk-ring" style="--p:${t.pct}" role="img" aria-label="Tiến độ ${t.pct}%"><b>${t.pct}%</b></span>
+      <span class="lg-track-body"><strong>Theo dõi: ${t.done}/${t.total} câu hỏi đã xong · ${trackRecs.length} biên bản</strong>
+        <small>${Q_STATUS_ORDER.filter((k) => t.counts[k]).map((k) => `<i class="tk-dot tk-st-${k}"></i>${t.counts[k]} ${Q_STATUS[k].short.toLowerCase()}`).join(' ')}${saved ? '' : ' · tính theo các biên bản cùng Điều, cùng đối tượng — lưu kế hoạch vào hồ sơ để theo dõi riêng'}</small></span>
+      ${saved?.caseId ? `<a class="btn btn-sm" href="#theo-doi/${saved.caseId}">${icon('activity', 'ic-sm')}Theo dõi chi tiết</a>` : `<a class="btn btn-sm btn-ghost" href="#theo-doi">${icon('activity', 'ic-sm')}Theo dõi &amp; báo cáo</a>`}
+    </div>`;
+  }
+
   function renderPanel() {
     const panel = $('[data-panel]', main);
     treeCtl?.destroy();
     treeCtl = null;
-    if (tab === 'issues') panel.innerHTML = issuesHtml();
+    computeTrack();
+    if (tab === 'issues') panel.innerHTML = trackBarHtml() + issuesHtml();
     else if (tab === 'map') {
-      treeCtl = mountPlanTree(panel, plan, { onJump: jumpTo, initialOpen: treeOpen });
+      treeCtl = mountPlanTree(panel, plan, { onJump: jumpTo, initialOpen: treeOpen, track });
       treeOpen = treeCtl.open;
     } else panel.innerHTML = docsHtml();
   }
@@ -456,23 +479,30 @@ export function render(ctx, params = []) {
   }
 
   function issuesHtml() {
+    const tracked = trackRecs.length || Object.keys(overlay.track || {}).length;
     return `<ol class="lg-issues">${plan.issues
       .map(
-        (is, i) => `
+        (is, i) => {
+          const ti = track.issues[i];
+          return `
       <li class="lg-issue" data-issue="${is.key}">
         <details ${(openIssues.has(is.key) ? openIssues.get(is.key) : i < 3 || is.key.startsWith('hv-')) ? 'open' : ''}>
           <summary>
             <span class="lg-issue-no">${i + 1}</span>
             <span class="lg-issue-title"><strong>${escapeHtml(is.tieuDe)}</strong><small>${escapeHtml(is.canCu)}</small></span>
-            <span class="badge">${is.cauHoi.length}</span>
+            ${tracked ? `<span class="lg-is-track" title="${ti.done}/${ti.total} câu đã xong">${ti.items.map((x) => `<i class="tk-dot tk-st-${x.status}"></i>`).join('')}</span><span class="badge ${ti.done === ti.total ? 'badge-success' : ''}">${ti.done}/${ti.total}</span>` : `<span class="badge">${is.cauHoi.length}</span>`}
             ${icon('chevron-down', 'ic-sm lg-chev')}
           </summary>
           <p class="lg-issue-desc">${escapeHtml(is.moTa)}</p>
           <ol class="lg-qs">${is.cauHoi
             .map(
-              (c) => `<li class="lg-q ${c.priority === 'high' ? 'hi' : ''}" data-text="${escapeHtml(c.text)}" data-src="${c.src}">
+              (c, j) => {
+                const x = ti.items[j];
+                return `<li class="lg-q ${c.priority === 'high' ? 'hi' : ''} q-${x.status}" data-text="${escapeHtml(c.text)}" data-src="${c.src}">
               <div class="lg-q-text">${escapeHtml(c.text)}</div>
+              ${x.answers.length ? `<details class="lg-q-ans"><summary>${x.answers.length} câu trả lời</summary><ul>${x.answers.map((a) => `<li><a href="#interview/${a.recId}">${escapeHtml(a.who)}</a>: ${escapeHtml(a.a.length > 300 ? `${a.a.slice(0, 298)}…` : a.a)}</li>`).join('')}</ul></details>` : ''}
               <div class="lg-q-meta">
+                ${statusSelectHtml(x)}
                 <span class="src src-${c.src}">${SOURCE_LABELS[c.src] || c.src}</span>
                 <span class="lg-q-tools">
                   <button type="button" class="btn btn-ghost btn-sm btn-icon" data-qai aria-label="Gợi ý câu hỏi truy tiếp" title="Gợi ý câu hỏi truy tiếp (AI)">${icon('sparkles', 'ic-sm')}</button>
@@ -481,13 +511,15 @@ export function render(ctx, params = []) {
                   <button type="button" class="btn btn-ghost btn-sm btn-icon" data-qdel aria-label="Xóa câu hỏi">${icon('trash', 'ic-sm')}</button>
                 </span>
               </div>
-            </li>${sugg && sugg.key === is.key && sugg.q === c.text ? suggHtml() : ''}`,
+            </li>${sugg && sugg.key === is.key && sugg.q === c.text ? suggHtml() : ''}`;
+              },
             )
             .join('')}</ol>
           ${sugg && sugg.key === is.key && !sugg.q ? suggHtml('div') : ''}
           <form class="lg-add" data-add="${is.key}"><input class="input" placeholder="Thêm câu hỏi cho vấn đề này…" aria-label="Thêm câu hỏi cho ${escapeHtml(is.tieuDe)}" /><button class="btn btn-sm" type="submit">${icon('plus', 'ic-sm')}Thêm</button><button class="btn btn-sm btn-ghost" type="button" data-issue-ai title="Gợi ý thêm câu hỏi cho vấn đề này">${icon('sparkles', 'ic-sm')}Gợi ý AI</button></form>
         </details>
-      </li>`,
+      </li>`;
+        },
       )
       .join('')}</ol>`;
   }
@@ -751,6 +783,18 @@ export function render(ctx, params = []) {
         });
       }
     });
+    // Đánh dấu trạng thái câu hỏi (lưu ngay vào kế hoạch đã lưu; kế hoạch chưa lưu → lưu khi bấm Lưu kế hoạch).
+    panel.addEventListener('change', (e) => {
+      const st = e.target.closest('[data-st]');
+      if (!st) return;
+      const text = st.closest('.lg-q').dataset.text;
+      overlay.track = { ...(overlay.track || {}) };
+      if (st.value) overlay.track[qKey(text)] = st.value;
+      else delete overlay.track[qKey(text)];
+      if (editingPlanId) setQuestionStatus(editingPlanId, text, st.value);
+      renderPanel();
+      toast(st.value ? `Đã đánh dấu: ${Q_STATUS[st.value].label}` : 'Trạng thái tự động theo biên bản');
+    });
     panel.addEventListener('submit', (e) => {
       const f = e.target.closest('[data-add]');
       if (!f) return;
@@ -998,6 +1042,7 @@ export function render(ctx, params = []) {
             rec.roleId = person?.roleId || sel.roleId;
             if (!person && f.hoTen) rec.nguoiKhai.hoTen = f.hoTen.trim();
             rec.lan = recordsRepo.list((r) => r.caseId && r.caseId === rec.caseId && r.personId && r.personId === rec.personId).length + 1;
+            if (editingPlanId) rec.planId = editingPlanId;
             if (f.prefill) prefillQa(rec, uid);
             const saved = recordsRepo.save(rec);
             close();

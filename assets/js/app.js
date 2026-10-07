@@ -27,6 +27,8 @@ import * as cases from './views/cases.js';
 import * as admin from './views/admin.js';
 import * as help from './views/help.js';
 import * as pdf from './views/pdf.js';
+import * as tracking from './views/tracking.js';
+import { openFeatureCatalog } from './features.js';
 import { guideForRoute, visibleGuides, findGuide } from './guide/guides.js';
 import { guideBodyHtml, bindGuide, isSeen } from './guide/render.js';
 import { casesRepo } from './legal/repo.js';
@@ -38,6 +40,7 @@ const ROUTES = {
   legal: { mod: legal, title: 'Cây hỏi đáp pháp luật', perm: 'legal' },
   interview: { mod: interview, title: 'Ghi lời khai', perm: 'legal' },
   cases: { mod: cases, title: 'Hồ sơ vụ án', perm: 'legal' },
+  'theo-doi': { mod: tracking, title: 'Theo dõi & báo cáo', perm: 'legal' },
   forms: { mod: forms, title: 'Biểu mẫu tố tụng', perm: 'legal' },
   kho: { mod: kho, title: 'Kho hồ sơ & Trợ lý AI', perm: 'legal' },
   chat: { mod: chat, title: 'Trợ lý AI', perm: 'docs' },
@@ -595,7 +598,7 @@ function paletteCommands() {
   const can = (p) => accounts.can(p);
   const nav = Object.entries(ROUTES)
     .filter(([, r]) => !r.perm || can(r.perm))
-    .map(([k, r]) => ({ group: 'Điều hướng', label: r.title, icon: { dashboard: 'home', compose: 'file', legal: 'layers', interview: 'message', cases: 'folder', forms: 'file', kho: 'sparkles', chat: 'sparkles', spell: 'spell', summary: 'book', number: 'hash', templates: 'layers', docs: 'folder', admin: 'shield', settings: 'settings', help: 'help', pdf: 'refresh' }[k], run: () => ctx.navigate(`#${k}`) }));
+    .map(([k, r]) => ({ group: 'Điều hướng', label: r.title, icon: { dashboard: 'home', compose: 'file', legal: 'layers', interview: 'message', cases: 'folder', 'theo-doi': 'activity', forms: 'file', kho: 'sparkles', chat: 'sparkles', spell: 'spell', summary: 'book', number: 'hash', templates: 'layers', docs: 'folder', admin: 'shield', settings: 'settings', help: 'help', pdf: 'refresh' }[k], run: () => ctx.navigate(`#${k}`) }));
   const guides = visibleGuides(can).map((g) => ({ group: 'Hướng dẫn', label: `Hướng dẫn: ${g.title}`, icon: 'help', run: () => ctx.navigate(`#help/${g.id}`) }));
   const crimes = (can('legal') ? ALL_CRIMES : []).map((c) => ({ group: 'Tội danh — cây hỏi đáp', label: `Điều ${c.dieu}. ${c.ten}`, icon: 'gavel', run: () => ctx.navigate(`#legal/${c.dieu}`) }));
   const types = (can('docs') ? DOC_TYPES : []).map((t) => ({ group: 'Soạn mới', label: `Soạn ${t.name.toLowerCase()}`, icon: t.icon, hint: t.abbr, run: () => ctx.navigate(`#compose/${t.id}`) }));
@@ -693,6 +696,9 @@ $$('[data-download-app]').forEach((el) => {
     openDownloadApp(ctx);
   });
 });
+
+/* ---------- Danh mục tính năng (nút nhỏ ở góc màn hình) ---------- */
+$('[data-features-open]')?.addEventListener('click', () => openFeatureCatalog(ctx));
 
 /* ---------- Khởi động ---------- */
 bindThemeToggles();
