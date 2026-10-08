@@ -142,43 +142,66 @@ const isVictim = (role) => role.nhom === 'bi-hai';
 const rv = (role, { suspect, witness, victim }) => (isSuspect(role) ? suspect : isVictim(role) ? victim ?? witness : witness);
 
 let seq = 0;
-const q = (text, src = 'nghiep-vu', priority = 'normal') => ({ id: `q${++seq}`, text, src, priority });
+/**
+ * Trình tự hỏi theo tư duy của điều tra viên: để người khai tự trình bày (không ngắt lời, không gợi ý) →
+ * cụ thể hóa từng chi tiết (thời gian, địa điểm, cách thức, người, tiền, tài liệu) → kiểm chứng bằng nguồn
+ * khác → đối chiếu với tài liệu, lời khai khác → chốt lại nội dung.
+ */
+export const BUOC = { mo: 'Tự trình bày', 'cu-the': 'Cụ thể hóa', 'kiem-chung': 'Kiểm chứng', 'doi-chieu': 'Đối chiếu', chot: 'Chốt lại' };
+const q = (text, src = 'nghiep-vu', priority = 'normal', buoc = 'cu-the') => ({ id: `q${++seq}`, text, src, priority, buoc });
 const issue = (key, tieuDe, canCu, moTa, cauHoi) => ({ id: key, key, tieuDe, canCu, moTa, cauHoi: cauHoi.filter(Boolean) });
+/** Tội có yếu tố quản lý, quy trình nghiệp vụ (kinh tế, chức vụ, môi trường, an toàn…) → hỏi “quy định phải làm thế nào”. */
+const isRegulated = (crime) => ['kinh-te', 'chuc-vu', 'moi-truong', 'y-te-an-toan', 'cong-nghe', 'hanh-chinh', 'giao-thong', 'tu-phap'].includes(crime.linhVuc) || /quy định|quy trình|nhiệm vụ|công vụ|trách nhiệm/i.test(`${crime.ten} ${crime.chuThe}`);
+const lc = (s) => s.charAt(0).toLowerCase() + s.slice(1);
 
 function issueNhanThan(crime, role) {
   const list = [];
   if (isSuspect(role)) {
-    list.push(q('Đề nghị trình bày lý lịch: họ tên, ngày sinh, nơi sinh, nơi cư trú, trình độ học vấn, nghề nghiệp, hoàn cảnh gia đình.', 'tu-tung'));
+    list.push(q('Đề nghị trình bày lý lịch: họ tên, ngày sinh, nơi sinh, nơi cư trú, trình độ học vấn, nghề nghiệp, hoàn cảnh gia đình.', 'tu-tung', 'normal', 'mo'));
+    list.push(q('Quá trình học tập, công tác của bản thân từ khi trưởng thành đến nay (từng thời gian, ở đâu, làm gì, giữ chức vụ gì)?', 'tu-tung'));
     list.push(q('Bản thân đã từng bị xử phạt vi phạm hành chính, xử lý kỷ luật, bị kết án lần nào chưa? Đã được xóa án tích chưa?', 'luat', 'high'));
-    list.push(q('Tình trạng sức khỏe hiện nay; có mắc bệnh làm mất khả năng nhận thức, điều khiển hành vi không?', 'luat'));
-    if (/chức vụ|có trách nhiệm|chủ thể đặc biệt|người được giao/i.test(crime.chuThe)) {
-      list.push(q('Quá trình công tác; tại thời điểm xảy ra sự việc giữ chức vụ gì, được phân công nhiệm vụ, quyền hạn cụ thể nào, theo văn bản nào?', 'luat', 'high'));
+    list.push(q('Tình trạng sức khỏe hiện nay; có mắc bệnh làm mất khả năng nhận thức, điều khiển hành vi không? Có đang điều trị bệnh gì không?', 'luat'));
+    if (/chức vụ|có trách nhiệm|chủ thể đặc biệt|người được giao/i.test(crime.chuThe) || crime.linhVuc === 'chuc-vu') {
+      list.push(q('Tại thời điểm xảy ra sự việc anh/chị giữ chức vụ gì, được bổ nhiệm, phân công theo văn bản nào (số, ngày, người ký)? Nhiệm vụ, quyền hạn cụ thể được giao?', 'luat', 'high'));
+      list.push(q('Anh/chị có được tập huấn, phổ biến các quy định, quy trình liên quan đến nhiệm vụ được giao không? Khi nào, nội dung gì?', 'luat'));
     }
+    if (['kinh-te', 'chuc-vu', 'so-huu'].includes(crime.linhVuc)) list.push(q('Thu nhập hằng tháng, tài sản (nhà, đất, xe, tiền gửi) của bản thân và gia đình hiện có; hình thành từ nguồn nào, khi nào?', 'nghiep-vu'));
     if (crime.phapNhan) list.push(q('Vai trò của bản thân trong pháp nhân thương mại (người đại diện theo pháp luật, người quản lý, người được ủy quyền); hành vi được thực hiện nhân danh và vì lợi ích của pháp nhân hay cá nhân?', 'luat'));
+    list.push(q('Anh/chị quen biết, có quan hệ thế nào (họ hàng, công tác, làm ăn, vay mượn) với những người liên quan trong vụ việc?', 'nghiep-vu'));
   } else {
-    list.push(q(rv(role, { witness: 'Đề nghị trình bày lý lịch; mối quan hệ của anh/chị với những người liên quan đến vụ việc (họ hàng, đồng nghiệp, đối tác…)?', victim: 'Đề nghị trình bày lý lịch; anh/chị (hoặc cơ quan, tổ chức anh/chị đại diện) có quan hệ thế nào với người gây thiệt hại?' }), 'tu-tung'));
-    list.push(q('Anh/chị biết được sự việc trong hoàn cảnh nào: trực tiếp chứng kiến, tham gia, hay được người khác kể lại (ai kể, khi nào)?', 'tu-tung', 'high'));
+    list.push(q(rv(role, { witness: 'Đề nghị trình bày lý lịch: họ tên, ngày sinh, nơi cư trú, nghề nghiệp, nơi làm việc hiện nay.', victim: 'Đề nghị trình bày lý lịch; anh/chị (hoặc cơ quan, tổ chức anh/chị đại diện) có quan hệ thế nào với người gây thiệt hại?' }), 'tu-tung', 'normal', 'mo'));
+    list.push(q('Anh/chị có quan hệ thế nào (họ hàng, đồng nghiệp, đối tác, mâu thuẫn, vay mượn) với những người liên quan đến vụ việc?', 'tu-tung', 'high'));
+    list.push(q('Anh/chị biết được sự việc trong hoàn cảnh nào: trực tiếp chứng kiến, tham gia, hay được người khác kể lại (ai kể, khi nào, ở đâu, kể những gì)?', 'tu-tung', 'high'));
+    list.push(q('Từ khi sự việc xảy ra đến nay, anh/chị đã trình bày nội dung này với ai, cơ quan nào chưa? Có ai liên hệ, tác động, đề nghị anh/chị khai báo theo hướng nào không?', 'nghiep-vu'));
   }
-  return issue('nhan-than', isSuspect(role) ? 'Nhân thân và năng lực trách nhiệm hình sự' : 'Nhân thân, mối quan hệ và nguồn gốc hiểu biết', isSuspect(role) ? 'Điều 85 khoản 2, 3 BLTTHS; Điều 12, 21 BLHS' : 'Điều 85 BLTTHS', isSuspect(role) ? 'Xác định chủ thể của tội phạm: tuổi, năng lực TNHS, dấu hiệu chủ thể đặc biệt.' : 'Đánh giá giá trị chứng minh và độ tin cậy của lời khai.', list);
+  return issue('nhan-than', isSuspect(role) ? 'Nhân thân và năng lực trách nhiệm hình sự' : 'Nhân thân, mối quan hệ và nguồn gốc hiểu biết', isSuspect(role) ? 'Điều 85 khoản 2, 3 BLTTHS; Điều 12, 21 BLHS' : 'Điều 85 BLTTHS', isSuspect(role) ? 'Xác định chủ thể của tội phạm: tuổi, năng lực TNHS, dấu hiệu chủ thể đặc biệt, quan hệ với người liên quan.' : 'Đánh giá giá trị chứng minh và độ tin cậy của lời khai: nguồn gốc hiểu biết, quan hệ, có bị tác động không.', list);
 }
 
 function issueHanhVi(crime, hanhVi, role) {
+  const t = lc(hanhVi.ten);
   const list = [
-    q(rv(role, { suspect: `Anh/chị trình bày toàn bộ diễn biến việc “${hanhVi.ten.toLowerCase()}”: thời gian, địa điểm, cách thức thực hiện, theo trình tự từ đầu đến cuối.`, witness: `Anh/chị biết gì về việc “${hanhVi.ten.toLowerCase()}”? Trình bày cụ thể thời gian, địa điểm, những người tham gia và cách thức thực hiện.`, victim: `Anh/chị trình bày diễn biến sự việc “${hanhVi.ten.toLowerCase()}” mà anh/chị là người bị thiệt hại: thời gian, địa điểm, ai thực hiện, thực hiện ra sao.` }), 'nghiep-vu', 'high'),
-    ...hanhVi.cauHoi.map((t) => q(t, 'luat', 'high')),
-    q(rv(role, { suspect: 'Ai là người đề xuất, ai quyết định, ai trực tiếp thực hiện từng phần việc nêu trên?', witness: 'Những ai đã tham gia, mỗi người làm gì; ai là người chỉ đạo?' }), 'nghiep-vu'),
-    q('Có tài liệu, tin nhắn, email, ghi âm, hình ảnh nào ghi nhận lại việc này không? Hiện ai đang lưu giữ?', 'nghiep-vu'),
+    q(rv(role, { suspect: `Anh/chị trình bày toàn bộ diễn biến việc “${t}”: thời gian, địa điểm, cách thức thực hiện, theo trình tự từ đầu đến cuối.`, witness: `Anh/chị biết gì về việc “${t}”? Trình bày cụ thể thời gian, địa điểm, những người tham gia và cách thức thực hiện.`, victim: `Anh/chị trình bày diễn biến sự việc “${t}” mà anh/chị là người bị thiệt hại: thời gian, địa điểm, ai thực hiện, thực hiện ra sao.` }), 'nghiep-vu', 'high', 'mo'),
+    q(rv(role, { suspect: 'Việc này bắt đầu từ khi nào, kết thúc khi nào, thực hiện bao nhiêu lần? Từng lần cụ thể: ngày, giờ, địa điểm, nội dung, giá trị?', witness: 'Việc này diễn ra từ khi nào đến khi nào, bao nhiêu lần? Anh/chị biết cụ thể những lần nào (ngày, địa điểm, nội dung)?' }), 'nghiep-vu', 'high', 'cu-the'),
+    ...hanhVi.cauHoi.map((x) => q(x, 'luat', 'high', 'cu-the')),
+    isRegulated(crime) ? q(rv(role, { suspect: 'Theo quy định (luật, quy trình, quy chế, hợp đồng), việc này phải được thực hiện như thế nào? Thực tế anh/chị đã làm khác quy định ở những điểm nào?', witness: 'Theo anh/chị biết, quy trình đúng của việc này là gì? Thực tế đã làm khác quy trình ở điểm nào?' }), 'luat', 'high', 'cu-the') : null,
+    q(rv(role, { suspect: 'Ai là người đề xuất, ai quyết định, ai trực tiếp thực hiện từng phần việc nêu trên? Ai giao nhiệm vụ cho anh/chị, giao bằng hình thức nào (văn bản, lời nói)?', witness: 'Những ai đã tham gia, mỗi người làm gì; ai là người chỉ đạo?' }), 'nghiep-vu', 'normal', 'cu-the'),
+    q(rv(role, { suspect: 'Anh/chị đã sử dụng phương tiện, công cụ, giấy tờ, tài khoản, con dấu, chữ ký nào để thực hiện? Hiện các thứ đó ở đâu, ai quản lý?', witness: 'Những người thực hiện đã dùng phương tiện, giấy tờ, tài khoản nào? Anh/chị có thấy trực tiếp không?' }), 'nghiep-vu', 'normal', 'cu-the'),
+    q('Có tài liệu, chứng từ, tin nhắn, email, ghi âm, hình ảnh nào ghi nhận lại việc này không? Hiện ai đang lưu giữ, ở đâu?', 'nghiep-vu', 'normal', 'kiem-chung'),
+    q(rv(role, { suspect: 'Ngoài anh/chị, những ai biết hoặc chứng kiến việc này? Họ có thể xác nhận những nội dung nào?', witness: 'Ngoài anh/chị, còn ai biết hoặc chứng kiến việc này? Họ biết trong hoàn cảnh nào?' }), 'nghiep-vu', 'normal', 'kiem-chung'),
+    isSuspect(role) ? q('Các chứng từ, hồ sơ, chữ ký liên quan đến việc này có đúng do anh/chị lập, ký không? Lập, ký trong hoàn cảnh nào; có ai yêu cầu không?', 'nghiep-vu', 'high', 'doi-chieu') : null,
   ];
   return issue(`hv-${hanhVi.id}`, `Hành vi: ${hanhVi.ten}`, `Điều ${crime.dieu} BLHS — mặt khách quan`, 'Làm rõ thời gian, địa điểm, phương thức, thủ đoạn, công cụ, diễn biến của hành vi phạm tội (Điều 85 khoản 1 BLTTHS).', list);
 }
 
 function issueHauQua(crime, role) {
   const list = [
-    q(rv(role, { suspect: 'Theo anh/chị, việc làm trên đã gây ra thiệt hại gì, cho ai, giá trị bao nhiêu? Căn cứ nào để xác định?', witness: 'Anh/chị biết việc làm trên gây ra thiệt hại gì, cho ai, giá trị bao nhiêu?', victim: 'Anh/chị (hoặc cơ quan, tổ chức) bị thiệt hại những gì: tiền, tài sản, sức khỏe, uy tín? Giá trị cụ thể, căn cứ xác định?' }), 'luat', 'high'),
-    q('Thiệt hại phát sinh vào thời điểm nào; đã được khắc phục (nộp lại, bồi thường, thu hồi) đến đâu?', 'luat'),
-    ...crime.dauHieu.filter((d) => /thiệt hại|giá trị|trị giá|khối lượng|hậu quả|chết người|thương tích|diện tích|số tiền|vượt/i.test(d)).map((d) => q(`Làm rõ dấu hiệu định tội: ${d.charAt(0).toLowerCase() + d.slice(1)}.`, 'luat', 'high')),
+    q(rv(role, { suspect: 'Theo anh/chị, việc làm trên đã gây ra thiệt hại gì, cho ai, giá trị bao nhiêu? Căn cứ nào để xác định?', witness: 'Anh/chị biết việc làm trên gây ra thiệt hại gì, cho ai, giá trị bao nhiêu?', victim: 'Anh/chị (hoặc cơ quan, tổ chức) bị thiệt hại những gì: tiền, tài sản, sức khỏe, uy tín? Giá trị cụ thể, căn cứ xác định?' }), 'luat', 'high', 'mo'),
+    q('Thiệt hại phát sinh vào thời điểm nào, gồm những khoản nào (liệt kê từng khoản, giá trị từng khoản)? Đã được khắc phục (nộp lại, bồi thường, thu hồi) đến đâu?', 'luat', 'normal', 'cu-the'),
+    q('Thiệt hại đã được xác định bằng tài liệu nào: biên bản kiểm tra, kết luận thanh tra, kiểm toán, định giá, giám định? Anh/chị có ý kiến gì về số liệu đó không?', 'luat', 'normal', 'kiem-chung'),
+    ...crime.dauHieu.filter((d) => /thiệt hại|giá trị|trị giá|khối lượng|hậu quả|chết người|thương tích|diện tích|số tiền|vượt/i.test(d)).map((d) => q(`Làm rõ dấu hiệu định tội: ${lc(d)}.`, 'luat', 'high', 'cu-the')),
+    isSuspect(role) ? q('Tiền, tài sản có được từ việc này anh/chị đã sử dụng vào việc gì (từng khoản, thời gian, người nhận)? Hiện còn lại bao nhiêu, ở đâu?', 'nghiep-vu', 'high', 'cu-the') : null,
   ];
-  if (isVictim(role)) list.push(q('Anh/chị có yêu cầu bồi thường không? Mức yêu cầu và căn cứ? Có đề nghị áp dụng biện pháp bảo đảm bồi thường không?', 'tu-tung', 'high'));
+  if (isVictim(role)) list.push(q('Anh/chị có yêu cầu bồi thường không? Mức yêu cầu và căn cứ? Có đề nghị áp dụng biện pháp bảo đảm bồi thường không?', 'tu-tung', 'high', 'chot'));
   return issue('hau-qua', 'Hậu quả, thiệt hại và mối quan hệ nhân quả', 'Điều 85 khoản 4 BLTTHS', 'Tính chất, mức độ thiệt hại do hành vi gây ra; mối quan hệ nhân quả giữa hành vi và hậu quả — căn cứ định tội và định khung.', list);
 }
 
@@ -187,57 +210,62 @@ function issueChuQuan(crime, role) {
   const list = isSuspect(role)
     ? [
         voY
-          ? q('Khi thực hiện công việc, anh/chị có biết quy định, quy trình phải tuân thủ không? Vì sao không thực hiện đúng? Anh/chị có thấy trước được hậu quả có thể xảy ra không?', 'luat', 'high')
-          : q('Tại thời điểm thực hiện, anh/chị có biết việc làm đó là trái quy định không? Quy định nào? Ai đã phổ biến, nhắc nhở?', 'luat', 'high'),
-        voY ? null : q('Mục đích, động cơ của anh/chị khi thực hiện hành vi là gì? Bản thân được hưởng lợi gì (tiền, tài sản, lợi ích khác), nhận khi nào, từ ai?', 'luat', 'high'),
-        q('Có ai chỉ đạo, ép buộc, đe dọa hoặc hứa hẹn lợi ích để anh/chị thực hiện không?', 'luat'),
+          ? q('Khi thực hiện công việc, anh/chị có biết quy định, quy trình phải tuân thủ không? Vì sao không thực hiện đúng? Anh/chị có thấy trước được hậu quả có thể xảy ra không?', 'luat', 'high', 'mo')
+          : q('Tại thời điểm thực hiện, anh/chị có biết việc làm đó là trái quy định không? Quy định nào? Ai đã phổ biến, nhắc nhở?', 'luat', 'high', 'mo'),
+        voY ? null : q('Mục đích, động cơ của anh/chị khi thực hiện hành vi là gì? Bản thân được hưởng lợi gì (tiền, tài sản, lợi ích khác), nhận khi nào, từ ai, ở đâu, bằng hình thức nào?', 'luat', 'high', 'cu-the'),
+        voY ? q('Anh/chị đã tin vào điều gì mà cho rằng hậu quả sẽ không xảy ra hoặc có thể ngăn chặn được?', 'luat', 'normal', 'cu-the') : q('Anh/chị có lường trước được hậu quả không? Vì sao biết là trái quy định mà vẫn thực hiện?', 'luat', 'high', 'cu-the'),
+        q('Có ai chỉ đạo, ép buộc, đe dọa hoặc hứa hẹn lợi ích để anh/chị thực hiện không? Cụ thể ai, khi nào, nội dung thế nào?', 'luat', 'normal', 'cu-the'),
+        voY ? null : q('Sau khi thực hiện, anh/chị đã làm gì để che giấu, hợp thức hóa (sửa, hủy, bổ sung chứng từ; thống nhất lời khai với người khác…)? Vì sao?', 'nghiep-vu', 'high', 'doi-chieu'),
       ]
     : [
-        q('Theo anh/chị biết, người thực hiện có biết việc làm đó là trái quy định không? Căn cứ vào đâu anh/chị cho là như vậy?', 'luat'),
-        q('Người thực hiện được hưởng lợi gì từ việc làm đó; anh/chị có chứng kiến việc giao nhận tiền, tài sản, lợi ích không?', 'luat', 'high'),
+        q('Theo anh/chị biết, người thực hiện có biết việc làm đó là trái quy định không? Căn cứ vào đâu anh/chị cho là như vậy?', 'luat', 'normal', 'mo'),
+        q('Người thực hiện được hưởng lợi gì từ việc làm đó; anh/chị có chứng kiến việc giao nhận tiền, tài sản, lợi ích không? Cụ thể thời gian, địa điểm, số tiền?', 'luat', 'high', 'cu-the'),
+        q('Anh/chị có biết sau đó người thực hiện có hành động gì để che giấu, hợp thức hóa sự việc không?', 'nghiep-vu', 'normal', 'kiem-chung'),
       ];
-  return issue('chu-quan', 'Lỗi, động cơ, mục đích', `Điều 85 khoản 2 BLTTHS; Điều 10, 11 BLHS — ${crime.loi}`, 'Xác định lỗi (cố ý/vô ý), động cơ (vụ lợi, cá nhân khác), mục đích phạm tội.', list);
+  return issue('chu-quan', 'Lỗi, động cơ, mục đích', `Điều 85 khoản 2 BLTTHS; Điều 10, 11 BLHS — ${crime.loi}`, 'Xác định lỗi (cố ý/vô ý), động cơ (vụ lợi, cá nhân khác), mục đích phạm tội; hành vi che giấu sau khi thực hiện.', list);
 }
 
 function issueDongPham(role) {
   const list = isSuspect(role)
     ? [
-        q('Những ai cùng tham gia? Đã bàn bạc, thống nhất với nhau từ khi nào, ở đâu, nội dung bàn bạc?', 'luat', 'high'),
-        q('Vai trò của từng người: ai khởi xướng, ai chỉ đạo, ai thực hiện, ai giúp sức? Lợi ích được phân chia thế nào?', 'luat', 'high'),
-        q('Cấp trên, người có thẩm quyền có biết, chỉ đạo hoặc chấp thuận việc làm này không?', 'nghiep-vu'),
+        q('Những ai cùng tham gia? Đã bàn bạc, thống nhất với nhau từ khi nào, ở đâu, nội dung bàn bạc?', 'luat', 'high', 'mo'),
+        q('Vai trò của từng người: ai khởi xướng, ai chỉ đạo, ai thực hiện, ai giúp sức? Lợi ích được phân chia thế nào (từng người, từng khoản)?', 'luat', 'high', 'cu-the'),
+        q('Giữa những người tham gia liên lạc với nhau bằng phương tiện gì (điện thoại, Zalo, email…)? Số điện thoại, tài khoản cụ thể?', 'nghiep-vu', 'normal', 'kiem-chung'),
+        q('Cấp trên, người có thẩm quyền có biết, chỉ đạo hoặc chấp thuận việc làm này không? Căn cứ nào anh/chị khẳng định như vậy?', 'nghiep-vu', 'normal', 'cu-the'),
+        q('Từ khi sự việc bị phát hiện đến nay, những người liên quan có gặp gỡ, trao đổi, thống nhất cách khai báo với anh/chị không?', 'nghiep-vu', 'high', 'doi-chieu'),
       ]
-    : [q('Theo anh/chị biết, những ai cùng tham gia, vai trò của từng người ra sao?', 'nghiep-vu', 'high'), q('Còn ai khác biết về sự việc mà cơ quan điều tra cần lấy lời khai?', 'nghiep-vu')];
+    : [q('Theo anh/chị biết, những ai cùng tham gia, vai trò của từng người ra sao?', 'nghiep-vu', 'high', 'mo'), q('Còn ai khác biết về sự việc mà cơ quan điều tra cần lấy lời khai? Họ biết những gì, liên hệ bằng cách nào?', 'nghiep-vu', 'normal', 'kiem-chung')];
   return issue('dong-pham', 'Đồng phạm và người liên quan', 'Điều 17, 58 BLHS', 'Xác định có đồng phạm hay không; vai trò, tính chất, mức độ tham gia của từng người.', list);
 }
 
 function issueDinhKhung(crime, dinhKhung, role) {
   if (!dinhKhung.length) return null;
-  const list = dinhKhung.map((d) => q(`Làm rõ tình tiết “${d}”: ${isSuspect(role) ? 'anh/chị trình bày cụ thể' : 'anh/chị biết những gì về'} các sự kiện, số liệu liên quan.`, 'luat', 'high'));
+  const list = dinhKhung.map((d) => q(`Làm rõ tình tiết “${d}”: ${isSuspect(role) ? 'anh/chị trình bày cụ thể' : 'anh/chị biết những gì về'} các sự kiện, số liệu liên quan; căn cứ, tài liệu nào thể hiện?`, 'luat', 'high', 'cu-the'));
   return issue('dinh-khung', 'Tình tiết định khung tăng nặng', `Điều ${crime.dieu} BLHS — các khoản 2, 3, 4`, 'Các tình tiết làm thay đổi khung hình phạt cần được chứng minh hoặc loại trừ.', list);
 }
 
 function issueTangNangGiamNhe(role) {
   if (isVictim(role)) {
     return issue('y-kien-bi-hai', 'Ý kiến, yêu cầu của bị hại', 'Điều 62 BLTTHS; Điều 51 BLHS', 'Yêu cầu bồi thường, việc đã được khắc phục, đề nghị về xử lý.', [
-      q('Người gây thiệt hại đã bồi thường, khắc phục cho anh/chị chưa? Số tiền, thời điểm?', 'luat'),
-      q('Anh/chị có đề nghị gì về việc xử lý người gây thiệt hại?', 'tu-tung'),
+      q('Người gây thiệt hại đã bồi thường, khắc phục cho anh/chị chưa? Số tiền, thời điểm, hình thức; có giấy tờ gì không?', 'luat', 'normal', 'cu-the'),
+      q('Anh/chị có đề nghị gì về việc xử lý người gây thiệt hại?', 'tu-tung', 'normal', 'chot'),
     ]);
   }
   if (!isSuspect(role)) return null;
   return issue('tang-nang-giam-nhe', 'Tình tiết tăng nặng, giảm nhẹ, nhân thân', 'Điều 85 khoản 3 BLTTHS; Điều 51, 52 BLHS', 'Thu thập tình tiết có lợi và bất lợi cho người bị buộc tội một cách khách quan.', [
-    q('Anh/chị đã tự nguyện khắc phục hậu quả, nộp lại tiền, tài sản chưa? Số tiền, thời điểm, nộp ở đâu?', 'luat'),
-    q('Anh/chị có thành khẩn khai báo, ăn năn hối cải; có tự thú hoặc tích cực giúp đỡ cơ quan điều tra phát hiện tội phạm không?', 'luat'),
-    q('Bản thân hoặc gia đình có thành tích, khen thưởng, có công với cách mạng, hoàn cảnh đặc biệt khó khăn không? Có giấy tờ chứng minh không?', 'luat'),
-    q('Trước đó anh/chị đã thực hiện hành vi tương tự lần nào chưa (phạm tội nhiều lần, có tính chất chuyên nghiệp)?', 'luat'),
+    q('Anh/chị đã tự nguyện khắc phục hậu quả, nộp lại tiền, tài sản chưa? Số tiền, thời điểm, nộp ở đâu?', 'luat', 'normal', 'cu-the'),
+    q('Anh/chị có thành khẩn khai báo, ăn năn hối cải; có tự thú hoặc tích cực giúp đỡ cơ quan điều tra phát hiện tội phạm không?', 'luat', 'normal', 'cu-the'),
+    q('Bản thân hoặc gia đình có thành tích, khen thưởng, có công với cách mạng, hoàn cảnh đặc biệt khó khăn không? Có giấy tờ chứng minh không?', 'luat', 'normal', 'kiem-chung'),
+    q('Trước đó anh/chị đã thực hiện hành vi tương tự lần nào chưa (phạm tội nhiều lần, có tính chất chuyên nghiệp)?', 'luat', 'normal', 'cu-the'),
   ]);
 }
 
 function issueTaiLieu(crime, hanhViList, experts, role) {
   const docs = [...new Set([...hanhViList.flatMap((h) => h.taiLieu || []), ...experts.flatMap((e) => e.taiLieu)])];
   const list = [
-    q(rv(role, { suspect: 'Anh/chị có tài liệu, đồ vật, chứng cứ nào liên quan muốn giao nộp hoặc đề nghị cơ quan điều tra thu thập không?', witness: 'Anh/chị có giữ tài liệu, hình ảnh, tin nhắn nào liên quan và đồng ý giao nộp cho cơ quan điều tra không?' }), 'tu-tung'),
-    q('Tiền, tài sản có được từ vụ việc hiện ở đâu, do ai quản lý, đã chuyển đổi thành tài sản gì?', 'nghiep-vu', 'high'),
-    ...docs.slice(0, 6).map((d) => q(`Xác định nơi lưu giữ, người quản lý tài liệu: ${d.charAt(0).toLowerCase() + d.slice(1)}.`, 'chuyen-mon')),
+    q(rv(role, { suspect: 'Anh/chị có tài liệu, đồ vật, chứng cứ nào liên quan muốn giao nộp hoặc đề nghị cơ quan điều tra thu thập không?', witness: 'Anh/chị có giữ tài liệu, hình ảnh, tin nhắn nào liên quan và đồng ý giao nộp cho cơ quan điều tra không?' }), 'tu-tung', 'normal', 'mo'),
+    q('Tiền, tài sản có được từ vụ việc hiện ở đâu, do ai quản lý, đã chuyển đổi thành tài sản gì? Qua tài khoản ngân hàng nào (số tài khoản, chủ tài khoản)?', 'nghiep-vu', 'high', 'cu-the'),
+    ...docs.slice(0, 6).map((d) => q(`Xác định nơi lưu giữ, người quản lý tài liệu: ${lc(d)}.`, 'chuyen-mon', 'normal', 'kiem-chung')),
   ];
   return issue('tai-lieu', 'Tài liệu, vật chứng, tài sản và dòng tiền', 'Điều 85 BLTTHS; Điều 47, 48 BLHS', 'Định hướng thu thập chứng cứ, truy vết tài sản để thu hồi.', list);
 }
@@ -251,15 +279,25 @@ function issueChuyenMon(crime, experts) {
 
 function issueNguyenNhan(role) {
   return issue('nguyen-nhan', 'Nguyên nhân, điều kiện phạm tội', 'Điều 85 khoản 5 BLTTHS', 'Phục vụ kiến nghị khắc phục sơ hở trong quản lý.', [
-    q(rv(role, { suspect: 'Theo anh/chị, sơ hở nào trong quy trình quản lý, kiểm tra, giám sát đã tạo điều kiện cho việc này xảy ra?', witness: 'Theo anh/chị, vì sao sự việc có thể xảy ra mà không bị phát hiện kịp thời?' }), 'nghiep-vu'),
+    q(rv(role, { suspect: 'Theo anh/chị, sơ hở nào trong quy trình quản lý, kiểm tra, giám sát đã tạo điều kiện cho việc này xảy ra?', witness: 'Theo anh/chị, vì sao sự việc có thể xảy ra mà không bị phát hiện kịp thời?' }), 'nghiep-vu', 'normal', 'mo'),
+    q('Việc kiểm tra, giám sát của cấp trên, bộ phận kiểm soát đối với công việc này được thực hiện thế nào; vì sao không phát hiện?', 'nghiep-vu', 'normal', 'cu-the'),
   ]);
 }
 
 function issueLoaiTru(crime, role) {
   if (!isSuspect(role)) return null;
   return issue('loai-tru', 'Căn cứ loại trừ, miễn trách nhiệm hình sự', 'Điều 85 khoản 6 BLTTHS; Điều 20–26, 29 BLHS', 'Kiểm tra các tình tiết loại trừ trách nhiệm hình sự, miễn trách nhiệm hình sự, miễn hình phạt.', [
-    q('Việc làm của anh/chị có được thực hiện theo mệnh lệnh của người chỉ huy/cấp trên không? Mệnh lệnh đó được truyền đạt thế nào; anh/chị đã có ý kiến phản đối chưa?', 'luat'),
+    q('Việc làm của anh/chị có được thực hiện theo mệnh lệnh của người chỉ huy/cấp trên không? Mệnh lệnh đó được truyền đạt thế nào; anh/chị đã có ý kiến phản đối chưa?', 'luat', 'normal', 'cu-the'),
     /rủi ro|nghiên cứu|kỹ thuật|công nghệ|đầu tư|kinh doanh/i.test(crime.ten + crime.khachThe) ? q('Hành vi có thuộc trường hợp rủi ro trong nghiên cứu, thử nghiệm, áp dụng tiến bộ khoa học, kỹ thuật và công nghệ đã tuân thủ đúng quy trình không?', 'luat') : null,
+  ]);
+}
+
+/** Phần chốt cuối buổi: người khai bổ sung, xác nhận tính tự nguyện — bảo đảm giá trị pháp lý của lời khai. */
+function issueKetThuc(role) {
+  return issue('ket-thuc', 'Chốt lại, xác nhận lời khai', 'Điều 183, 186, 188 BLTTHS', 'Cho người khai bổ sung, đính chính; ghi nhận tính tự nguyện, không bị ép buộc — tránh việc phản cung, thay đổi lời khai sau này.', [
+    q('Ngoài những nội dung đã trình bày, anh/chị còn biết, còn muốn khai bổ sung hoặc đính chính nội dung nào không?', 'tu-tung', 'high', 'chot'),
+    q(isSuspect(role) ? 'Trong quá trình hỏi cung, anh/chị có bị ép buộc, đe dọa, dụ dỗ, mớm cung không? Lời khai trên có phải do anh/chị tự nguyện khai báo không?' : 'Trong buổi làm việc, anh/chị có bị ép buộc, gợi ý nội dung khai không? Lời khai trên có đúng sự thật, do anh/chị tự nguyện trình bày không?', 'tu-tung', 'high', 'chot'),
+    q('Anh/chị có đề nghị, khiếu nại gì đối với cơ quan điều tra, người tiến hành tố tụng không?', 'tu-tung', 'normal', 'chot'),
   ]);
 }
 
@@ -332,12 +370,13 @@ export function generatePlan({ dieu, hanhViIds = [], dinhKhung = [], roleId = 'b
     issueTangNangGiamNhe(role),
     issueLoaiTru(crime, role),
     issueNguyenNhan(role),
+    issueKetThuc(role),
   ].filter(Boolean);
 
   // Câu hỏi tùy chỉnh đã lưu của người dùng.
   for (const is of issues) {
     const saved = custom[`${crime.dieu}|${is.key}`] || [];
-    saved.forEach((t) => is.cauHoi.push(q(t, 'tuy-chinh', 'high')));
+    saved.forEach((t) => is.cauHoi.push(q(t, 'tuy-chinh', 'high', 'cu-the')));
     // Câu hỏi đã học từ các lần làm trước (tối đa 10 câu mỗi vấn đề, không trùng).
     const have = new Set(is.cauHoi.map((c) => c.text.toLowerCase()));
     (learned[`${crime.dieu}|${is.key}`] || [])

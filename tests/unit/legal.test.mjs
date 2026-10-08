@@ -71,7 +71,7 @@ test('câu hỏi thay đổi theo đối tượng lời khai', () => {
   assert.ok(!witness.issues.some((i) => i.key === 'loai-tru'));
   assert.ok(victim.issues.some((i) => i.key === 'y-kien-bi-hai'));
   assert.ok(victim.issues.find((i) => i.key === 'hau-qua').cauHoi.some((c) => /yêu cầu bồi thường/.test(c.text)));
-  assert.match(witness.issues.find((i) => i.key === 'nhan-than').cauHoi[1].text, /hoàn cảnh nào/);
+  assert.ok(witness.issues.find((i) => i.key === 'nhan-than').cauHoi.some((c) => /hoàn cảnh nào/.test(c.text)));
   // tội vô ý: không hỏi về vụ lợi
   const voY = generatePlan({ dieu: '360', roleId: 'bi-can' });
   assert.ok(!voY.issues.find((i) => i.key === 'chu-quan').cauHoi.some((c) => /Mục đích, động cơ/.test(c.text)));

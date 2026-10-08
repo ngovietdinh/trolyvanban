@@ -11,6 +11,7 @@ import { renderDocumentHtml } from '../lib/render-html.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { Q_STATUS, Q_STATUS_ORDER, STAGES, caseReport, overviewReport, planFromSaved, qKey, buildCaseReportDocument, buildOverviewDocument } from '../legal/tracking.js';
 import { openRecordUpload } from './record-upload.js';
+import { openNextStatement } from './next-statement.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const LEVEL = { cao: ['Cao', 'tk-lv-cao'], 'trung-binh': ['Trung bình', 'tk-lv-tb'], thap: ['Thấp', 'tk-lv-thap'] };
@@ -209,6 +210,12 @@ function renderCase(ctx, id) {
       redraw();
     }
   });
+  body.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-next-person]');
+    if (!b) return;
+    const p = (c.persons || []).find((x) => x.id === b.dataset.nextPerson);
+    openNextStatement(ctx, { caseId: c.id, personId: p.id, roleId: p.roleId, nguoiKhai: { hoTen: p.hoTen } });
+  });
   $('[data-ai-conclude]', body)?.addEventListener('click', (e) => aiConclude(ctx, c, r, e.currentTarget, redraw));
 }
 
@@ -233,7 +240,7 @@ function overviewTab(r) {
       <ol class="tk-steps">${steps.map(([ok, label, sub, href]) => `<li class="${ok ? 'ok' : 'todo'}"><span class="tk-step-ic">${icon(ok ? 'check' : 'clock', 'ic-sm')}</span><span><strong>${label}</strong><small>${escapeHtml(sub)}</small></span>${!ok && href ? `<a class="btn btn-ghost btn-sm" href="${href}">Làm ngay</a>` : ''}</li>`).join('')}</ol>
     </section>
     <section><h3 class="tk-h">${icon('user', 'ic-sm')}Người tham gia tố tụng</h3>
-      ${r.persons.length ? `<ul class="tk-people">${r.persons.map((p) => `<li><span class="avatar">${escapeHtml((p.person.hoTen.split(/\s+/).pop() || '?')[0])}</span><span><strong>${escapeHtml(p.person.hoTen)}</strong><small>${escapeHtml(p.role.ten.split('/')[0].trim())} · ${p.records} biên bản${p.last ? ` · ${relativeTime(p.last)}` : ''}</small></span><span class="tk-pst tk-pst-${p.status}">${{ 'chua-lay': 'Chưa lấy lời khai', 'dang-ghi': 'Đang ghi', 'da-lay': 'Đã lấy lời khai' }[p.status]}</span></li>`).join('')}</ul>` : '<p class="muted">Chưa có người tham gia tố tụng.</p>'}
+      ${r.persons.length ? `<ul class="tk-people">${r.persons.map((p) => `<li><span class="avatar">${escapeHtml((p.person.hoTen.split(/\s+/).pop() || '?')[0])}</span><span><strong>${escapeHtml(p.person.hoTen)}</strong><small>${escapeHtml(p.role.ten.split('/')[0].trim())} · ${p.records} biên bản${p.last ? ` · ${relativeTime(p.last)}` : ''}</small></span><span class="tk-pst tk-pst-${p.status}">${{ 'chua-lay': 'Chưa lấy lời khai', 'dang-ghi': 'Đang ghi', 'da-lay': 'Đã lấy lời khai' }[p.status]}</span>${p.records ? `<button class="btn btn-ghost btn-sm" type="button" data-next-person="${p.person.id}" title="Câu hỏi làm rõ những điểm chưa rõ từ các biên bản trước">${icon('refresh', 'ic-sm')}Lần tiếp theo</button>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Chưa có người tham gia tố tụng.</p>'}
       <h3 class="tk-h">${icon('layers', 'ic-sm')}Kế hoạch hỏi</h3>
       ${r.plans.length ? `<ul class="tk-plans">${r.plans.map((p) => `<li><a href="#legal/plan/${p.saved.id}"><strong>${escapeHtml(p.saved.title)}</strong><small>${p.records.length} biên bản${p.track ? ` · ${p.track.totals.done}/${p.track.totals.total} câu` : ''}</small></a>${p.track ? `<span class="tk-prog">${bar(p.track.totals.pct)}<b>${p.track.totals.pct}%</b></span>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Chưa có kế hoạch hỏi gắn với hồ sơ.</p>'}
       ${r.warnings.length ? `<h3 class="tk-h">${icon('alert', 'ic-sm')}Cảnh báo quan trọng</h3><ul class="tk-warns">${r.warnings.slice(0, 4).map((w) => warnHtml(w)).join('')}</ul>` : ''}

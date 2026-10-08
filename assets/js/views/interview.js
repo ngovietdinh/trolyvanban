@@ -12,6 +12,8 @@ import { buildDocx, safeFileName } from '../lib/docx.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { uid } from '../lib/store.js';
 import { mobilePanes } from '../lib/panes.js';
+import { openNextStatement } from './next-statement.js';
+import { BUOC } from '../legal/engine.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const COV = { ro: ['Đã rõ', 'ok'], 'mot-phan': ['Một phần', 'part'], chua: ['Chưa rõ', 'no'] };
@@ -136,6 +138,7 @@ export function render(ctx, params = []) {
         <div class="inline">
           <button class="btn btn-sm btn-ghost" type="button" data-info title="Thông tin biên bản" aria-label="Thông tin biên bản">${icon('clipboard', 'ic-sm')}<span class="btn-label">Thông tin biên bản</span></button>
           <button class="btn btn-sm btn-ghost" type="button" data-paste title="Dán văn bản ghi chép và chuyển thành hỏi – đáp theo mẫu biên bản" aria-label="Dán và chuyển đổi">${icon('quote', 'ic-sm')}<span class="btn-label">Dán &amp; chuyển đổi</span></button>
+          <button class="btn btn-sm" type="button" data-next title="Ghi lời khai lần tiếp theo của người này: câu hỏi làm rõ những điểm chưa rõ, mâu thuẫn từ các biên bản trước" aria-label="Ghi lời khai lần tiếp theo">${icon('refresh', 'ic-sm')}<span class="btn-label">Lời khai lần tiếp theo</span></button>
           <button class="btn btn-sm btn-ghost" type="button" data-preview title="Xem biên bản" aria-label="Xem biên bản">${icon('eye', 'ic-sm')}<span class="btn-label">Xem biên bản</span></button>
           <button class="btn btn-sm" type="button" data-export title="Xuất Word" aria-label="Xuất biên bản Word">${icon('download', 'ic-sm')}<span class="btn-label">Xuất Word</span></button>
           <button class="btn btn-sm btn-ghost" type="button" data-del-this title="Xóa biên bản này" aria-label="Xóa biên bản này">${icon('trash', 'ic-sm')}</button>
@@ -220,10 +223,10 @@ export function render(ctx, params = []) {
       .map((is, i) => {
         const st = cov[is.id] || 'chua';
         const askedN = is.cauHoi.filter((c) => asked.has(c.id)).length;
-        const isOpen = openIssues.has(is.id) ? openIssues.get(is.id) : current.issueId === is.id || (i === 1 && !current.issueId);
+        const isOpen = openIssues.has(is.id) ? openIssues.get(is.id) : current.issueId === is.id || (i === (rec.followUp ? 0 : 1) && !current.issueId);
         return `<details class="iv-issue" ${isOpen ? 'open' : ''} data-issue="${is.id}">
           <summary><span class="cov cov-${COV[st][1]}" title="${COV[st][0]}"></span><span class="iv-issue-t">${i + 1}. ${escapeHtml(is.tieuDe)}</span><small>${askedN}/${is.cauHoi.length}</small></summary>
-          <ul>${is.cauHoi.map((c) => `<li><button type="button" class="iv-pq ${asked.has(c.id) ? 'asked' : ''} ${c.priority === 'high' ? 'hi' : ''}" data-pq="${c.id}" data-issue-id="${is.id}">${asked.has(c.id) ? icon('check', 'ic-sm') : '<span class="dot"></span>'}<span>${escapeHtml(c.text)}</span></button></li>`).join('')}</ul>
+          <ul>${is.cauHoi.map((c) => `<li><button type="button" class="iv-pq ${asked.has(c.id) ? 'asked' : ''} ${c.priority === 'high' ? 'hi' : ''}" data-pq="${c.id}" data-issue-id="${is.id}">${asked.has(c.id) ? icon('check', 'ic-sm') : '<span class="dot"></span>'}<span>${escapeHtml(c.text)}${c.lyDo ? `<small class="iv-pq-why">${c.buoc && BUOC[c.buoc] ? `<em>${BUOC[c.buoc]}</em> · ` : ''}${escapeHtml(c.lyDo)}</small>` : ''}</span></button></li>`).join('')}</ul>
           <div class="iv-cov-set" role="group" aria-label="Đánh dấu mức độ làm rõ">${Object.entries(COV).map(([k, [l]]) => `<button type="button" class="chip" data-cov="${k}" aria-pressed="${st === k}">${l}</button>`).join('')}</div>
         </details>`;
       })
@@ -767,6 +770,10 @@ export function render(ctx, params = []) {
 
   $('[data-info]', root).addEventListener('click', infoDialog);
   $('[data-paste]', root).addEventListener('click', pasteDialog);
+  $('[data-next]', root).addEventListener('click', () => {
+    if (!deleted) rec = recordsRepo.save(rec);
+    openNextStatement(ctx, rec);
+  });
   $('[data-del-this]', root).addEventListener('click', async () => {
     save.cancel();
     rec = recordsRepo.save(rec); // lưu thay đổi chưa ghi để hoàn tác khôi phục đủ

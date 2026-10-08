@@ -4,7 +4,7 @@
 import { $, $$, icon, escapeHtml } from '../ui.js';
 import { Q_STATUS, Q_STATUS_ORDER } from '../legal/tracking.js';
 
-const COMMON = ['nhan-than', 'dong-pham', 'tai-lieu', 'tang-nang-giam-nhe', 'loai-tru', 'nguyen-nhan'];
+const COMMON = ['nhan-than', 'dong-pham', 'tai-lieu', 'tang-nang-giam-nhe', 'y-kien-bi-hai', 'loai-tru', 'nguyen-nhan', 'ket-thuc'];
 
 /** Dữ liệu cây từ kế hoạch (generatePlan + lớp chỉnh sửa). track: trạng thái câu hỏi (trackPlan) — tùy chọn. */
 export function planToTree(plan, track = null) {

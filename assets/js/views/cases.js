@@ -11,6 +11,7 @@ import { localContradictions, aiContradictions } from '../legal/assist.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { uid } from '../lib/store.js';
 import { openRecordUpload } from './record-upload.js';
+import { openNextStatement, hasPrevious } from './next-statement.js';
 
 function caseForm(ctx, existing, onSaved) {
   const org = ctx.settings().legalOrg || {};
@@ -287,11 +288,15 @@ export function render(ctx, params = []) {
   function startInterview(person) {
     const plans = plansRepo.list((p) => p.caseId === c.id && p.roleId === person.roleId);
     const crimes = (c.toiDanh || []).map(findCrime).filter(Boolean);
+    const target = { caseId: c.id, personId: person.id, roleId: person.roleId, nguoiKhai: { hoTen: person.hoTen } };
+    const nPrev = recordsRepo.list((r) => r.caseId === c.id && r.personId === person.id).length;
+    const canNext = hasPrevious(target);
     ctx.modal(
       `<h2 class="modal-title">Ghi lời khai: ${escapeHtml(person.hoTen)}</h2>
        <p class="hint" style="margin-bottom:14px">${escapeHtml(getRole(person.roleId).ten)}</p>
        <form class="auth-form" data-f>
          <div class="field"><label for="si-plan">Kế hoạch hỏi</label><select class="select" id="si-plan" name="plan">
+           ${canNext ? `<option value="next" selected>Lời khai lần ${nPrev + 1} — câu hỏi làm rõ những điểm chưa rõ, mâu thuẫn từ ${nPrev} biên bản trước (khuyến nghị)</option>` : ''}
            ${plans.map((p) => `<option value="plan:${p.id}">Kế hoạch đã lưu: ${escapeHtml(p.title)}</option>`).join('')}
            ${crimes.map((cr) => `<option value="auto:${cr.dieu}">Tự động — Điều ${cr.dieu} ${escapeHtml(cr.ten.replace(/^Tội /, ''))} (tất cả hành vi)</option>`).join('')}
            <option value="">Không dùng kế hoạch</option>
@@ -304,6 +309,10 @@ export function render(ctx, params = []) {
           box.querySelector('[data-f]').addEventListener('submit', (e) => {
             e.preventDefault();
             const v = new FormData(e.target).get('plan');
+            if (v === 'next') {
+              close();
+              return openNextStatement(ctx, target);
+            }
             let plan = null;
             if (v.startsWith('plan:')) {
               const sp = plansRepo.get(v.slice(5));

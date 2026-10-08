@@ -1,6 +1,6 @@
 // Cây hỏi đáp pháp luật: lĩnh vực → nhóm → tội danh → hành vi → vấn đề cần làm rõ → bộ câu hỏi (chỉnh sửa được).
 import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, debounce } from '../ui.js';
-import { DOMAINS, findCrime, searchCrimes, generatePlan, planToText, SOURCE_LABELS, LEGAL_DISCLAIMER, ALL_CRIMES, crimeWithCustomActs, localFollowUps, CATALOG_STATUS } from '../legal/engine.js';
+import { DOMAINS, findCrime, searchCrimes, generatePlan, planToText, SOURCE_LABELS, LEGAL_DISCLAIMER, ALL_CRIMES, crimeWithCustomActs, localFollowUps, CATALOG_STATUS, BUOC } from '../legal/engine.js';
 import { CATALOG } from '../legal/blhs-catalog.js';
 import { parseBlhsText, compareWithCatalog } from '../legal/blhs-import.js';
 import { docxToText } from '../lib/docx.js';
@@ -503,6 +503,7 @@ export function render(ctx, params = []) {
               ${x.answers.length ? `<details class="lg-q-ans"><summary>${x.answers.length} câu trả lời</summary><ul>${x.answers.map((a) => `<li><a href="#interview/${a.recId}">${escapeHtml(a.who)}</a>: ${escapeHtml(a.a.length > 300 ? `${a.a.slice(0, 298)}…` : a.a)}</li>`).join('')}</ul></details>` : ''}
               <div class="lg-q-meta">
                 ${statusSelectHtml(x)}
+                ${BUOC[c.buoc] ? `<span class="q-buoc buoc-${c.buoc}" title="Bước hỏi theo trình tự: tự trình bày → cụ thể hóa → kiểm chứng → đối chiếu → chốt lại">${BUOC[c.buoc]}</span>` : ''}
                 <span class="src src-${c.src}">${SOURCE_LABELS[c.src] || c.src}</span>
                 <span class="lg-q-tools">
                   <button type="button" class="btn btn-ghost btn-sm btn-icon" data-qai aria-label="Gợi ý câu hỏi truy tiếp" title="Gợi ý câu hỏi truy tiếp (AI)">${icon('sparkles', 'ic-sm')}</button>
