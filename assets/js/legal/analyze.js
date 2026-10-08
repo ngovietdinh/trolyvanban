@@ -4,6 +4,7 @@
 import { ALL_CRIMES, findCrime, crimeWithCustomActs } from './engine.js';
 import { summarize, splitSentences } from '../lib/summarize.js';
 import { extractJson } from '../lib/ai.js';
+import { focusText, splitText, runChunks, CHUNK } from '../lib/ai-chunk.js';
 
 const STOP = new Set(
   `và của là các có được cho với trong những một này đã để không theo về khi đến tại như do thì mà còn cũng nên vì nếu đó sẽ đang bị ra vào lại trên dưới hay hoặc rằng nhưng tuy nhiều ít rất làm người năm ngày tháng số nhằm đối qua sau trước giữa cùng chỉ đều đây ấy thế nào gì ai sự phải cần đồng thời bao gồm khác hành vi tội việc rồi đó sau khi`.split(/\s+/),
@@ -45,7 +46,7 @@ export function matchScore(actTerms, sentTerms, phrase = '', sentence = '') {
 }
 
 // Dấu hiệu một câu mô tả hành vi (động từ thường gặp trong hồ sơ hình sự).
-const ACTION = /(chiếm đoạt|chiếm giữ|lừa|gian dối|giả mạo|làm giả|giả danh|nhận tiền|nhận hối lộ|đưa hối lộ|đưa tiền|môi giới|chi khống|lập khống|kê khai|khai khống|nâng khống|nâng giá|rút tiền|chuyển tiền|chuyển khoản|thông đồng|câu kết|móc nối|chỉ định thầu|nâng|hợp thức|ký duyệt|phê duyệt|tham ô|lạm quyền|lợi dụng|vượt quá|thiếu trách nhiệm|cố ý|vi phạm|trộm|cắp|cướp|cưỡng đoạt|đe dọa|uy hiếp|đánh|đâm|chém|gây thương tích|giết|hiếp|dâm|mua bán|tàng trữ|vận chuyển|sản xuất|buôn lậu|trốn thuế|xuất hóa đơn|mua hóa đơn|cho vay|đánh bạc|tổ chức|chứa chấp|tiêu thụ|rửa tiền|hủy hoại|phá hoại|xả thải|khai thác|tham gia)/iu;
+export const ACTION = /(chiếm đoạt|chiếm giữ|lừa|gian dối|giả mạo|làm giả|giả danh|nhận tiền|nhận hối lộ|đưa hối lộ|đưa tiền|môi giới|chi khống|lập khống|kê khai|khai khống|nâng khống|nâng giá|rút tiền|chuyển tiền|chuyển khoản|thông đồng|câu kết|móc nối|chỉ định thầu|nâng|hợp thức|ký duyệt|phê duyệt|tham ô|lạm quyền|lợi dụng|vượt quá|thiếu trách nhiệm|cố ý|vi phạm|trộm|cắp|cướp|cưỡng đoạt|đe dọa|uy hiếp|đánh|đâm|chém|gây thương tích|giết|hiếp|dâm|mua bán|tàng trữ|vận chuyển|sản xuất|buôn lậu|trốn thuế|xuất hóa đơn|mua hóa đơn|cho vay|đánh bạc|tổ chức|chứa chấp|tiêu thụ|rửa tiền|hủy hoại|phá hoại|xả thải|khai thác|tham gia)/iu;
 
 const short = (s, n = 140) => {
   const t = String(s).replace(/\s+/g, ' ').trim().replace(/^[-•+*\d.)\s]+/, '');
@@ -325,9 +326,10 @@ export function catalogForAi(dieus) {
     .join('\n');
 }
 
-export function analyzePrompt(text, { primary, candidates, role }) {
+export function analyzePrompt(text, { primary, candidates, role, part = null }) {
   const body = String(text).slice(0, 14000);
-  return `Điều đang làm việc: Điều ${primary}. Người sẽ lấy lời khai: ${role}.
+  return `${part ? `ĐÂY LÀ PHẦN ${part[0]}/${part[1]} CỦA TÀI LIỆU — chỉ liệt kê hành vi có trong phần này; "tomTat" chỉ 1–2 câu.
+` : ''}Điều đang làm việc: Điều ${primary}. Người sẽ lấy lời khai: ${role}.
 DANH MỤC ĐIỀU LUẬT TRONG HỆ THỐNG (ưu tiên dùng; "hanhViId" lấy trong ngoặc vuông nếu hành vi trùng):
 ${catalogForAi(candidates)}
 
@@ -345,11 +347,27 @@ Trả về JSON:
  * Gọi AI phân tích, hợp nhất với kết quả ngoại tuyến. call(opts) = streamAI đã gắn cấu hình.
  * Điều luật AI nêu được kiểm tra với hệ thống: không có trong hệ thống → gắn cờ ngoài danh mục.
  */
-export async function analyzeWithAi(call, text, { primary, offline, role = 'người được hỏi', signal }) {
+export async function analyzeWithAi(call, text, { primary, offline, role = 'người được hỏi', signal, chunkSize = CHUNK.online, onProgress } = {}) {
   const candidates = [...new Set([String(primary), ...offline.crimes.map((c) => c.dieu)])].filter(Boolean).slice(0, 12);
-  const out = await call({ system: ANALYZE_SYSTEM, cache: true, maxTokens: 6000, signal, messages: [{ role: 'user', content: analyzePrompt(text, { primary, candidates, role }) }] });
-  const j = extractJson(out);
-  if (!j || !Array.isArray(j.hanhVi)) throw new Error('AI trả về kết quả không đúng định dạng — đang dùng kết quả phân tích trên máy.');
+  // Tài liệu dài: lọc câu có thông tin rồi chia phần, gửi lần lượt — tránh hết thời gian chờ.
+  const chunks = splitText(focusText(text, { min: chunkSize }), chunkSize);
+  const run = await runChunks(
+    chunks,
+    async (chunk, i, n) => {
+      const out = await call({ system: ANALYZE_SYSTEM, cache: true, maxTokens: n > 1 ? 3000 : 5000, signal, timeoutRetry: n === 1 ? undefined : false, messages: [{ role: 'user', content: analyzePrompt(chunk, { primary, candidates, role, part: n > 1 ? [i + 1, n] : null }) }] });
+      const part = extractJson(out);
+      if (!part || !Array.isArray(part.hanhVi)) throw new Error('AI trả về kết quả không đúng định dạng — đang dùng kết quả phân tích trên máy.');
+      return part;
+    },
+    { signal, onProgress },
+  );
+  const j = { tomTat: run.values.map((x) => x.tomTat).filter(Boolean).join(' ').slice(0, 900), hanhVi: run.values.flatMap((x) => x.hanhVi) };
+  // Bỏ hành vi trùng giữa các phần.
+  const seen = new Set();
+  j.hanhVi = j.hanhVi.filter((h) => {
+    const k = `${String(h?.dieu || '').replace(/\D+$/, '')}|${h?.hanhViId || String(h?.ten || '').toLowerCase().trim()}`;
+    return h && !seen.has(k) && seen.add(k);
+  });
   const items = j.hanhVi
     .filter((h) => h && h.ten)
     .map((h) => {
@@ -378,7 +396,7 @@ export async function analyzeWithAi(call, text, { primary, offline, role = 'ngư
     ...dieus.map((d) => offline.crimes.find((c) => c.dieu === d) || { dieu: d, ten: findCrime(d).ten, score: 0, reasons: [] }).map((c) => ({ ...c, reasons: [...new Set([...(c.reasons || []), 'AI xác định có hành vi thuộc điều này'])] })),
     ...offline.crimes.filter((c) => !dieus.includes(c.dieu)),
   ];
-  return { tomTat: j.tomTat || offline.tomTat, keywords: offline.keywords, crimes, items: [...items, ...extra], ai: true };
+  return { tomTat: j.tomTat || offline.tomTat, keywords: offline.keywords, crimes, items: [...items, ...extra], ai: true, aiParts: { total: run.total, failed: run.errors.length } };
 }
 
 /* ---------------- Câu hỏi cho hành vi mới ---------------- */

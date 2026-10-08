@@ -15,6 +15,10 @@ import { LOAI_TL, analyzeDoc, searchDocs, buildContext, localInterviewPlan, plan
 import { store, uid } from '../lib/store.js';
 import { audit } from '../lib/accounts.js';
 import { relativeTime } from '../lib/vn-date.js';
+import { chunkSizeFor } from '../lib/ai-chunk.js';
+
+/** Ngữ cảnh gửi AI vừa sức mô hình: AI trên máy nhỏ hơn để không bị hết thời gian chờ / cắt ngữ cảnh. */
+let ctxMax = () => 14000;
 
 const MAX_FILE = 25 * 1024 * 1024;
 const ICON = { bblk: 'message', 'hoi-cung': 'message', 'doi-chat': 'message', qd: 'gavel', lenh: 'gavel', 'kl-giam-dinh': 'zap', 'kl-dinh-gia': 'zap', 'kl-dieu-tra': 'book', 'cao-trang': 'book', 'ban-an': 'book' };
@@ -34,6 +38,7 @@ function threadTitle(msgs) {
 }
 
 export function render(ctx) {
+  ctxMax = () => (chunkSizeFor(ctx.ai('legal')) < 8000 ? 6000 : 14000);
   let docs = []; // tài liệu tải lên (không kèm tệp gốc)
   let filterCase = store.get('kho-case', '');
   let includeApp = store.get('kho-app', true);
@@ -602,7 +607,7 @@ export function render(ctx) {
       ...ctx.ai('legal'),
       system: KHO_SYSTEM,
       cache: true,
-      messages: [{ role: 'user', content: answerPrompt(question, buildContext(hits)) }],
+      messages: [{ role: 'user', content: answerPrompt(question, buildContext(hits, ctxMax())) }],
       onText: (_, all) => {
         bot.text = all;
         renderMsgs();
@@ -633,7 +638,7 @@ export function render(ctx) {
     let via = 'ngoại tuyến';
     if (aiOn()) {
       try {
-        const out = await streamClaude({ ...ctx.ai('legal'), system: KHO_SYSTEM, cache: true, messages: [{ role: 'user', content: interviewPrompt(olds, { focus, nguoi: name, roleName: getRole(roleId).ten }) }] });
+        const out = await streamClaude({ ...ctx.ai('legal'), system: KHO_SYSTEM, cache: true, messages: [{ role: 'user', content: interviewPrompt(olds, { focus, nguoi: name, roleName: getRole(roleId).ten, max: ctxMax() * 1.6 }) }] });
         const j = extractJson(out);
         if (j?.vanDe?.length) {
           plan = { tomTat: j.tomTat || '', issues: j.vanDe.map((v) => ({ tieuDe: v.tieuDe, canCu: v.canCu, cauHoi: (v.cauHoi || []).filter((x) => typeof x === 'string') })) };
@@ -682,7 +687,7 @@ export function render(ctx) {
       const hits = searchDocs(`${request} ${form.ten}`, pool, { limit: 10 });
       try {
         const labels = Object.fromEntries(keys.map((k) => [k, FIELDS[k].label]));
-        const out = await streamClaude({ ...ctx.ai('legal'), system: KHO_SYSTEM, cache: true, messages: [{ role: 'user', content: formPrompt(form, keys, labels, buildContext(hits), request) }] });
+        const out = await streamClaude({ ...ctx.ai('legal'), system: KHO_SYSTEM, cache: true, messages: [{ role: 'user', content: formPrompt(form, keys, labels, buildContext(hits, ctxMax()), request) }] });
         const j = extractJson(out);
         for (const [k, v] of Object.entries(j?.values || {})) if (keys.includes(k) && String(v || '').trim()) values[k] = String(v).trim();
         via = ctx.ai('legal').label;

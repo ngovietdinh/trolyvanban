@@ -73,4 +73,30 @@ test.describe('Sơ đồ vụ việc', () => {
     await expect(res.locator('.cm-node')).toHaveCount(2);
     t.assertClean();
   });
+
+  test('tài liệu dài: gửi AI theo từng phần, sơ đồ trên máy hiện ngay, AI bổ sung dần', async ({ page }) => {
+    const t = trackErrors(page);
+    const calls = await mockClaude(page, (body) => {
+      const m = /PHẦN (\d+)\/(\d+)/.exec(body.messages[0].content);
+      return JSON.stringify({ tomTat: `Phần ${m ? m[1] : 1}.`, banChat: [`Ý phần ${m ? m[1] : 1}`], nguoi: [], hanhVi: [], quanHe: [{ tu: 'Nguyễn Văn An', den: `Người ${m ? m[1] : 1}`, loai: 'tien', noiDung: 'đưa', soTien: '1 triệu' }], moc: [] });
+    });
+    await freshApp(page);
+    await setApiKey(page, 'anthropic', 'sk-ant-test-1234');
+    await page.goto('/app.html#so-do');
+    await page.click('[data-src="files"]');
+    const long = Array.from({ length: 160 }, (_, i) => `Ngày ${(i % 27) + 1}/3/2025 ông Nguyễn Văn An chuyển cho ông Trần Văn Bình ${i + 5} triệu đồng tại văn phòng lần thứ ${i}.`).join('\n');
+    await page.fill('[data-cm-text]', long);
+    await page.check('[data-cm-ai]');
+    await page.click('[data-cm-run]');
+    const res = page.locator('[data-result]');
+    // Kết quả trên máy hiện ngay (AI giả lập trả lời rất nhanh nên chỉ kiểm tra khung kết quả đã có).
+    await expect(res.locator('.cm-points')).toBeVisible();
+    // Chờ AI xong mọi phần: nhãn cuối không còn “(đã xong phần i/n)”, nút Dừng biến mất.
+    await expect(res.locator('.cm-res-head small')).toHaveText(/^AI kết hợp phân tích trên máy ·/, { timeout: 30000 });
+    await expect(page.locator('[data-cm-stop]')).toHaveCount(0);
+    expect(calls.length).toBeGreaterThan(1);
+    expect(calls.every((c) => c.body.messages[0].content.length < 12000)).toBe(true);
+    await expect(res.locator('.cm-points')).toContainText('Ý phần 2');
+    t.assertClean();
+  });
 });

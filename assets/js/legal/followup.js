@@ -169,7 +169,7 @@ export function followUpPlan({ prev = [], others = [], base = null, dieu = null,
 }
 
 /** Lời nhắc cho AI: đọc các biên bản trước, đề xuất câu hỏi lần tiếp theo theo tư duy điều tra viên cao cấp. */
-export function followUpPrompt({ prev, others = [], crime, role, plan }) {
+export function followUpPrompt({ prev, others = [], crime, role, plan, max = 22000 }) {
   const qa = (r) => (r.qa || []).filter((x) => x.q || x.a).map((x, i) => `[${i + 1}] Hỏi: ${x.q}\nĐáp: ${x.a || '(chưa trả lời)'}`).join('\n');
   const body = `Tội danh: ${crime ? `Điều ${crime.dieu} BLHS — ${crime.ten}\nDấu hiệu định tội: ${(crime.dauHieu || []).join('; ')}` : 'chưa xác định'}
 Người khai: ${prev.at(-1)?.nguoiKhai?.hoTen || ''} — ${role.ten}
@@ -181,7 +181,7 @@ ${others.length ? `\nLỜI KHAI CỦA NGƯỜI KHÁC TRONG VỤ (để đối ch
 
 CÂU HỎI ĐÃ CHUẨN BỊ (không lặp lại):
 ${plan.issues.flatMap((i) => i.cauHoi.map((c) => `- ${c.text}`)).join('\n').slice(0, 6000)}`;
-  return `${body.slice(0, 22000)}
+  return `${body.slice(0, max)}
 
 Với tư duy của điều tra viên cao cấp, đề xuất 8–15 câu hỏi BỔ SUNG cho lần khai tới, bám sát những điểm còn chưa rõ, chưa hợp lý, mâu thuẫn, né tránh trong các biên bản trên; câu hỏi phải dẫn chiếu cụ thể nội dung đã khai (“Tại lời khai ngày…, anh/chị khai…”), đi từ cụ thể hóa → kiểm chứng → đối chiếu, không mớm cung, không trùng câu hỏi đã chuẩn bị.
 Chỉ trả về JSON: {"cauHoi":[{"text":"câu hỏi","lyDo":"vì sao cần hỏi","buoc":"cu-the|kiem-chung|doi-chieu"}]}`;

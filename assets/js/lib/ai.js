@@ -141,7 +141,7 @@ export function hashText(str) {
 }
 
 /** Một lần gọi có giới hạn thời gian chờ (chưa có chữ đầu tiên / ngừng giữa chừng). */
-async function streamWithTimeout(opts, timeout = opts.provider === 'local' ? LOCAL_TIMEOUT : AI_TIMEOUT) {
+async function streamWithTimeout(opts, timeout = opts.timeout || (opts.provider === 'local' ? LOCAL_TIMEOUT : AI_TIMEOUT)) {
   const ctl = new AbortController();
   let timedOut = false;
   let timer;
@@ -229,7 +229,8 @@ export async function streamClaude(opts) {
       if (/không thể xử lý/.test(msg)) break; // từ chối nội dung: không thử tiếp
       netDown = err?.status === -1 && c.provider !== 'local';
       // Quá tải / lỗi máy chủ / sai tên mô hình → thử mô hình dự phòng của cùng nhà cung cấp.
-      const capacity = [404, 429, 500, 502, 503, 504, -2].includes(err?.status);
+      // Yêu cầu đã chia nhỏ (timeoutRetry: false): hết giờ chờ thì không gửi lại cùng nội dung cho mô hình khác.
+      const capacity = [404, 429, 500, 502, 503, 504, ...(opts.timeoutRetry === false ? [] : [-2])].includes(err?.status);
       const nextModel = capacity ? models[mi + 1] : undefined;
       if (nextModel) {
         hooks.event?.({ type: 'switch', from: c.provider, to: c.provider, message: `${model} lỗi → thử ${nextModel}` });
@@ -282,7 +283,8 @@ async function tryWithRetry(opts) {
     } catch (err) {
       lastErr = err;
       if (opts.signal?.aborted) break;
-      const transient = [429, 500, 502, 503, 504, -2, ...(opts.quickNetFail ? [] : [-1])].includes(err?.status);
+      // Hết giờ chờ với yêu cầu lớn: gửi lại nguyên khối chỉ làm chờ lâu thêm — phần gọi đã chia nhỏ tự xử lý.
+      const transient = [429, 500, 502, 503, 504, ...(opts.timeoutRetry === false ? [] : [-2]), ...(opts.quickNetFail ? [] : [-1])].includes(err?.status);
       if (!transient || gotText || attempt === AI_RETRY.delays.length) break;
       hooks.event?.({ type: 'retry', provider: opts.provider, message: `${err.message} — thử lại lần ${attempt + 1}` });
       await sleep(AI_RETRY.delays[attempt], opts.signal);

@@ -321,7 +321,7 @@ async function aiConclude(ctx, c, r, btn, redraw) {
   const out = $('[data-ai-out]', ctx.view);
   try {
     const crimes = r.analysis.crimes.map((x) => `Điều ${x.crime.dieu} — ${x.crime.ten}\n  Dấu hiệu: ${x.crime.dauHieu.join('; ')}`).join('\n');
-    const qa = recs.map((x) => `--- Biên bản ${x.nguoiKhai?.hoTen || ''} (lần ${x.lan || 1}):\n${qaToText(x)}`).join('\n').slice(0, 16000);
+    const qa = recs.map((x) => `--- Biên bản ${x.nguoiKhai?.hoTen || ''} (lần ${x.lan || 1}):\n${qaToText(x)}`).join('\n').slice(0, ai.local ? 6000 : 16000);
     const text = await streamClaude({
       provider: ai.provider,
       apiKey: ai.apiKey,

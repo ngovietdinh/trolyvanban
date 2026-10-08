@@ -189,8 +189,8 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
 
 export const CASE_MAP_SYSTEM = 'Bạn là điều tra viên cao cấp. Đọc tài liệu, lời khai và dựng sơ đồ bản chất vụ việc: ai làm gì, với ai, khi nào, bao nhiêu tiền, thuộc điều luật nào. Chỉ dựa trên nội dung được cung cấp, không suy diễn. Chỉ trả về JSON hợp lệ.';
 
-export function caseMapPrompt(text, { known = [], primary = null } = {}) {
-  return `${primary ? `Điều luật đang xem xét: Điều ${primary} BLHS.\n` : ''}${known.length ? `Người trong hồ sơ: ${known.map((p) => `${p.ten}${p.vaiTro ? ` (${p.vaiTro})` : ''}`).join('; ')}\n` : ''}
+export function caseMapPrompt(text, { known = [], primary = null, part = null } = {}) {
+  return `${part ? `ĐÂY LÀ PHẦN ${part[0]}/${part[1]} CỦA NỘI DUNG — chỉ trích xuất những gì có trong phần này, trả lời ngắn gọn.\n` : ''}${primary ? `Điều luật đang xem xét: Điều ${primary} BLHS.\n` : ''}${known.length ? `Người trong hồ sơ: ${known.map((p) => `${p.ten}${p.vaiTro ? ` (${p.vaiTro})` : ''}`).join('; ')}\n` : ''}
 NỘI DUNG:
 """
 ${String(text).slice(0, 18000)}
@@ -205,8 +205,11 @@ Trả về JSON:
  "moc":[{"thoiGian":"dd/mm/yyyy hoặc mô tả","suKien":"sự kiện"}]}`;
 }
 
-/** Ghép kết quả AI vào cấu trúc sơ đồ; điều luật được kiểm tra với Bộ luật trong phần mềm. */
-export function mergeAiCaseMap(base, raw) {
+/**
+ * Ghép kết quả AI vào cấu trúc sơ đồ; điều luật được kiểm tra với Bộ luật trong phần mềm.
+ * append = true: cộng dồn kết quả của phần tài liệu tiếp theo vào sơ đồ AI đã có (tài liệu dài chia nhiều phần).
+ */
+export function mergeAiCaseMap(base, raw, { append = false } = {}) {
   const j = typeof raw === 'string' ? extractJson(raw) : raw;
   if (!j || (!Array.isArray(j.hanhVi) && !Array.isArray(j.quanHe))) throw new Error('AI trả về kết quả không đúng định dạng — đang dùng sơ đồ phân tích trên máy');
   const byDieu = new Map();
@@ -222,6 +225,27 @@ export function mergeAiCaseMap(base, raw) {
   const edges = (j.quanHe || []).filter((e) => e?.tu && e?.den).map((e) => ({ tu: e.tu, den: e.den, loai: ['tien', 'chi-dao'].includes(e.loai) ? e.loai : 'khac', noiDung: e.noiDung || '', soTien: e.soTien || '', trich: '', src: 'AI', n: 1 }));
   edges.forEach((e) => [e.tu, e.den].forEach((t) => !people.has(key(t)) && people.set(key(t), { ten: t, vaiTro: 'Người liên quan', mentions: 1 })));
   const timeline = (j.moc || []).filter((m) => m?.suKien).map((m) => ({ ts: parseDate(String(m.thoiGian || ''))?.ts ?? Number.MAX_SAFE_INTEGER, thoiGian: m.thoiGian || '', suKien: m.suKien, src: 'AI' })).sort((a, b) => a.ts - b.ts);
+  if (append && base.ai) {
+    const crimes = base.crimes.map((c) => ({ ...c, items: [...c.items] }));
+    for (const c of byDieu.values()) {
+      const have = crimes.find((x) => x.dieu === c.dieu && x.ten === c.ten);
+      if (!have) crimes.push(c);
+      else c.items.forEach((it) => !have.items.some((x) => key(x.ten) === key(it.ten)) && have.items.push(it));
+    }
+    const ek = (e) => `${key(e.tu)}|${key(e.den)}|${e.loai}|${key(e.soTien)}`;
+    const tk = (t) => `${t.thoiGian}|${key(t.suKien).slice(0, 60)}`;
+    const uniq = (list, f) => [...new Map(list.map((x) => [f(x), x])).values()];
+    return {
+      ...base,
+      tomTat: [base.tomTat, j.tomTat].filter(Boolean).join(' ').slice(0, 900),
+      banChat: uniq([...base.banChat, ...(j.banChat || [])], key).slice(0, 16),
+      crimes,
+      people: [...people.values()],
+      edges: uniq([...base.edges, ...edges], ek),
+      timeline: uniq([...base.timeline, ...timeline], tk).sort((a, b) => a.ts - b.ts),
+      ai: true,
+    };
+  }
   return {
     ...base,
     tomTat: j.tomTat || base.tomTat,

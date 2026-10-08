@@ -5,6 +5,7 @@ import { casesRepo, recordsRepo } from '../legal/repo.js';
 import { getRole } from '../legal/roles.js';
 import { buildCaseMap, caseMapPrompt, mergeAiCaseMap, caseMapToTree, CASE_MAP_SYSTEM } from '../legal/case-map.js';
 import { streamClaude } from '../lib/ai.js';
+import { focusText, splitText, runChunks, chunkSizeFor } from '../lib/ai-chunk.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { renderDocumentHtml } from '../lib/render-html.js';
 import { store } from '../lib/store.js';
@@ -166,7 +167,7 @@ export function render(ctx, params = []) {
     if (!m) return (host.hidden = true);
     host.hidden = false;
     const TABS = [['ban-chat', 'Bản chất'], ['cay', 'Sơ đồ hành vi'], ['quan-he', `Quan hệ – dòng tiền (${m.edges.length})`], ['thoi-gian', `Dòng thời gian (${m.timeline.length})`]];
-    host.innerHTML = `<div class="cm-res-head"><div><h2>${icon('chart', 'ic-sm')}${escapeHtml(st.title)}</h2><small>${m.ai ? 'AI kết hợp phân tích trên máy' : 'Phân tích trên máy'} · ${m.people.length} người · ${m.crimes.reduce((s, c) => s + c.items.length, 0)} hành vi · ${m.edges.length} quan hệ · ${m.timeline.length} mốc</small></div><span class="spacer"></span><button class="btn btn-sm btn-ghost" type="button" data-cm-preview>${icon('eye', 'ic-sm')}Xem bản in</button><button class="btn btn-sm" type="button" data-cm-export>${icon('download', 'ic-sm')}Xuất Word</button></div>
+    host.innerHTML = `<div class="cm-res-head"><div><h2>${icon('chart', 'ic-sm')}${escapeHtml(st.title)}</h2><small>${m.ai ? `AI kết hợp phân tích trên máy${m.aiProgress ? ` (đã xong phần ${m.aiProgress})` : ''}` : 'Phân tích trên máy'} · ${m.people.length} người · ${m.crimes.reduce((s, c) => s + c.items.length, 0)} hành vi · ${m.edges.length} quan hệ · ${m.timeline.length} mốc</small></div><span class="spacer"></span><button class="btn btn-sm btn-ghost" type="button" data-cm-preview>${icon('eye', 'ic-sm')}Xem bản in</button><button class="btn btn-sm" type="button" data-cm-export>${icon('download', 'ic-sm')}Xuất Word</button></div>
       <div class="tabs cm-tabs" role="tablist">${TABS.map(([k, l]) => `<button class="tab" role="tab" data-cm-tab="${k}" aria-selected="${st.tab === k}">${l}</button>`).join('')}</div>
       <div class="cm-body" data-cm-body></div>`;
     const body = $('[data-cm-body]', host);
@@ -253,24 +254,54 @@ export function render(ctx, params = []) {
       }
     }
     btn.disabled = true;
-    say('Đang phân tích…');
-    let map = buildCaseMap({ sources, known, primary });
-    if ($('[data-cm-ai]', v)?.checked) {
-      const ai = ctx.ai('legal');
-      say(`AI (${ai.label}) đang phân tích sâu…`);
-      try {
-        const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, maxTokens: 5000, cache: true, messages: [{ role: 'user', content: caseMapPrompt(sources.map((s) => `${s.speaker ? `[Lời khai của ${s.speaker} — ${s.label}]` : `[${s.label}]`}\n${s.text}`).join('\n\n'), { known, primary }) }] });
-        map = mergeAiCaseMap(map, out);
-      } catch (err) {
-        toast(err.message, { type: 'error', timeout: 6000 });
-      }
-    }
-    st.map = map;
+    // Kết quả phân tích trên máy hiện ngay; AI (nếu chọn) bổ sung dần theo từng phần, có thể dừng bất cứ lúc nào.
+    const offline = buildCaseMap({ sources, known, primary });
+    st.map = offline;
     st.tab = 'ban-chat';
-    btn.disabled = false;
-    say('');
     drawResult();
     $('[data-result]', v).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!$('[data-cm-ai]', v)?.checked) {
+      btn.disabled = false;
+      return say('');
+    }
+    const ai = ctx.ai('legal');
+    const who = ai.local ? 'AI trên máy' : ai.label;
+    const ctl = new AbortController();
+    const stop = document.createElement('button');
+    stop.type = 'button';
+    stop.className = 'btn btn-sm';
+    stop.dataset.cmStop = '';
+    stop.innerHTML = `${icon('stop', 'ic-sm')}Dừng AI`;
+    stop.addEventListener('click', () => ctl.abort());
+    btn.after(stop);
+    const full = sources.map((s) => `${s.speaker ? `[Lời khai của ${s.speaker} — ${s.label}]` : `[${s.label}]`}\n${s.text}`).join('\n\n');
+    const size = chunkSizeFor(ai);
+    const chunks = splitText(focusText(full, { min: size }), size);
+    let acc = offline;
+    let done = 0;
+    try {
+      const run = await runChunks(
+        chunks,
+        async (chunk, i, n) => {
+          const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, maxTokens: n > 1 ? 2500 : 4000, cache: true, signal: ctl.signal, timeoutRetry: n > 1 ? false : undefined, messages: [{ role: 'user', content: caseMapPrompt(chunk, { known, primary, part: n > 1 ? [i + 1, n] : null }) }] });
+          acc = mergeAiCaseMap(acc, out, { append: done > 0 });
+          done++;
+          // Vẽ lại ngay sau mỗi phần để người dùng thấy sơ đồ đầy dần.
+          st.map = { ...acc, aiProgress: n > 1 ? `${i + 1}/${n}` : '' };
+          drawResult();
+        },
+        { signal: ctl.signal, onProgress: (i, n) => say(n > 1 ? `${who} đang bổ sung phần ${i}/${n} (nội dung dài được chia nhỏ để không bị hết thời gian chờ) — sơ đồ trên máy đã hiện ở dưới.` : `${who} đang phân tích sâu — sơ đồ trên máy đã hiện ở dưới.`) },
+      );
+      if (run.errors.length) toast(`AI không trả lời ${run.errors.length}/${run.total} phần — sơ đồ dùng kết quả trên máy cho các phần đó.`, { type: 'info', timeout: 6000 });
+      if (ctl.signal.aborted && done) toast(`Đã dừng AI sau ${done}/${chunks.length} phần — giữ kết quả đã có.`, { type: 'info' });
+    } catch (err) {
+      if (!ctl.signal.aborted) toast(`${err.message} — đang dùng sơ đồ phân tích trên máy.`, { type: 'error', timeout: 6000 });
+    }
+    st.map = { ...acc, aiProgress: '' };
+    drawResult();
+    stop.remove();
+    btn.disabled = false;
+    say('');
   }
 
   v.addEventListener('click', (e) => {

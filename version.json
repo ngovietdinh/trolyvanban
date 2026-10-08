@@ -1,7 +1,7 @@
 {
-  "version": "2.21.0",
+  "version": "2.22.0",
   "date": "2026-10-08",
   "notes": [
-    "Sơ đồ vụ việc: bản chất, sơ đồ cây hành vi, quan hệ – dòng tiền, dòng thời gian từ biên bản đã chọn hoặc tài liệu tải lên"
+    "Tài liệu dài không còn bị hết thời gian chờ AI: lọc nội dung trên máy, chia nhiều phần nhỏ, báo tiến độ, kết quả trên máy hiện ngay, dừng được"
   ]
 }

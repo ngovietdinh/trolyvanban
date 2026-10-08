@@ -339,7 +339,7 @@ export function render(ctx) {
           <li>Chọn <strong>Ollama</strong> ở trên → <strong>Tải danh sách</strong> → chọn mô hình → <strong>Kiểm tra kết nối</strong>.</li>
           <li>${isDesktop ? 'Bản cài đặt kết nối được ngay với Ollama.' : 'Bản web: cho phép trang này gọi Ollama bằng cách đặt biến môi trường <code>OLLAMA_ORIGINS=*</code> rồi khởi động lại Ollama; trình duyệt có thể hỏi quyền “truy cập thiết bị trong mạng cục bộ” — chọn Cho phép. Máy chủ AI ở máy khác trong mạng nội bộ chỉ dùng được từ bản cài đặt.'}</li>
           <li><strong>BionicGPT</strong> (nền tảng AI của cơ quan): chọn BionicGPT, nhập địa chỉ máy chủ (vd: <code>http://192.168.1.10:3000/v1</code>), tạo khóa ở Admin Panel → API Keys → Create Assistant Key rồi dán vào Khóa truy cập.${isDesktop ? '' : ' Nên dùng bản cài đặt — bản web chỉ kết nối được nếu máy chủ cho phép CORS.'}</li>
-          <li>Văn bản dài: đặt <code>OLLAMA_CONTEXT_LENGTH=16384</code> để mô hình đọc được nhiều chữ hơn. LM Studio: tab Developer → Start Server và bật “Enable CORS”.</li>
+          <li>Văn bản dài: phần mềm tự lọc câu có thông tin và chia tài liệu thành nhiều phần nhỏ (khoảng 3.500 ký tự mỗi phần với AI trên máy) để không bị hết thời gian chờ. Nên đặt thêm <code>OLLAMA_CONTEXT_LENGTH=8192</code> (hoặc 16384 nếu máy đủ RAM) để mô hình không bị cắt bớt nội dung. Vẫn chậm: dùng mô hình nhỏ hơn (<code>qwen2.5:3b</code>) hoặc máy có GPU. LM Studio: tab Developer → Start Server và bật “Enable CORS”.</li>
         </ol>
         <p class="hint">Tốc độ phụ thuộc máy: có card đồ họa (GPU) hoặc Mac chip Apple chạy nhanh; máy chỉ có CPU chạy chậm, nên dùng mô hình nhỏ (3B–7B). Chất lượng thấp hơn Claude, ChatGPT — luôn rà soát kết quả.</p>
       </details>`;

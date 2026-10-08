@@ -1,6 +1,7 @@
 // Thêm hành vi từ tài liệu (trong một điều cụ thể): tải đơn tố giác, báo cáo, kết luận thanh tra, biên bản… → đọc,
 // tóm tắt, liệt kê hành vi có dấu hiệu tội phạm theo điều luật trong hệ thống (một vụ việc có thể liên quan nhiều điều).
 // Người dùng chọn / bỏ chọn, sửa tên, đổi điều luật, xem câu hỏi sẽ sinh → bấm “Thêm hành vi”.
+import { chunkSizeFor } from '../lib/ai-chunk.js';
 import { $, $$, icon, toast, escapeHtml } from '../ui.js';
 import { findCrime } from '../legal/engine.js';
 import { getRole } from '../legal/roles.js';
@@ -42,10 +43,19 @@ export async function runMethod(ctx, method, { text, base, extraBase = null, pri
   let result = base;
   if (method !== 'doi-chieu' && ctx.ai('legal')) {
     const ai = ctx.ai('legal');
-    say?.(`${ai.local ? 'AI trên máy' : ai.label} đang phân tích… (có thể mất 1–2 phút)`);
+    const who = ai.local ? 'AI trên máy' : ai.label;
+    say?.(`${who} đang phân tích…`);
     try {
       const offline = method === 'ai' ? { ...base, items: [] } : base;
-      const r = await analyzeWithAi((o) => streamAI({ ...ctx.ai('legal'), ...o }), text, { primary: primary || base.crimes[0]?.dieu || '', offline, role, signal });
+      const r = await analyzeWithAi((o) => streamAI({ ...ctx.ai('legal'), ...o }), text, {
+        primary: primary || base.crimes[0]?.dieu || '',
+        offline,
+        role,
+        signal,
+        chunkSize: chunkSizeFor(ai),
+        onProgress: (i, n) => say?.(n > 1 ? `${who} đang phân tích phần ${i}/${n} (tài liệu dài được chia nhỏ để không bị hết thời gian chờ)…` : `${who} đang phân tích…`),
+      });
+      if (r.aiParts?.failed) toast(`AI không trả lời ${r.aiParts.failed}/${r.aiParts.total} phần của tài liệu — các phần đó dùng kết quả đối chiếu Bộ luật.`, { type: 'info', timeout: 6000 });
       result = method === 'ket-hop' ? mergeResults(r, extraBase) : r;
     } catch (err) {
       if (!signal?.aborted) toast(`${err.message} — dùng kết quả đối chiếu Bộ luật.`, { type: 'info', timeout: 6000 });

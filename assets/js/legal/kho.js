@@ -1,6 +1,7 @@
 // Kho hồ sơ: nhận diện loại tài liệu, trích thông tin người khai, lời khai Hỏi – Đáp,
 // chia đoạn và tìm kiếm cục bộ (không cần mạng) để làm dữ liệu cho hỏi đáp AI và tạo văn bản.
 import { parsePastedQa, PERSON_FIELDS } from './record.js';
+import { focusText } from '../lib/ai-chunk.js';
 import { localContradictions } from './assist.js';
 import { localFollowUps } from './engine.js';
 
@@ -261,12 +262,12 @@ ${forms.map((f) => `${f.id}: ${f.ten}`).join('\n')}
 Yêu cầu: ${text}
 Chỉ trả về JSON: {"action":"bblk|form|answer","formId":"…hoặc rỗng","nguoi":"họ tên người liên quan nếu có","focus":"nội dung trọng tâm cần làm rõ nếu có"}`;
 
-export const interviewPrompt = (olds, { focus, nguoi, roleName }) => `Dựa vào các biên bản lời khai cũ dưới đây${nguoi ? ` của ${nguoi}` : ''} (tư cách: ${roleName}), lập kế hoạch cho buổi lấy lời khai TIẾP THEO nhằm làm rõ hơn vụ việc${focus ? `, trọng tâm: ${focus}` : ''}.
+export const interviewPrompt = (olds, { focus, nguoi, roleName, max = 24000 }) => `Dựa vào các biên bản lời khai cũ dưới đây${nguoi ? ` của ${nguoi}` : ''} (tư cách: ${roleName}), lập kế hoạch cho buổi lấy lời khai TIẾP THEO nhằm làm rõ hơn vụ việc${focus ? `, trọng tâm: ${focus}` : ''}.
 Yêu cầu: chỉ ra điểm mâu thuẫn giữa các lần khai, nội dung khai chưa cụ thể, tình tiết còn thiếu theo cấu thành tội phạm (Điều 85 BLTTHS); câu hỏi ngắn, rõ, không mớm cung, đúng tư cách tố tụng; mở đầu bằng câu hỏi về sức khỏe và việc có thay đổi lời khai trước không; kết thúc bằng câu hỏi "Ngoài nội dung trên, anh/chị có trình bày gì thêm không? Cam đoan như thế nào về lời khai của mình?".
 Chỉ trả về JSON: {"tomTat":"tóm tắt ngắn các lần khai và điểm cần làm rõ","vanDe":[{"tieuDe":"…","canCu":"căn cứ (biên bản ngày…, mâu thuẫn…)","cauHoi":["…"]}]}
 
 CÁC BIÊN BẢN CŨ:
-${olds.map((o, i) => `=== [${i + 1}] ${o.ten}${o.ngay ? ` (ngày ${o.ngay})` : ''}\n${o.text.slice(0, 7000)}`).join('\n\n').slice(0, 24000)}`;
+${olds.map((o, i) => `=== [${i + 1}] ${o.ten}${o.ngay ? ` (ngày ${o.ngay})` : ''}\n${focusText(o.text, { min: Math.round(max / olds.length) }).slice(0, Math.max(2000, Math.round(max / olds.length)))}`).join('\n\n').slice(0, max)}`;
 
 export const formPrompt = (form, keys, labels, context, request) => `Điền văn bản tố tụng "${form.ten}" dựa trên tài liệu hồ sơ được trích dẫn và yêu cầu của Điều tra viên.
 Yêu cầu: ${request}

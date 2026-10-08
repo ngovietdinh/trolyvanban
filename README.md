@@ -66,6 +66,15 @@ Nền tảng soạn thảo văn bản hành chính tiếng Việt, trình bày �
 - Gợi ý mô hình hiểu tiếng Việt: `qwen2.5:7b` (RAM 8 GB), `qwen2.5:14b` (16 GB), `gemma3:12b` (đọc được ảnh — dùng cho “AI đọc ảnh” trong PDF sang Word). Văn bản dài: đặt `OLLAMA_CONTEXT_LENGTH=16384`.
 - Bản cài đặt kết nối được ngay với Ollama (và máy chủ AI khác trong mạng nội bộ). Bản web: đặt `OLLAMA_ORIGINS=*` (LM Studio: bật “Enable CORS”); trình duyệt chỉ cho trang web gọi `localhost`.
 
+## Tài liệu dài & thời gian chờ AI
+
+Phân tích tài liệu (Thêm hành vi từ tài liệu, Phân tích vụ việc), Sơ đồ vụ việc, Kho hồ sơ, Lời khai lần tiếp theo không còn gửi nguyên khối lớn cho AI (`assets/js/lib/ai-chunk.js`):
+- **Lọc trên máy** trước khi gửi: giữ câu có thông tin (hành vi, số tiền, ngày tháng, người có danh xưng / chức danh, “Điều …”), bỏ phần thủ tục, tiêu đề, nhân thân, câu lặp — thường giảm 30–70% dung lượng.
+- **Chia phần** vừa sức mô hình: khoảng 8.000 ký tự mỗi phần với dịch vụ trực tuyến, 3.500 với AI trên máy (ngữ cảnh mặc định của Ollama nhỏ, chạy CPU chậm); gửi lần lượt, mỗi phần yêu cầu trả lời ngắn (ít token đầu ra); thanh trạng thái báo “phần i/n”.
+- **Không gửi lại cả khối khi hết giờ chờ**: phần bị hết giờ / lỗi được bỏ qua, các phần khác vẫn dùng được, có thông báo số phần AI không trả lời.
+- **Kết quả trên máy hiện ngay** (Sơ đồ vụ việc): AI bổ sung dần sau mỗi phần; nút **Dừng AI** giữ nguyên kết quả đã có.
+- Ngữ cảnh Kho hồ sơ, kết luận AI, lời khai lần tiếp theo được giới hạn theo nhà cung cấp (AI trên máy nhỏ hơn).
+
 ## Bản cài đặt trên máy tính (Windows, macOS)
 
 Ngoài bản web, ứng dụng có **bộ cài đặt** chạy như phần mềm riêng (Electron, thư mục `desktop/`), dùng được khi không có mạng.

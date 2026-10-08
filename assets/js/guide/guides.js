@@ -343,7 +343,7 @@ export const GUIDES = [
     examples: [{ title: 'Câu giúp sơ đồ nhận đúng quan hệ', text: 'Ngày 05/3/2025 tôi chuyển cho ông Trần Văn Bình 100 triệu đồng. Ông Bình chỉ đạo tôi lập hồ sơ quyết toán.', note: 'Tên có danh xưng (ông, bà, anh, chị, giám đốc, kế toán…) và động từ (đưa, chuyển, nhận, chỉ đạo, ký…) trong cùng một câu sẽ thành một mũi tên quan hệ.' }],
     tips: ['Mở từ Hồ sơ vụ án hoặc Theo dõi bằng nút [[Sơ đồ vụ việc]] để chọn sẵn các biên bản của hồ sơ.', 'Sơ đồ là công cụ tham khảo — luôn đối chiếu với tài liệu, chứng cứ gốc.'],
     mistakes: [['Tên người viết tắt, không có danh xưng', 'Thêm người vào hồ sơ vụ án — sơ đồ nhận diện theo họ tên trong hồ sơ.']],
-    faq: [['Vì sao có người không có mũi tên?', 'Chỉ câu có ít nhất hai người cùng một hành động (đưa, nhận, chuyển, chỉ đạo…) mới tạo quan hệ. Dùng AI để phân tích sâu hơn.']],
+    faq: [['Tài liệu dài, AI chạy lâu có bị hết thời gian chờ không?', 'Không — sơ đồ phân tích trên máy hiện ngay; AI đọc phần đã lọc (bỏ thủ tục, câu không có thông tin) và chia thành nhiều phần nhỏ, bổ sung dần vào sơ đồ. Bấm [[Dừng AI]] bất cứ lúc nào, kết quả đã có vẫn được giữ.'], ['Vì sao có người không có mũi tên?', 'Chỉ câu có ít nhất hai người cùng một hành động (đưa, nhận, chuyển, chỉ đạo…) mới tạo quan hệ. Dùng AI để phân tích sâu hơn.']],
     related: ['theo-doi', 'cases', 'interview'],
   },
   {
