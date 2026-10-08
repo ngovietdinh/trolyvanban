@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { trackErrors, freshApp } from './helpers.mjs';
+import { trackErrors, freshApp, pickAll } from './helpers.mjs';
 
 const BAO_CAO = `Qua thanh tra, ông A đã sử dụng con dấu giả của Sở Tài chính để làm giả hồ sơ quyết toán nhằm hợp thức hóa các khoản chi. Hành vi làm giả có dấu hiệu Điều 341 BLHS.`;
 
@@ -63,7 +63,7 @@ test.describe('Phân tích vụ việc 4 bước + sơ đồ cây', () => {
     // Bấm một câu hỏi → sang tab câu hỏi, đúng vấn đề.
     await act.locator('.pt-q > .pt-node').first().click();
     await expect(page.locator('[data-tab="issues"]')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('.lg-issue details[open]').filter({ hasText: 'Nhận tiền của nhà thầu' })).toBeVisible();
+    await expect(page.locator('.lg-issue > details[open]').filter({ hasText: 'Nhận tiền của nhà thầu' })).toBeVisible();
 
     // Quay lại bước 3 từ thanh bước: dữ liệu còn nguyên, hành vi mới không bị tạo trùng.
     await page.locator('.wz-bar [data-wz-go="3"]').click();

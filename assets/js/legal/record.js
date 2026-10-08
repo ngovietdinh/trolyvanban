@@ -214,7 +214,7 @@ export function buildPlanDocument(plan, { coQuan = '', coQuanCapTren = '', tenVu
   body.push(para([run('Đối tượng lấy lời khai: ', { bold: true }), run(plan.role.ten + '.')]));
   body.push(para([run('Hành vi cần làm rõ: ', { bold: true }), run(plan.hanhVi.map((h) => h.ten).join('; ') + '.')]));
   if (plan.dinhKhung?.length) body.push(para([run('Tình tiết định khung cần làm rõ: ', { bold: true }), run(plan.dinhKhung.join('; ') + '.')]));
-  plan.issues.forEach((is, i) => {
+  plan.issues.filter((is) => is.cauHoi.length).forEach((is, i) => {
     body.push(para([run(`${['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX'][i] || i + 1}. ${upper(is.tieuDe)}`, { bold: true })], { spaceBefore: true }));
     body.push(para([run(`Căn cứ: ${is.canCu}. ${is.moTa || ''}`, { italic: true })]));
     is.cauHoi.forEach((c, j) => body.push(para(`${j + 1}. ${c.text}`)));

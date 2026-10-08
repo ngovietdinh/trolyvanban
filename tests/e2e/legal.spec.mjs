@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { trackErrors, mockClaude, freshApp, setApiKey, loginAs, SUPER } from './helpers.mjs';
+import { trackErrors, mockClaude, freshApp, setApiKey, loginAs, SUPER, pickAll } from './helpers.mjs';
 import { docxToText } from '../../assets/js/lib/docx.js';
 
 test.describe('Cây hỏi đáp pháp luật', () => {
@@ -22,7 +22,7 @@ test.describe('Cây hỏi đáp pháp luật', () => {
     await expect(page.locator('.lg-issue')).toHaveCount(before + 1);
     await expect(page.locator('[data-issue="hv-thong-thau"]')).toContainText('quân xanh');
     // Chuyên môn đấu thầu
-    await page.locator('[data-issue="chuyen-mon"] summary').click();
+    await page.locator('[data-issue="chuyen-mon"] .lg-is-sum').click();
     await expect(page.locator('[data-issue="chuyen-mon"]')).toContainText('[Đấu thầu');
 
     // Định khung
@@ -58,8 +58,9 @@ test.describe('Cây hỏi đáp pháp luật', () => {
 
   test('tinh chỉnh câu hỏi: thêm, sửa, xóa, lưu vào bộ câu hỏi của tôi', async ({ page }) => {
     await freshApp(page, '#legal/353');
+    await pickAll(page);
     const issue = page.locator('[data-issue="dong-pham"]');
-    await issue.locator('summary').click();
+    await issue.locator('.lg-is-sum').click();
     const n = await issue.locator('.lg-q').count();
     await issue.locator('.lg-add input').fill('Ai là người duyệt cuối cùng các phiếu chi?');
     await issue.locator('.lg-add button[type="submit"]').click();
@@ -83,8 +84,9 @@ test.describe('Cây hỏi đáp pháp luật', () => {
     await issue.locator('.lg-q').last().locator('[data-qkeep]').click();
     await page.goto('/app.html#legal/356');
     await page.goto('/app.html#legal/353');
-    await page.locator('[data-issue="dong-pham"] summary').click();
-    await expect(page.locator('[data-issue="dong-pham"] .lg-q', { hasText: 'duyệt cuối cùng' })).toHaveCount(1);
+    await page.locator('[data-issue="dong-pham"] .lg-is-sum').click();
+    // Kế hoạch mới: câu trong bộ của tôi nằm ở danh sách gợi ý, bấm Thêm để đưa vào kế hoạch.
+    await expect(page.locator('[data-issue="dong-pham"] .lg-sq', { hasText: 'duyệt cuối cùng' })).toHaveCount(1);
     await expect(page.locator('[data-issue="dong-pham"] .src-tuy-chinh').first()).toBeVisible();
   });
 
@@ -300,7 +302,7 @@ test.describe('AI phân tích lời khai (API giả lập)', () => {
     // Cây: AI gợi ý thêm
     await page.goto('/app.html#legal/353');
     await page.locator('[data-ai-more]').click();
-    await page.locator('[data-issue="dong-pham"] summary').click();
+    await page.locator('[data-issue="dong-pham"] .lg-is-sum').click();
     await expect(page.locator('[data-issue="dong-pham"] .src-ai')).toHaveCount(1);
     await expect(page.locator('[data-issue="dong-pham"]')).toContainText('quỹ đen');
 

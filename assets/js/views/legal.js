@@ -17,6 +17,9 @@ import { mobilePanes } from '../lib/panes.js';
 import { openAnalyzeDialog } from './legal-analyze.js';
 import { mountPlanTree } from './plan-tree.js';
 import { mountWizard, stepperHtml, wizardState } from './legal-wizard.js';
+import { newOverlay, isPickMode, applyPlanOverlay, pickQuestions, unpickQuestion, toPickMode } from '../legal/plan-overlay.js';
+import { questionSuggestions } from '../lib/suggest.js';
+import { attachSuggest } from '../lib/suggest.js';
 import { trackPlan, recordsForPlan, Q_STATUS, Q_STATUS_ORDER, qKey } from '../legal/tracking.js';
 import { statusSelectHtml, setQuestionStatus } from './tracking.js';
 
@@ -38,10 +41,12 @@ export function render(ctx, params = []) {
   }
 
   // Lớp chỉnh sửa của người dùng áp lên kế hoạch được sinh tự động.
-  let overlay = { removed: [], edited: {}, added: {}, ai: {} };
-  if (editingPlanId) overlay = plansRepo.get(editingPlanId).overlay || overlay;
+  let overlay = newOverlay();
+  // Kế hoạch cũ (không có mode) giữ nguyên cách cũ: mọi câu sinh ra đều trong kế hoạch.
+  if (editingPlanId) overlay = plansRepo.get(editingPlanId).overlay || { removed: [], edited: {}, added: {}, ai: {} };
   let tab = 'issues';
   const openIssues = new Map(); // key → true/false (người dùng đã mở/đóng)
+  const openGoiY = new Map(); // mục gợi ý của từng vấn đề đang mở/đóng
   let openTree = new Set(store.get('legal-open', ['kinh-te', 'kinh-te/dau-thau']));
   let plan = null;
   let track = null; // trạng thái từng câu hỏi theo các biên bản đã ghi
@@ -119,7 +124,7 @@ export function render(ctx, params = []) {
     const crime = findCrime(dieu);
     sel = { ...sel, dieu, hanhViIds: [crime.hanhVi[0].id], dinhKhung: [], lienQuan: [], fromWizard: false };
     treeOpen = null;
-    overlay = { removed: [], edited: {}, added: {}, ai: {} };
+    overlay = newOverlay();
     editingPlanId = null;
     sugg = null;
     persistSel();
@@ -135,23 +140,7 @@ export function render(ctx, params = []) {
 
   /* ---------------- Kế hoạch + lớp chỉnh sửa ---------------- */
   function computePlan() {
-    const p = generatePlan({ ...sel, custom: customBank.all(), learned: learnedBank.all() });
-    for (const is of p.issues) {
-      is.cauHoi = is.cauHoi
-        .filter((c) => !overlay.removed.includes(c.text))
-        .map((c) => (overlay.edited[c.text] ? { ...c, text: overlay.edited[c.text], src: c.src, editedFrom: c.text } : c));
-      // Câu đã có (vd: vừa được học) thì không thêm trùng — nhưng vẫn giữ để sửa/xóa theo lớp chỉnh sửa.
-      const dup = (t) => is.cauHoi.findIndex((c) => c.text.toLowerCase() === t.toLowerCase());
-      const put = (t, item) => {
-        const i = dup(t);
-        if (i >= 0 && is.cauHoi[i].src === 'hoc') is.cauHoi[i] = item;
-        else if (i < 0) is.cauHoi.push(item);
-      };
-      (overlay.ai[is.key] || []).forEach((t) => put(t, { id: uid(), text: t, src: 'ai', priority: 'normal' }));
-      (overlay.added[is.key] || []).forEach((t) => put(t, { id: uid(), text: t, src: 'tuy-chinh', priority: 'high', local: true }));
-    }
-    p.stats.questions = p.issues.reduce((s, i) => s + i.cauHoi.length, 0);
-    return p;
+    return applyPlanOverlay(generatePlan({ ...sel, custom: customBank.all(), learned: learnedBank.all() }), overlay, { uid });
   }
 
   /* ---------------- Khu chính ---------------- */
@@ -308,7 +297,7 @@ export function render(ctx, params = []) {
       },
       onPlan({ dieu, hanhViIds, lienQuan, quotes }) {
         sel = { ...sel, dieu, hanhViIds, dinhKhung: [], lienQuan, fromWizard: true };
-        overlay = { removed: [], edited: {}, added: {}, ai: {} };
+        overlay = newOverlay();
         for (const qt of quotes) {
           const key = qt.dieu === dieu ? `hv-${qt.id}` : `d${qt.dieu}:hv-${qt.id}`;
           overlay.added[key] = [...new Set([...(overlay.added[key] || []), qt.text])];
@@ -459,7 +448,10 @@ export function render(ctx, params = []) {
     treeCtl?.destroy();
     treeCtl = null;
     computeTrack();
-    if (tab === 'issues') panel.innerHTML = trackBarHtml() + issuesHtml();
+    if (tab === 'issues') {
+      panel.innerHTML = pickBarHtml() + trackBarHtml() + issuesHtml();
+      bindSuggestInputs(panel);
+    }
     else if (tab === 'map') {
       treeCtl = mountPlanTree(panel, plan, { onJump: jumpTo, initialOpen: treeOpen, track });
       treeOpen = treeCtl.open;
@@ -487,13 +479,14 @@ export function render(ctx, params = []) {
           return `
       <li class="lg-issue" data-issue="${is.key}">
         <details ${(openIssues.has(is.key) ? openIssues.get(is.key) : i < 3 || is.key.startsWith('hv-')) ? 'open' : ''}>
-          <summary>
+          <summary class="lg-is-sum">
             <span class="lg-issue-no">${i + 1}</span>
             <span class="lg-issue-title"><strong>${escapeHtml(is.tieuDe)}</strong><small>${escapeHtml(is.canCu)}</small></span>
-            ${tracked ? `<span class="lg-is-track" title="${ti.done}/${ti.total} câu đã xong">${ti.items.map((x) => `<i class="tk-dot tk-st-${x.status}"></i>`).join('')}</span><span class="badge ${ti.done === ti.total ? 'badge-success' : ''}">${ti.done}/${ti.total}</span>` : `<span class="badge">${is.cauHoi.length}</span>`}
+            ${tracked && is.cauHoi.length ? `<span class="lg-is-track" title="${ti.done}/${ti.total} câu đã xong">${ti.items.map((x) => `<i class="tk-dot tk-st-${x.status}"></i>`).join('')}</span><span class="badge ${ti.done === ti.total ? 'badge-success' : ''}">${ti.done}/${ti.total}</span>` : `<span class="badge" title="${is.cauHoi.length} câu trong kế hoạch">${is.cauHoi.length}</span>`}${is.goiY?.length ? `<span class="badge lg-goiy-n" title="${is.goiY.length} câu hỏi gợi ý chưa đưa vào kế hoạch">+${is.goiY.length} gợi ý</span>` : ''}
             ${icon('chevron-down', 'ic-sm lg-chev')}
           </summary>
           <p class="lg-issue-desc">${escapeHtml(is.moTa)}</p>
+          ${isPickMode(overlay) && !is.cauHoi.length ? `<p class="lg-q-empty">${icon('info', 'ic-sm')}Chưa có câu hỏi trong kế hoạch — bấm <strong>Thêm</strong> ở các câu gợi ý bên dưới, hoặc tự nhập câu hỏi.</p>` : ''}
           <ol class="lg-qs">${is.cauHoi
             .map(
               (c, j) => {
@@ -517,12 +510,42 @@ export function render(ctx, params = []) {
             )
             .join('')}</ol>
           ${sugg && sugg.key === is.key && !sugg.q ? suggHtml('div') : ''}
+          ${goiYHtml(is)}
           <form class="lg-add" data-add="${is.key}"><input class="input" placeholder="Thêm câu hỏi cho vấn đề này…" aria-label="Thêm câu hỏi cho ${escapeHtml(is.tieuDe)}" /><button class="btn btn-sm" type="submit">${icon('plus', 'ic-sm')}Thêm</button><button class="btn btn-sm btn-ghost" type="button" data-issue-ai title="Gợi ý thêm câu hỏi cho vấn đề này">${icon('sparkles', 'ic-sm')}Gợi ý AI</button></form>
         </details>
       </li>`;
         },
       )
       .join('')}</ol>`;
+  }
+
+  /** Danh sách câu hỏi gợi ý (chế độ chọn): Thêm vào kế hoạch / sửa rồi thêm / bỏ gợi ý. */
+  function goiYHtml(is) {
+    if (!is.goiY?.length) return '';
+    const hi = is.goiY.filter((c) => c.priority === 'high').length;
+    const open = openGoiY.has(is.key) ? openGoiY.get(is.key) : !is.cauHoi.length;
+    return `<details class="lg-goiy" data-goiy="${is.key}" ${open ? 'open' : ''}>
+      <summary>${icon('sparkles', 'ic-sm')}<strong>Câu hỏi gợi ý (${is.goiY.length})</strong><small>bấm Thêm để đưa vào kế hoạch · sửa trước khi thêm · bỏ câu không phù hợp</small></summary>
+      <div class="lg-goiy-tools"><button type="button" class="btn btn-sm" data-sq-all>${icon('plus', 'ic-sm')}Thêm tất cả (${is.goiY.length})</button>${hi ? `<button type="button" class="btn btn-sm btn-ghost" data-sq-hi>Chỉ thêm câu quan trọng (${hi})</button>` : ''}</div>
+      <ol class="lg-sqs">${is.goiY
+        .map(
+          (c) => `<li class="lg-sq ${c.priority === 'high' ? 'hi' : ''}" data-sq="${escapeHtml(c.origin)}">
+          <span class="lg-sq-text">${escapeHtml(c.text)}</span>
+          <span class="lg-sq-meta">${BUOC[c.buoc] ? `<span class="q-buoc buoc-${c.buoc}">${BUOC[c.buoc]}</span>` : ''}<span class="src src-${c.src}">${SOURCE_LABELS[c.src] || c.src}</span>
+            <span class="lg-sq-tools"><button type="button" class="btn btn-sm lg-sq-add" data-sq-add>${icon('plus', 'ic-sm')}Thêm</button><button type="button" class="btn btn-ghost btn-sm btn-icon" data-sq-edit aria-label="Sửa rồi thêm" title="Sửa rồi thêm vào kế hoạch">${icon('wand', 'ic-sm')}</button><button type="button" class="btn btn-ghost btn-sm btn-icon" data-sq-x aria-label="Bỏ gợi ý này" title="Bỏ gợi ý (không hiện nữa)">${icon('x', 'ic-sm')}</button></span>
+          </span>
+        </li>`,
+        )
+        .join('')}</ol>
+    </details>`;
+  }
+
+  /** Thanh chế độ chọn câu hỏi (đầu tab Vấn đề & câu hỏi). */
+  function pickBarHtml() {
+    if (!isPickMode(overlay)) return `<div class="lg-pickbar legacy">${icon('info', 'ic-sm')}<span>Kế hoạch này đưa sẵn mọi câu hỏi hệ thống sinh ra.</span><button type="button" class="btn btn-sm btn-ghost" data-pick-mode>Chuyển sang chọn câu hỏi từ gợi ý</button></div>`;
+    const sug = plan.stats.suggestions || 0;
+    const hi = plan.issues.reduce((s, is) => s + (is.goiY || []).filter((c) => c.priority === 'high').length, 0);
+    return `<div class="lg-pickbar">${icon('layers', 'ic-sm')}<span><strong>${plan.stats.questions}</strong> câu trong kế hoạch · <strong>${sug}</strong> câu gợi ý</span><span class="spacer"></span>${sug ? `<button type="button" class="btn btn-sm" data-pick-all>${icon('plus', 'ic-sm')}Thêm tất cả gợi ý</button>${hi ? `<button type="button" class="btn btn-sm btn-ghost" data-pick-hi>Chỉ thêm câu quan trọng (${hi})</button>` : ''}` : ''}${plan.stats.questions ? `<button type="button" class="btn btn-sm btn-ghost" data-pick-none title="Đưa mọi câu (trừ câu tự thêm) về lại gợi ý">Bỏ hết về gợi ý</button>` : ''}</div>`;
   }
 
   function suggHtml(tag = 'li') {
@@ -587,8 +610,10 @@ export function render(ctx, params = []) {
   function addSuggestion(i) {
     const x = sugg?.items?.[i];
     if (!x || x.added) return;
+    // Người dùng chủ động bấm Thêm → câu vào thẳng kế hoạch (câu AI vẫn giữ nhãn “AI gợi ý”).
     const bucket = sugg.offline ? overlay.added : overlay.ai;
-    bucket[sugg.key] = [...(bucket[sugg.key] || []), x.text];
+    bucket[sugg.key] = [...new Set([...(bucket[sugg.key] || []), x.text])];
+    if (!sugg.offline && isPickMode(overlay)) pickQuestions(overlay, sugg.key, [x.text]);
     learnedBank.learn(plan.crime.dieu, sugg.key, x.text);
     x.added = true;
   }
@@ -725,8 +750,11 @@ export function render(ctx, params = []) {
     panel.addEventListener(
       'toggle',
       (e) => {
+        if (e.target.tagName !== 'DETAILS') return;
+        if (e.target.matches('[data-goiy]')) return openGoiY.set(e.target.dataset.goiy, e.target.open);
+        if (e.target.matches('.lg-q-ans')) return;
         const li = e.target.closest?.('[data-issue]');
-        if (li && e.target.tagName === 'DETAILS') openIssues.set(li.dataset.issue, e.target.open);
+        if (li) openIssues.set(li.dataset.issue, e.target.open);
       },
       true,
     );
@@ -748,6 +776,7 @@ export function render(ctx, params = []) {
       }
       const ia = e.target.closest('[data-issue-ai]');
       if (ia) return suggest(ia.closest('[data-issue]').dataset.issue);
+      if (handlePick(e)) return;
       const li = e.target.closest('.lg-q');
       if (!li) return;
       const key = li.closest('[data-issue]').dataset.issue;
@@ -755,6 +784,11 @@ export function render(ctx, params = []) {
       const q = plan.issues.find((i) => i.key === key).cauHoi.find((c) => c.text === text);
       if (e.target.closest('[data-qai]')) return suggest(key, q.text);
       if (e.target.closest('[data-qdel]')) {
+        if (isPickMode(overlay) && !q.local) {
+          unpickQuestion(overlay, key, q.origin);
+          refresh();
+          return toast('Đã đưa câu hỏi về lại danh sách gợi ý');
+        }
         removeQuestion(key, q);
         refresh();
         toast('Đã xóa câu hỏi');
@@ -772,14 +806,17 @@ export function render(ctx, params = []) {
         const box = li.querySelector('.lg-q-text');
         box.innerHTML = `<textarea class="textarea" rows="2" aria-label="Sửa câu hỏi">${escapeHtml(q.text)}</textarea><div class="inline" style="margin-top:6px"><button class="btn btn-sm btn-primary" type="button" data-qsave>Lưu</button><button class="btn btn-sm btn-ghost" type="button" data-qcancel>Hủy</button></div>`;
         const ta = box.querySelector('textarea');
+        attachSuggest(ta, (v) => questionSuggestions(v, suggestCtx()));
         ta.focus();
         box.querySelector('[data-qcancel]').addEventListener('click', refresh);
         box.querySelector('[data-qsave]').addEventListener('click', () => {
           const v = ta.value.trim();
           if (!v) return;
           if (q.local) overlay.added[key] = overlay.added[key].map((t) => (t === q.text ? v : t));
-          else if (q.src === 'ai') overlay.ai[key] = overlay.ai[key].map((t) => (t === q.text ? v : t));
-          else overlay.edited[q.editedFrom || q.text] = v;
+          else if (q.src === 'ai') {
+            overlay.ai[key] = overlay.ai[key].map((t) => (t === q.text ? v : t));
+            if (overlay.picked?.[key]) overlay.picked[key] = overlay.picked[key].map((t) => (t === q.text ? v : t));
+          } else overlay.edited[q.editedFrom || q.text] = v;
           refresh();
         });
       }
@@ -843,6 +880,101 @@ export function render(ctx, params = []) {
     $('[data-ai-more]', main).addEventListener('click', aiMore);
   }
 
+  /** Thao tác chế độ chọn câu hỏi. Trả về true nếu đã xử lý. */
+  function handlePick(e) {
+    const t = e.target;
+    if (t.closest('[data-pick-mode]')) {
+      toPickMode(overlay, plan);
+      refresh();
+      toast('Đã chuyển sang chế độ chọn câu hỏi — các câu đang có vẫn giữ trong kế hoạch');
+      return true;
+    }
+    const bulk = t.closest('[data-pick-all], [data-pick-hi]');
+    if (bulk) {
+      const onlyHi = bulk.matches('[data-pick-hi]');
+      let n = 0;
+      plan.issues.forEach((is) => {
+        const list = (is.goiY || []).filter((c) => !onlyHi || c.priority === 'high');
+        n += list.length;
+        pickQuestions(overlay, is.key, list.map((c) => c.origin));
+      });
+      refresh();
+      toast(`Đã thêm ${n} câu hỏi gợi ý vào kế hoạch`);
+      return true;
+    }
+    if (t.closest('[data-pick-none]')) {
+      overlay.picked = {};
+      refresh();
+      toast('Đã đưa các câu hỏi về lại danh sách gợi ý (câu tự thêm vẫn giữ)');
+      return true;
+    }
+    const box = t.closest('[data-goiy]');
+    if (!box) return false;
+    const key = box.dataset.goiy;
+    const is = plan.issues.find((x) => x.key === key);
+    const sa = t.closest('[data-sq-all], [data-sq-hi]');
+    if (sa) {
+      const list = is.goiY.filter((c) => sa.matches('[data-sq-all]') || c.priority === 'high');
+      pickQuestions(overlay, key, list.map((c) => c.origin));
+      openGoiY.set(key, false);
+      refresh();
+      toast(`Đã thêm ${list.length} câu hỏi vào kế hoạch`);
+      return true;
+    }
+    const li = t.closest('[data-sq]');
+    if (!li) return false;
+    const origin = li.dataset.sq;
+    const c = is.goiY.find((x) => x.origin === origin);
+    if (t.closest('[data-sq-add]')) {
+      pickQuestions(overlay, key, [origin]);
+      openGoiY.set(key, true);
+      refresh();
+      toast('Đã thêm vào kế hoạch');
+      return true;
+    }
+    if (t.closest('[data-sq-x]')) {
+      if (c?.src === 'ai') overlay.ai[key] = (overlay.ai[key] || []).filter((x) => x !== origin);
+      else overlay.removed.push(origin);
+      openGoiY.set(key, true);
+      refresh();
+      toast('Đã bỏ gợi ý');
+      return true;
+    }
+    if (t.closest('[data-sq-edit]')) {
+      const tx = li.querySelector('.lg-sq-text');
+      tx.innerHTML = `<textarea class="textarea" rows="2" aria-label="Sửa câu hỏi gợi ý">${escapeHtml(c.text)}</textarea><div class="inline" style="margin-top:6px"><button class="btn btn-sm btn-primary" type="button" data-sq-save>${icon('plus', 'ic-sm')}Lưu &amp; thêm vào kế hoạch</button><button class="btn btn-sm btn-ghost" type="button" data-sq-cancel>Hủy</button></div>`;
+      const ta = tx.querySelector('textarea');
+      attachSuggest(ta, (v) => questionSuggestions(v, suggestCtx()));
+      ta.focus();
+      tx.querySelector('[data-sq-cancel]').addEventListener('click', refresh);
+      tx.querySelector('[data-sq-save]').addEventListener('click', () => {
+        const v = ta.value.trim();
+        if (!v) return;
+        if (c.src === 'ai') {
+          overlay.ai[key] = (overlay.ai[key] || []).map((x) => (x === origin ? v : x));
+          pickQuestions(overlay, key, [v]);
+        } else {
+          overlay.edited[origin] = v;
+          pickQuestions(overlay, key, [origin]);
+        }
+        openGoiY.set(key, true);
+        refresh();
+        toast('Đã sửa và thêm vào kế hoạch');
+      });
+      return true;
+    }
+    return false;
+  }
+
+  /** Ngữ cảnh gợi ý khi nhập câu hỏi: dấu hiệu định tội, hành vi, người trong hồ sơ. */
+  function suggestCtx() {
+    const people = [...new Set(casesRepo.list((c) => (c.toiDanh || []).includes(String(sel.dieu))).flatMap((c) => (c.persons || []).map((p) => p.hoTen)))].slice(0, 6);
+    return { signs: plan?.crime?.dauHieu || [], acts: (plan?.hanhVi || []).map((h) => h.ten), people };
+  }
+  function bindSuggestInputs(host) {
+    $$('.lg-add input', host).forEach((el) => attachSuggest(el, (v) => questionSuggestions(v, suggestCtx())));
+  }
+
   function removeQuestion(key, q, silent) {
     if (q.local) overlay.added[key] = (overlay.added[key] || []).filter((t) => t !== q.text);
     else if (q.src === 'ai') overlay.ai[key] = (overlay.ai[key] || []).filter((t) => t !== q.text);
@@ -878,7 +1010,7 @@ export function render(ctx, params = []) {
         overlay.ai[k] = [...(overlay.ai[k] || []), x.text];
       });
       refresh();
-      toast(`AI đã gợi ý thêm ${list.length} câu hỏi`);
+      toast(isPickMode(overlay) ? `AI đã gợi ý thêm ${list.length} câu hỏi — xem trong mục “Câu hỏi gợi ý” của từng vấn đề` : `AI đã gợi ý thêm ${list.length} câu hỏi`);
     } catch (err) {
       toast(err.message, { type: 'error', timeout: 5000 });
     } finally {
@@ -1016,7 +1148,8 @@ export function render(ctx, params = []) {
          <div class="field"><label for="st-case">Hồ sơ vụ án</label><select class="select" id="st-case" name="caseId">${caseOptions(cases[0]?.id || '')}</select></div>
          <div class="field"><label for="st-person">Người khai</label><select class="select" id="st-person" name="personId"></select></div>
          <div class="field" data-new-name><label for="st-name">Họ tên người khai</label><input class="input" id="st-name" name="hoTen" placeholder="Có thể bổ sung sau" /></div>
-         <label class="check"><input type="checkbox" name="prefill" />Đưa sẵn toàn bộ ${plan.stats.questions} câu hỏi vào biên bản (chưa trả lời)</label>
+         ${isPickMode(overlay) && plan.stats.suggestions ? `<label class="check"><input type="checkbox" name="pickAll" ${plan.stats.questions ? '' : 'checked'} />Đưa cả ${plan.stats.suggestions} câu hỏi gợi ý chưa chọn vào kế hoạch${plan.stats.questions ? '' : ' (kế hoạch đang trống)'}</label>` : ''}
+         <label class="check"><input type="checkbox" name="prefill" />Đưa sẵn các câu hỏi trong kế hoạch vào biên bản (chưa trả lời)</label>
          <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="submit">${icon('message', 'ic-sm')}Bắt đầu ghi</button></div>
        </form>`,
       {
@@ -1037,6 +1170,10 @@ export function render(ctx, params = []) {
           box.querySelector('[data-f]').addEventListener('submit', (e) => {
             e.preventDefault();
             const f = Object.fromEntries(new FormData(e.target));
+            if (f.pickAll) {
+              plan.issues.forEach((is) => pickQuestions(overlay, is.key, (is.goiY || []).map((c) => c.origin)));
+              refresh();
+            }
             const caseItem = casesRepo.get(f.caseId);
             const person = caseItem?.persons?.find((p) => p.id === f.personId) || null;
             const rec = newRecord({ caseItem, person, roleId: sel.roleId, plan, settings: ctx.settings() });

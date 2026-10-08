@@ -368,7 +368,21 @@ export async function analyzeWithAi(call, text, { primary, offline, role = 'ngư
     const k = `${String(h?.dieu || '').replace(/\D+$/, '')}|${h?.hanhViId || String(h?.ten || '').toLowerCase().trim()}`;
     return h && !seen.has(k) && seen.add(k);
   });
-  const items = j.hanhVi
+  const items = aiItems(j.hanhVi, primary);
+  // Giữ thêm các hành vi hệ thống khớp mạnh mà AI bỏ sót.
+  const have = new Set(items.map((x) => `${x.dieu}|${x.hanhViId}`));
+  const extra = offline.items.filter((x) => x.hanhViId && x.score >= 0.5 && !have.has(`${x.dieu}|${x.hanhViId}`)).map((x) => ({ ...x, checked: false }));
+  const dieus = [...new Set(items.map((x) => x.dieu).filter((d) => findCrime(d)))];
+  const crimes = [
+    ...dieus.map((d) => offline.crimes.find((c) => c.dieu === d) || { dieu: d, ten: findCrime(d).ten, score: 0, reasons: [] }).map((c) => ({ ...c, reasons: [...new Set([...(c.reasons || []), 'AI xác định có hành vi thuộc điều này'])] })),
+    ...offline.crimes.filter((c) => !dieus.includes(c.dieu)),
+  ];
+  return { tomTat: j.tomTat || offline.tomTat, keywords: offline.keywords, crimes, items: [...items, ...extra], ai: true, aiParts: { total: run.total, failed: run.errors.length, split: run.split } };
+}
+
+/** Hành vi AI trả về → mục kết quả (điều luật kiểm tra với hệ thống; hành vi trùng danh mục lấy theo danh mục). */
+export function aiItems(hanhVi, primary) {
+  return (hanhVi || [])
     .filter((h) => h && h.ten)
     .map((h) => {
       const dieu = String(h.dieu || primary).replace(/\D+$/g, '').replace(/^Điều\s*/i, '').trim();
@@ -388,15 +402,33 @@ export async function analyzeWithAi(call, text, { primary, offline, role = 'ngư
         nguon: 'ai',
       };
     });
-  // Giữ thêm các hành vi hệ thống khớp mạnh mà AI bỏ sót.
-  const have = new Set(items.map((x) => `${x.dieu}|${x.hanhViId}`));
-  const extra = offline.items.filter((x) => x.hanhViId && x.score >= 0.5 && !have.has(`${x.dieu}|${x.hanhViId}`)).map((x) => ({ ...x, checked: false }));
-  const dieus = [...new Set(items.map((x) => x.dieu).filter((d) => findCrime(d)))];
-  const crimes = [
-    ...dieus.map((d) => offline.crimes.find((c) => c.dieu === d) || { dieu: d, ten: findCrime(d).ten, score: 0, reasons: [] }).map((c) => ({ ...c, reasons: [...new Set([...(c.reasons || []), 'AI xác định có hành vi thuộc điều này'])] })),
-    ...offline.crimes.filter((c) => !dieus.includes(c.dieu)),
-  ];
-  return { tomTat: j.tomTat || offline.tomTat, keywords: offline.keywords, crimes, items: [...items, ...extra], ai: true, aiParts: { total: run.total, failed: run.errors.length, split: run.split } };
+}
+
+/**
+ * Yêu cầu AI làm tiếp ở bước duyệt hành vi: gửi danh sách hành vi đang có + yêu cầu + tài liệu (đoạn liên quan),
+ * AI trả về hành vi cần THÊM hoặc SỬA và tên các hành vi nên BỎ.
+ */
+export function analyzeRefinePrompt(text, request, { primary, candidates, role, current = [], max = 12000 }) {
+  const cur = current.map((r, i) => `${i + 1}. [Điều ${r.dieu || '?'}] ${r.ten}${r.trich ? ` — “${String(r.trich).slice(0, 160)}”` : ''}`).join('\n');
+  return `Điều đang làm việc: Điều ${primary}. Người sẽ lấy lời khai: ${role}.
+DANH MỤC ĐIỀU LUẬT TRONG HỆ THỐNG (ưu tiên dùng; "hanhViId" lấy trong ngoặc vuông nếu hành vi trùng):
+${catalogForAi(candidates)}
+
+CÁC HÀNH VI ĐÃ XÁC ĐỊNH:
+${cur || '(chưa có)'}
+
+YÊU CẦU CỦA ĐIỀU TRA VIÊN: ${String(request).slice(0, 2000)}
+
+TÀI LIỆU VỤ VIỆC:
+"""
+${String(text).slice(0, max)}
+"""
+
+Thực hiện yêu cầu, chỉ dựa trên tài liệu. Trả về JSON:
+{"hanhVi":[{"ten":"hành vi cần thêm, hoặc hành vi đã có nhưng sửa (giữ nguyên tên cũ trong \"tenCu\")","tenCu":"tên cũ nếu là sửa, không thì null","dieu":"số điều","hanhViId":"id hoặc null","trich":"trích nguyên văn","lyDo":"vì sao","cauHoi":["3–6 câu hỏi nếu hanhViId null"],"taiLieu":["…"]}],
+ "bo":["tên hành vi nên bỏ (nếu yêu cầu)"],
+ "tomTat":"tóm tắt mới nếu yêu cầu liên quan, không thì null",
+ "ghiChu":"1 câu: đã làm gì"}`;
 }
 
 /* ---------------- Câu hỏi cho hành vi mới ---------------- */

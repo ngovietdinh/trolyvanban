@@ -14,6 +14,7 @@ import { uid } from '../lib/store.js';
 import { mobilePanes } from '../lib/panes.js';
 import { openNextStatement } from './next-statement.js';
 import { BUOC } from '../legal/engine.js';
+import { attachSuggest, questionSuggestions } from '../lib/suggest.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const COV = { ro: ['Đã rõ', 'ok'], 'mot-phan': ['Một phần', 'part'], chua: ['Chưa rõ', 'no'] };
@@ -187,6 +188,13 @@ export function render(ctx, params = []) {
   ], { initial: 'main' });
   const qBox = $('[data-q]', root);
   const aBox = $('[data-a]', root);
+  // Gợi ý đầu mục khi tự nhập câu hỏi: người liên quan trong hồ sơ, dấu hiệu định tội, hành vi của kế hoạch.
+  attachSuggest(qBox, (v) => {
+    const c = rec.caseId ? casesRepo.get(rec.caseId) : null;
+    const people = (c?.persons || []).map((p) => p.hoTen).filter((n) => n && n !== rec.nguoiKhai?.hoTen);
+    const acts = (rec.plan?.issues || []).filter((i) => String(i.key || '').includes('hv-')).map((i) => String(i.tieuDe || '').replace(/^(\[[^\]]*\]\s*)?Hành vi:\s*/, ''));
+    return questionSuggestions(v, { people, signs: crime?.dauHieu || [], acts });
+  });
 
   /* ----- Đầu biên bản ----- */
   function renderHead() {

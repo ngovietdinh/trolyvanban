@@ -3381,3 +3381,101 @@ mark.err-mark.is-ai {
     width: 100%;
   }
 }
+
+/* ================= Thanh menu thu gọn (v2.24) ================= */
+.sb-toggle {
+  display: inline-grid;
+}
+.shell {
+  transition: grid-template-columns 0.22s var(--ease);
+}
+@media (min-width: 761px) {
+  body.sb-collapsed .shell {
+    grid-template-columns: 66px minmax(0, 1fr);
+  }
+  body.sb-collapsed .sidebar {
+    padding: 16px 9px 12px;
+    gap: 12px;
+    overflow-x: hidden;
+  }
+  body.sb-collapsed .sb-top {
+    padding: 0;
+    justify-content: center;
+  }
+  body.sb-collapsed .logo-text,
+  body.sb-collapsed .sb-label,
+  body.sb-collapsed .sb-count,
+  body.sb-collapsed .ai-status > div {
+    display: none;
+  }
+  body.sb-collapsed .sb-nav a,
+  body.sb-collapsed .sb-link,
+  body.sb-collapsed .sb-new {
+    font-size: 0;
+    gap: 0;
+    padding: 0;
+    justify-content: center;
+  }
+  body.sb-collapsed .sb-nav {
+    gap: 4px;
+  }
+  body.sb-collapsed .sb-nav a.active::before,
+  body.sb-collapsed .sb-link.active::before {
+    left: -9px;
+  }
+  body.sb-collapsed .ai-status {
+    justify-content: center;
+    padding: 12px 0;
+  }
+}
+@media (max-width: 760px) {
+  .sb-toggle {
+    display: none;
+  }
+}
+
+/* ================= Gợi ý đầu mục khi nhập (v2.24) ================= */
+.sg-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  animation: sg-in 0.15s ease;
+}
+.sg-row[hidden] {
+  display: none;
+}
+.sg-k {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  margin-right: 2px;
+}
+.sg-chip {
+  border: 1px dashed var(--line-strong);
+  background: var(--surface);
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font: 500 12px/1.4 var(--font-sans);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sg-chip:hover {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+@keyframes sg-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}

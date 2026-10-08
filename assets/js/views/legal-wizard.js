@@ -7,7 +7,7 @@ import { findCrime, crimeWithCustomActs, searchCrimes } from '../legal/engine.js
 import { analyzeActs, analyzeOffline, mergeResults } from '../legal/analyze.js';
 import { store } from '../lib/store.js';
 import { aiModeHtml, bindMethod, readMethod, runMethod, METHOD_LABEL } from './legal-analyze.js';
-import { dropzoneHtml, bindDropzone, readAll, toRows, newRow, rowHtml, bindRows, commitRows } from './acts-review.js';
+import { dropzoneHtml, bindDropzone, readAll, toRows, newRow, rowHtml, bindRows, commitRows, mountRowsRefine } from './acts-review.js';
 
 export const WIZARD_STEPS = ['Hành vi', 'Điều luật đề xuất', 'Hành vi theo điều', 'Câu hỏi & sơ đồ cây'];
 
@@ -33,6 +33,8 @@ export function clearWizard() {
  */
 export function mountWizard(ctx, host, { step, onPlan, onExit } = {}) {
   let s = load() || { step: 1, maxStep: 1, manual: '', docText: '', result: null, rows: [], chosen: [], primary: null, extra: [] };
+  let refineCtl = null;
+  const refineState = { history: [], undo: [] };
   if (step) s.step = Math.min(step, s.maxStep || 1);
   const ai = ctx.ai('legal');
   let dz = null;
@@ -262,8 +264,13 @@ export function mountWizard(ctx, host, { step, onPlan, onExit } = {}) {
           </section>`;
         })
         .join('')}
-      ${outside.length ? `<details class="wz-outside"><summary>${outside.length} hành vi thuộc điều chưa chọn (không đưa vào kế hoạch)</summary>${outside.map((r) => `<p>Điều ${escapeHtml(r.dieu)} — ${escapeHtml(r.ten)}</p>`).join('')}<p class="hint">Quay lại bước 2 để chọn thêm điều luật.</p></details>` : ''}`;
+      ${outside.length ? `<details class="wz-outside"><summary>${outside.length} hành vi thuộc điều chưa chọn (không đưa vào kế hoạch)</summary>${outside.map((r) => `<p>Điều ${escapeHtml(r.dieu)} — ${escapeHtml(r.ten)}</p>`).join('')}<p class="hint">Quay lại bước 2 để chọn thêm điều luật.</p></details>` : ''}
+      <section class="la-refine" data-la-refine></section>`;
     bindRows(body, s.rows, { rerender: render, onCount: count3 });
+    if (s.result && (s.docText || s.manual)) {
+      refineCtl?.destroy();
+      refineCtl = mountRowsRefine($('[data-la-refine]', body), ctx, { text: [s.manual && `CÁC HÀNH VI ĐƯỢC NÊU:\n${s.manual}`, s.docText].filter(Boolean).join('\n\n'), primary: s.primary, role: 'người được hỏi', candidates: [...new Set([...ds, ...(s.result.crimes || []).map((c) => c.dieu)])].slice(0, 12), rows: s.rows, result: s.result, rerender: render, state: refineState });
+    }
     $$('[data-add-row]', body).forEach((b) =>
       b.addEventListener('click', () => {
         const r = newRow(s.rows, b.dataset.addRow);

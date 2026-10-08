@@ -76,6 +76,14 @@ Phân tích tài liệu (Thêm hành vi từ tài liệu, Phân tích vụ việ
 - Ngữ cảnh Kho hồ sơ, kết luận AI, lời khai lần tiếp theo được giới hạn theo nhà cung cấp (AI trên máy nhỏ hơn).
 - **Bảo đảm kết quả về đủ** (v2.23): phần nào lỗi / hết giờ / trả sai định dạng thì **tự chia đôi và gửi lại** (tối đa 2 lần chia), phần vẫn lỗi được **thử lại cuối lượt**; dịch vụ trực tuyến gửi **2 phần song song**; câu trả lời chạm giới hạn độ dài thì **tự yêu cầu viết tiếp** đúng chỗ dừng và ghép lại (mọi chức năng AI, tối đa 3 lần); JSON bị cắt dở vẫn lấy được các phần tử trọn vẹn.
 
+## Tùy biến nội dung (v2.24)
+
+- **Câu hỏi gợi ý** (`assets/js/legal/plan-overlay.js`): câu hỏi hệ thống / AI sinh ra chỉ là gợi ý; điều tra viên bấm **Thêm** để đưa vào kế hoạch, sửa rồi thêm, bỏ gợi ý, thêm tất cả / chỉ câu quan trọng, đưa câu về lại gợi ý. Kế hoạch lưu từ bản cũ (không có `mode: 'pick'`) giữ nguyên mọi câu; có nút chuyển sang chế độ chọn. Ghi lời khai khi kế hoạch trống: hộp thoại tự tích đưa cả câu gợi ý vào kế hoạch.
+- **Yêu cầu AI làm tiếp** (`assets/js/views/ai-refine.js`): dưới kết quả Sơ đồ vụ việc, bước duyệt hành vi (Thêm hành vi từ tài liệu, Phân tích vụ việc) và Nhận định AI ở Theo dõi hồ sơ — gõ yêu cầu (có gợi ý), AI làm tiếp trên kết quả đang có kèm đoạn tài liệu liên quan nhất tới yêu cầu; lịch sử yêu cầu, dừng, hoàn tác.
+- **Sơ đồ logic tùy chỉnh** (`assets/js/legal/diagram.js`, `assets/js/views/diagram-editor.js`): tab **Vẽ & chỉnh sửa** của Sơ đồ vụ việc (hoặc **Tự vẽ sơ đồ** trên khung trống) — kéo thả, thêm / sửa / xóa nút và mũi tên, nối nút, ghi chú, bút vẽ tự do, tẩy, hoàn tác / làm lại, sắp xếp tự động, thu phóng, toàn màn hình (Fullscreen API, phủ kín cửa sổ trên iPhone), xuất PNG / SVG; tự lưu theo hồ sơ (`diagrams`); khi sơ đồ vụ việc thay đổi (AI làm tiếp, vẽ lại) phần tự sinh cập nhật nhưng giữ vị trí, nhãn đã sửa, phần tự thêm.
+- **Gợi ý đầu mục khi nhập** (`assets/js/lib/suggest.js`): hàng gợi ý dưới ô thêm / sửa câu hỏi, ô Hỏi khi ghi lời khai, tóm tắt hồ sơ, yêu cầu AI, nhãn sơ đồ — dựa vào nội dung đang gõ và hồ sơ (người liên quan, dấu hiệu định tội, hành vi, số tiền).
+- **Thu gọn thanh menu**: nút cạnh tên màn hình hoặc `Ctrl B`, nhớ lựa chọn.
+
 ## Bản cài đặt trên máy tính (Windows, macOS)
 
 Ngoài bản web, ứng dụng có **bộ cài đặt** chạy như phần mềm riêng (Electron, thư mục `desktop/`), dùng được khi không có mạng.

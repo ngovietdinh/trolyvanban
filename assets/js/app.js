@@ -418,6 +418,33 @@ function closeSidebar() {
   sidebar.classList.remove('open');
 }
 $('[data-sidebar-open]').addEventListener('click', () => sidebar.classList.add('open'));
+
+/* ---------- Thu gọn thanh menu (máy tính): chỉ còn biểu tượng, rê chuột hiện tên; ghi nhớ trên máy ---------- */
+const SB_KEY = 'tlvb:sb-collapsed';
+function setSidebarCollapsed(on) {
+  document.body.classList.toggle('sb-collapsed', on);
+  const t = $('[data-sidebar-toggle]');
+  t?.setAttribute('aria-expanded', String(!on));
+  t?.setAttribute('aria-label', on ? 'Mở rộng thanh menu (Ctrl B)' : 'Thu gọn thanh menu (Ctrl B)');
+  // Khi thu gọn, tên chức năng hiện dưới dạng chú thích khi rê chuột.
+  $$('.sb-nav a, .sb-link, .sb-new', sidebar).forEach((a) => {
+    if (on) a.title = a.textContent.replace(/\s+\d+$/, '').trim();
+    else a.removeAttribute('title');
+  });
+  try {
+    localStorage.setItem(SB_KEY, on ? '1' : '0');
+  } catch {}
+}
+$('[data-sidebar-toggle]').addEventListener('click', () => setSidebarCollapsed(!document.body.classList.contains('sb-collapsed')));
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'b' && accounts.current() && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !e.target.isContentEditable) {
+    e.preventDefault();
+    setSidebarCollapsed(!document.body.classList.contains('sb-collapsed'));
+  }
+});
+try {
+  if (localStorage.getItem(SB_KEY) === '1') setSidebarCollapsed(true);
+} catch {}
 $$('[data-sidebar-close]').forEach((el) => el.addEventListener('click', closeSidebar));
 $('[data-ai-status]').addEventListener('click', () => ctx.navigate('#settings'));
 

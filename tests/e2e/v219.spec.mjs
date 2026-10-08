@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { trackErrors, freshApp } from './helpers.mjs';
+import { trackErrors, freshApp, pickAll } from './helpers.mjs';
 
 /** Tạo hồ sơ (Điều 353) có một bị can và một người làm chứng, lưu kế hoạch hỏi bị can vào hồ sơ. */
 async function setupCase(page) {
@@ -18,6 +18,7 @@ async function setupCase(page) {
     await expect(page.locator('.doc-item', { hasText: name })).toBeVisible();
   }
   await page.goto('/app.html#legal/353');
+  await pickAll(page);
   await page.click('[data-save-plan]');
   await page.fill('#pl-title', 'Hỏi cung bị can A');
   await page.selectOption('#pl-case', caseId);

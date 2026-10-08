@@ -19,7 +19,11 @@ export function planToTree(plan, track = null) {
       count: ti ? `${ti.done}/${ti.total}` : is.cauHoi.length,
       level: ti?.level,
       jump: is.key,
-      children: is.cauHoi.map((c, i) => ({ id: `${is.key}#${i}`, kind: 'q', label: c.text, src: c.src, high: c.priority === 'high', jump: is.key, st: ti?.items[i]?.status })),
+      children: [
+        ...is.cauHoi.map((c, i) => ({ id: `${is.key}#${i}`, kind: 'q', label: c.text, src: c.src, high: c.priority === 'high', jump: is.key, st: ti?.items[i]?.status })),
+        // Câu gợi ý chưa đưa vào kế hoạch: hiện mờ, nét đứt.
+        ...(is.goiY || []).map((c, i) => ({ id: `${is.key}~${i}`, kind: 'q', sug: true, label: c.text, src: c.src, jump: is.key })),
+      ],
     };
   };
   const crimeNode = (crime, keys, primary) => {
@@ -62,8 +66,8 @@ function nodeHtml(n, depth, open, idx) {
   const kids = n.children || [];
   const isOpen = open.has(n.id);
   const leaf = !kids.length;
-  return `<li class="pt-li pt-${n.kind} ${isOpen ? 'open' : ''} ${leaf ? 'leaf' : ''} ${n.st ? `pt-st-${n.st}` : ''} ${n.level ? `pt-lv-${n.level}` : ''}" data-node="${escapeHtml(n.id)}" style="--i:${idx}">
-    <div class="pt-node" ${leaf ? '' : `role="button" tabindex="0" aria-expanded="${isOpen}"`} ${n.jump && n.kind !== 'q' ? `data-jump-key="${escapeHtml(n.jump)}"` : ''} title="${escapeHtml(n.kind === 'q' ? n.label : `${n.label}${n.sub ? ` — ${n.sub}` : ''}`)}">
+  return `<li class="pt-li pt-${n.kind} ${n.sug ? 'pt-sug' : ''} ${isOpen ? 'open' : ''} ${leaf ? 'leaf' : ''} ${n.st ? `pt-st-${n.st}` : ''} ${n.level ? `pt-lv-${n.level}` : ''}" data-node="${escapeHtml(n.id)}" style="--i:${idx}">
+    <div class="pt-node" ${leaf ? '' : `role="button" tabindex="0" aria-expanded="${isOpen}"`} ${n.jump && n.kind !== 'q' ? `data-jump-key="${escapeHtml(n.jump)}"` : ''} title="${escapeHtml(n.kind === 'q' ? `${n.sug ? '[Gợi ý — chưa trong kế hoạch] ' : ''}${n.label}` : `${n.label}${n.sub ? ` — ${n.sub}` : ''}`)}">
       ${n.kind === 'q' ? `<span class="pt-dot ${n.high ? 'hi' : ''} ${n.st ? `tk-dot tk-st-${n.st}` : ''}" ${n.st ? `title="${escapeHtml(Q_STATUS[n.st].label)}"` : ''}></span>` : KIND_ICON[n.kind] ? icon(KIND_ICON[n.kind], 'ic-sm') : ''}
       <span class="pt-text"><span class="pt-label">${escapeHtml(n.label)}</span>${n.sub ? `<small>${escapeHtml(n.sub)}</small>` : ''}</span>
       ${n.badge ? `<em class="pt-badge">${escapeHtml(n.badge)}</em>` : ''}

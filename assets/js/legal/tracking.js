@@ -2,6 +2,7 @@
 // tiến độ từng kế hoạch / hồ sơ vụ án, cảnh báo, phân tích – kết luận sơ bộ, báo cáo Word.
 // Chạy hoàn toàn trên máy; không phụ thuộc giao diện để kiểm thử được.
 import { generatePlan, findCrime } from './engine.js';
+import { applyPlanOverlay } from './plan-overlay.js';
 import { getRole } from './roles.js';
 import { signCoverage, amountsIn } from './analyze.js';
 import { localContradictions } from './assist.js';
@@ -93,17 +94,7 @@ export function planFromSaved(saved, { roleId, custom = {}, learned = {} } = {})
   } catch {
     return null;
   }
-  const o = { removed: [], edited: {}, added: {}, ai: {}, ...(saved.overlay || {}) };
-  let n = 0;
-  for (const is of p.issues) {
-    is.cauHoi = is.cauHoi.filter((c) => !o.removed.includes(c.text)).map((c) => (o.edited[c.text] ? { ...c, text: o.edited[c.text] } : c));
-    const have = new Set(is.cauHoi.map((c) => c.text.toLowerCase()));
-    [...(o.ai[is.key] || []).map((t) => [t, 'ai', 'normal']), ...(o.added[is.key] || []).map((t) => [t, 'tuy-chinh', 'high'])].forEach(([t, src, priority]) => {
-      if (have.has(t.toLowerCase())) return;
-      have.add(t.toLowerCase());
-      is.cauHoi.push({ id: `x${++n}`, text: t, src, priority });
-    });
-  }
+  applyPlanOverlay(p, saved.overlay || {});
   p.stats.questions = p.issues.reduce((s, i) => s + i.cauHoi.length, 0);
   return p;
 }

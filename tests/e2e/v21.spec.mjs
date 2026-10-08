@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { trackErrors, mockClaude, freshApp, setApiKey } from './helpers.mjs';
+import { trackErrors, mockClaude, freshApp, setApiKey, pickAll } from './helpers.mjs';
 import { docxToText } from '../../assets/js/lib/docx.js';
 
 /** Tạo tệp .docx nén DEFLATE (giống Word thật) bằng zipfile của Python. */
@@ -70,6 +70,7 @@ test.describe('Cây hỏi đáp: hành vi thủ công, gợi ý câu hỏi, phi�
   test('gợi ý câu hỏi truy tiếp ngoại tuyến cho từng câu hỏi, thêm vào vấn đề', async ({ page }) => {
     const t = trackErrors(page);
     await freshApp(page, '#legal/353');
+    await pickAll(page);
     const issue = page.locator('.lg-issue').nth(1);
     const n = await issue.locator('.lg-q').count();
     await issue.locator('.lg-q').first().hover();
@@ -105,6 +106,7 @@ test.describe('Cây hỏi đáp: hành vi thủ công, gợi ý câu hỏi, phi�
 
   test('xuất phiếu hỏi Word: toàn bộ câu hỏi, chưa có câu trả lời', async ({ page }) => {
     await freshApp(page, '#legal/222');
+    await pickAll(page);
     const total = Number((await page.locator('[data-stats] strong').nth(1).textContent()).trim());
     const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-export-blank]').click()]);
     expect(dl.suggestedFilename()).toMatch(/^phieu-hoi-dieu-222/);
@@ -246,6 +248,9 @@ test.describe('Mẫu văn bản từ file Word', () => {
     await setApiKey(page, 'anthropic', 'sk-ant-test');
     await page.goto('/app.html#tpl/new');
     await page.locator('[data-file]').setInputFiles(makeDocx());
+    // Chờ đọc xong tệp mẫu (có nút AI, các trường tự nhận diện đã hiện) rồi mới đếm.
+    await page.locator('[data-ai]').waitFor();
+    await expect(page.locator('[data-fields]')).toBeVisible();
     const before = await page.locator('.tpl-field').count();
     await page.locator('[data-ai]').click();
     await expect(page.locator('.tpl-field')).toHaveCount(before + 2);

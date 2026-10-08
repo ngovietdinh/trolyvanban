@@ -147,8 +147,9 @@ test.describe('Ghi lời khai: dán & chuyển đổi, tự học, ghi nhớ', (
     await page.keyboard.press('Control+Enter');
     await page.goto('/app.html#legal/353');
     const issue = page.locator('[data-issue="dong-pham"]');
-    await issue.locator('summary').click();
-    const learned = issue.locator('.lg-q', { hasText: 'sổ quỹ đen của ban quản lý' });
+    await issue.locator('.lg-is-sum').click();
+    // Câu đã học nằm trong danh sách gợi ý của kế hoạch mới.
+    const learned = issue.locator('.lg-sq', { hasText: 'sổ quỹ đen của ban quản lý' });
     await expect(learned).toHaveCount(1);
     await expect(learned).toContainText('Đã học');
     await page.goto('/app.html#settings');

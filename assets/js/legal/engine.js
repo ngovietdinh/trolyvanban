@@ -401,7 +401,7 @@ export function planToText(plan) {
   (plan.lienQuan || []).forEach((r) => out.push(`Điều liên quan: Điều ${r.crime.dieu} BLHS — ${r.crime.ten}`));
   out.push('');
   out.push('HÀNH VI CẦN LÀM RÕ:', ...plan.hanhVi.map((h) => `- ${h.ten}`), '');
-  plan.issues.forEach((is, i) => {
+  plan.issues.filter((is) => is.cauHoi.length).forEach((is, i) => {
     out.push(`${i + 1}. ${is.tieuDe} (${is.canCu})`);
     is.cauHoi.forEach((c, j) => out.push(`   ${i + 1}.${j + 1}. ${c.text}`));
     out.push('');

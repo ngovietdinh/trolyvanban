@@ -12,6 +12,10 @@ import { relativeTime } from '../lib/vn-date.js';
 import { Q_STATUS, Q_STATUS_ORDER, STAGES, caseReport, overviewReport, planFromSaved, qKey, buildCaseReportDocument, buildOverviewDocument } from '../legal/tracking.js';
 import { openRecordUpload } from './record-upload.js';
 import { openNextStatement } from './next-statement.js';
+import { refineHtml, bindRefine } from './ai-refine.js';
+
+// Lịch sử “Yêu cầu AI làm tiếp” của nhận định AI theo hồ sơ (giữ khi vẽ lại màn hình).
+const refineMem = new Map();
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const LEVEL = { cao: ['Cao', 'tk-lv-cao'], 'trung-binh': ['Trung bình', 'tk-lv-tb'], thap: ['Thấp', 'tk-lv-thap'] };
@@ -218,6 +222,48 @@ function renderCase(ctx, id) {
     openNextStatement(ctx, { caseId: c.id, personId: p.id, roleId: p.roleId, nguoiKhai: { hoTen: p.hoTen } });
   });
   $('[data-ai-conclude]', body)?.addEventListener('click', (e) => aiConclude(ctx, c, r, e.currentTarget, redraw));
+  const rfHost = $('[data-tk-refine]', body);
+  if (rfHost) {
+    const ai = ctx.hasAI('legal') ? ctx.ai('legal') : null;
+    rfHost.innerHTML = refineHtml({ ai, title: 'Yêu cầu AI làm tiếp nhận định', placeholder: 'Ví dụ: phân tích sâu hơn vai trò của kế toán, lập bảng so sánh lời khai về số tiền, đề xuất câu hỏi đối chất…', offlineHint: 'Kết nối AI để yêu cầu bổ sung nhận định.' });
+    if (ai) {
+      if (!refineMem.has(c.id)) refineMem.set(c.id, { history: [], undo: [] });
+      const mem = refineMem.get(c.id);
+      bindRefine(rfHost, {
+        ...mem,
+        context: () => ({ people: (c.persons || []).map((p) => p.hoTen), extra: ['Lập bảng tổng hợp số tiền theo từng người', 'Đề xuất câu hỏi đối chất', 'Đánh giá chứng cứ đã có và còn thiếu'] }),
+        snapshot: () => JSON.stringify(casesRepo.get(c.id).aiConclusion || null),
+        restore: (snap) => casesRepo.save({ ...casesRepo.get(c.id), aiConclusion: JSON.parse(snap) }),
+        onDone: redraw,
+        run: async (request, { signal, say }) => {
+          const prev = casesRepo.get(c.id).aiConclusion;
+          const out = $('[data-ai-out]', ctx.view);
+          say(`${ai.local ? 'AI trên máy' : ai.label} đang hoàn thiện nhận định theo yêu cầu…`);
+          const text = await streamClaude({
+            provider: ai.provider,
+            apiKey: ai.apiKey,
+            model: ai.model,
+            system: INVESTIGATOR_SYSTEM,
+            maxTokens: 3500,
+            signal,
+            messages: [{ role: 'user', content: `${concludeContext(ai, c, r)}\n\nNHẬN ĐỊNH ĐÃ CÓ:\n${prev?.text || ''}\n\nYÊU CẦU BỔ SUNG CỦA ĐIỀU TRA VIÊN: ${request}\n\nViết lại TOÀN BỘ nhận định (Markdown, tiếng Việt) đã hoàn thiện theo yêu cầu: giữ các phần còn đúng, bổ sung / sửa theo yêu cầu. Chỉ dựa trên nội dung biên bản, không suy diễn.` }],
+            onText: (d, all) => out && (out.innerHTML = `<div class="md">${renderMarkdown(all)}</div>`),
+          });
+          casesRepo.save({ ...casesRepo.get(c.id), aiConclusion: { text, at: Date.now(), model: ai.model, requests: [...(prev?.requests || []), request].slice(-12) } });
+          toast('Đã cập nhật nhận định AI theo yêu cầu');
+          return 'Đã cập nhật nhận định';
+        },
+      });
+    }
+  }
+}
+
+/** Ngữ cảnh gửi AI để nhận định: tội danh, dấu hiệu, tiến độ, nội dung biên bản. */
+function concludeContext(ai, c, r) {
+  const recs = recordsRepo.list((x) => x.caseId === c.id);
+  const crimes = r.analysis.crimes.map((x) => `Điều ${x.crime.dieu} — ${x.crime.ten}\n  Dấu hiệu: ${x.crime.dauHieu.join('; ')}`).join('\n');
+  const qa = recs.map((x) => `--- Biên bản ${x.nguoiKhai?.hoTen || ''} (lần ${x.lan || 1}):\n${qaToText(x)}`).join('\n').slice(0, ai.local ? 6000 : 16000);
+  return `Hồ sơ: ${c.ten}\nTội danh và dấu hiệu định tội:\n${crimes || '(chưa xác định)'}\n\nTỔNG HỢP TIẾN ĐỘ:\n${r.conclusions.join('\n')}\n\nNỘI DUNG CÁC BIÊN BẢN:\n${qa}`;
 }
 
 function overviewTab(r) {
@@ -301,7 +347,7 @@ function analysisTab(ctx, r) {
       <ul class="tk-concl">${r.conclusions.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
       <div class="tk-ai">
         <div class="inline"><strong>${icon('sparkles', 'ic-sm')}Nhận định của trợ lý AI</strong><span class="spacer"></span><button class="btn btn-sm ${c.aiConclusion ? '' : 'btn-primary'}" type="button" data-ai-conclude>${c.aiConclusion ? 'Phân tích lại' : 'AI phân tích, kết luận'}</button></div>
-        <div data-ai-out>${c.aiConclusion ? `<div class="md">${renderMarkdown(c.aiConclusion.text)}</div><p class="hint">${relativeTime(c.aiConclusion.at)} · ${escapeHtml(c.aiConclusion.model || '')} — chỉ để tham khảo.</p>` : `<p class="hint">${ctx.hasAI('legal') ? 'AI đọc toàn bộ biên bản trong hồ sơ, đối chiếu với dấu hiệu cấu thành để nhận định những gì đã/chưa chứng minh, mâu thuẫn và việc cần làm tiếp.' : ctx.can('legal.ai') ? 'Thêm API key (hoặc AI trên máy) trong Cài đặt để dùng nhận định AI.' : 'Phân hệ Tố tụng đang ngoại tuyến — dùng kết luận sơ bộ trên máy; cần quản trị cấp quyền để dùng AI trực tuyến (AI trên máy vẫn dùng được).'}</p>`}</div>
+        <div data-ai-out>${c.aiConclusion ? `<div class="md">${renderMarkdown(c.aiConclusion.text)}</div><p class="hint">${relativeTime(c.aiConclusion.at)} · ${escapeHtml(c.aiConclusion.model || '')}${c.aiConclusion.requests?.length ? ` · đã làm tiếp ${c.aiConclusion.requests.length} yêu cầu` : ''} — chỉ để tham khảo.</p><div class="tk-refine" data-tk-refine></div>` : `<p class="hint">${ctx.hasAI('legal') ? 'AI đọc toàn bộ biên bản trong hồ sơ, đối chiếu với dấu hiệu cấu thành để nhận định những gì đã/chưa chứng minh, mâu thuẫn và việc cần làm tiếp.' : ctx.can('legal.ai') ? 'Thêm API key (hoặc AI trên máy) trong Cài đặt để dùng nhận định AI.' : 'Phân hệ Tố tụng đang ngoại tuyến — dùng kết luận sơ bộ trên máy; cần quản trị cấp quyền để dùng AI trực tuyến (AI trên máy vẫn dùng được).'}</p>`}</div>
       </div>
       <h3 class="tk-h">${icon('alert', 'ic-sm')}Mâu thuẫn giữa các lời khai</h3>
       ${a.contradictions.length ? `<ul class="iv-ai-list">${a.contradictions.map((m) => `<li class="lvl-${m.mucDo || 'trung-binh'}"><p><strong>${escapeHtml(m.moTa)}</strong></p>${(m.trichDan || []).map((t) => `<blockquote>${escapeHtml(t)}</blockquote>`).join('')}${m.cauHoiLamRo ? `<small>Câu hỏi làm rõ: ${escapeHtml(m.cauHoiLamRo)}</small>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Chưa phát hiện mâu thuẫn rõ rệt về số tiền, diễn biến.</p>'}
@@ -320,15 +366,13 @@ async function aiConclude(ctx, c, r, btn, redraw) {
   btn.innerHTML = `${icon('refresh', 'ic-sm spin')}Đang phân tích…`;
   const out = $('[data-ai-out]', ctx.view);
   try {
-    const crimes = r.analysis.crimes.map((x) => `Điều ${x.crime.dieu} — ${x.crime.ten}\n  Dấu hiệu: ${x.crime.dauHieu.join('; ')}`).join('\n');
-    const qa = recs.map((x) => `--- Biên bản ${x.nguoiKhai?.hoTen || ''} (lần ${x.lan || 1}):\n${qaToText(x)}`).join('\n').slice(0, ai.local ? 6000 : 16000);
     const text = await streamClaude({
       provider: ai.provider,
       apiKey: ai.apiKey,
       model: ai.model,
       system: INVESTIGATOR_SYSTEM,
       maxTokens: 3000,
-      messages: [{ role: 'user', content: `Hồ sơ: ${c.ten}\nTội danh và dấu hiệu định tội:\n${crimes || '(chưa xác định)'}\n\nTỔNG HỢP TIẾN ĐỘ:\n${r.conclusions.join('\n')}\n\nNỘI DUNG CÁC BIÊN BẢN:\n${qa}\n\nViết nhận định ngắn gọn (Markdown, tiếng Việt) gồm các mục: 1) Kết quả đã làm rõ; 2) Dấu hiệu cấu thành đã/chưa có căn cứ; 3) Mâu thuẫn, điểm nghi vấn; 4) Việc cần làm tiếp (câu hỏi, đối chất, tài liệu, giám định). Chỉ dựa trên nội dung biên bản, không suy diễn.` }],
+      messages: [{ role: 'user', content: `${concludeContext(ai, c, r)}\n\nViết nhận định ngắn gọn (Markdown, tiếng Việt) gồm các mục: 1) Kết quả đã làm rõ; 2) Dấu hiệu cấu thành đã/chưa có căn cứ; 3) Mâu thuẫn, điểm nghi vấn; 4) Việc cần làm tiếp (câu hỏi, đối chất, tài liệu, giám định). Chỉ dựa trên nội dung biên bản, không suy diễn.` }],
       onText: (d, all) => out && (out.innerHTML = `<div class="md">${renderMarkdown(all)}</div>`),
     });
     casesRepo.save({ ...casesRepo.get(c.id), aiConclusion: { text, at: Date.now(), model: ai.model } });

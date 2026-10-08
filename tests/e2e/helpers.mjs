@@ -122,3 +122,11 @@ export async function mockProviders(page, reply = () => 'Xin chào từ AI') {
   await page.route('https://generativelanguage.googleapis.com/**', handler('gemini'));
   return calls;
 }
+
+/** Kế hoạch hỏi ở chế độ chọn: đưa mọi câu gợi ý vào kế hoạch (bấm “Thêm tất cả gợi ý”). */
+export async function pickAll(page) {
+  const b = page.locator('[data-pick-all]');
+  await b.waitFor();
+  await b.click();
+  await expect(page.locator('[data-pick-all]')).toHaveCount(0);
+}

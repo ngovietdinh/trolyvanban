@@ -130,4 +130,27 @@ test.describe('Điều hướng và bố cục điện thoại', () => {
     const btn = await page.locator('.modal .modal-actions .btn').first().boundingBox();
     expect(btn.height).toBeGreaterThanOrEqual(40);
   });
+
+  test('sơ đồ tự vẽ trên điện thoại: không tràn ngang, thêm nút bằng chạm, toàn màn hình', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#so-do');
+    await page.locator('[data-cm-blank]').click();
+    const dg = page.locator('[data-dg]');
+    await expect(dg).toBeVisible();
+    expect(await noHorizontalScroll(page)).toBe(true);
+    await page.locator('[data-dg-mode="node"]').click();
+    await page.locator('[data-dg-canvas]').click({ position: { x: 120, y: 120 } });
+    await expect(dg.locator('.dg-node')).toHaveCount(1);
+    await page.locator('[data-dg-label]').fill('Nguyễn Văn An');
+    await expect(dg.locator('.dg-node')).toContainText('Nguyễn Văn An');
+    await page.locator('[data-dg-full]').click();
+    await expect(dg).toHaveClass(/is-full/);
+    const box = await dg.boundingBox();
+    const vp = page.viewportSize();
+    expect(Math.round(box.width)).toBe(vp.width);
+    await page.locator('[data-dg-full]').click();
+    await expect(dg).not.toHaveClass(/is-full/);
+    expect(await noHorizontalScroll(page)).toBe(true);
+    t.assertClean();
+  });
 });

@@ -10,6 +10,8 @@ import { findCrime, generatePlan } from '../legal/engine.js';
 import { localContradictions, aiContradictions } from '../legal/assist.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { uid } from '../lib/store.js';
+import { applyPlanOverlay } from '../legal/plan-overlay.js';
+import { attachSuggest, headingSuggestions } from '../lib/suggest.js';
 import { openRecordUpload } from './record-upload.js';
 import { openNextStatement, hasPrevious } from './next-statement.js';
 
@@ -44,6 +46,7 @@ function caseForm(ctx, existing, onSaved) {
         };
         td.addEventListener('input', showHint);
         showHint();
+        attachSuggest(box.querySelector('[name="tomTat"]'), (v) => headingSuggestions(v, { people: (existing?.persons || []).map((p) => p.hoTen) }));
         box.querySelector('[data-f]').addEventListener('submit', (e) => {
           e.preventDefault();
           const f = Object.fromEntries(new FormData(e.target));
@@ -335,12 +338,7 @@ export function render(ctx, params = []) {
   draw();
 }
 
-/** Áp lớp chỉnh sửa đã lưu của kế hoạch lên kế hoạch sinh mới. */
+/** Áp lớp chỉnh sửa đã lưu của kế hoạch lên kế hoạch sinh mới (dùng chung với Cây hỏi đáp). */
 export function applyOverlay(plan, overlay) {
-  if (!overlay) return plan;
-  for (const is of plan.issues) {
-    is.cauHoi = is.cauHoi.filter((x) => !(overlay.removed || []).includes(x.text)).map((x) => (overlay.edited?.[x.text] ? { ...x, text: overlay.edited[x.text] } : x));
-    [...(overlay.ai?.[is.key] || []), ...(overlay.added?.[is.key] || [])].forEach((t) => is.cauHoi.push({ id: uid(), text: t, src: 'tuy-chinh', priority: 'high' }));
-  }
-  return plan;
+  return overlay ? applyPlanOverlay(plan, overlay, { uid }) : plan;
 }

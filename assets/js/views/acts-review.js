@@ -4,7 +4,9 @@
 import { $, $$, icon, toast, escapeHtml } from '../ui.js';
 import { findCrime, crimeWithCustomActs } from '../legal/engine.js';
 import { customActs } from '../legal/repo.js';
-import { questionsForAct, taiLieuForAct } from '../legal/analyze.js';
+import { questionsForAct, taiLieuForAct, aiItems, analyzeRefinePrompt, ANALYZE_SYSTEM } from '../legal/analyze.js';
+import { extractJson, streamAI } from '../lib/ai.js';
+import { refineHtml, bindRefine } from './ai-refine.js';
 import { extractText } from '../lib/extract.js';
 
 export const MAX_FILE = 40 * 1024 * 1024;
@@ -194,4 +196,81 @@ export function commitRows(rows) {
     byDieu.set(c.dieu, [...new Set([...(byDieu.get(c.dieu) || []), id])]);
   }
   return { byDieu, quotes, created, skipped };
+}
+
+/* ---------------- Yêu cầu AI làm tiếp trên danh sách hành vi ---------------- */
+
+const lkey = (t) => String(t || '').normalize('NFC').toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ').trim();
+
+/**
+ * Áp kết quả AI làm tiếp lên danh sách hàng (sửa trực tiếp rows): hành vi mới → thêm hàng (đã chọn); hành vi sửa
+ * (tenCu khớp) → cập nhật; “bo” → bỏ chọn (không xóa, người dùng vẫn chọn lại được).
+ */
+export function refineRows(rows, raw, primary) {
+  const j = typeof raw === 'string' ? extractJson(raw) : raw;
+  if (!j || (!Array.isArray(j.hanhVi) && !Array.isArray(j.bo))) throw new Error('AI trả về kết quả không đúng định dạng — danh sách hành vi giữ nguyên.');
+  const items = aiItems(j.hanhVi, primary);
+  let added = 0;
+  let updated = 0;
+  let removed = 0;
+  items.forEach((it, i) => {
+    const old = (j.hanhVi[i]?.tenCu && rows.find((r) => lkey(r.ten) === lkey(j.hanhVi[i].tenCu))) || rows.find((r) => lkey(r.ten) === lkey(it.ten) || (it.hanhViId && r.hanhViId === it.hanhViId && r.dieu === it.dieu));
+    if (old) {
+      Object.assign(old, { ten: it.ten, dieu: it.dieu || old.dieu, hanhViId: it.hanhViId ?? old.hanhViId, trich: it.trich || old.trich, lyDo: it.lyDo || old.lyDo, cauHoiAi: it.cauHoi?.length ? it.cauHoi : old.cauHoiAi, checked: true, edited: true });
+      old.q = old.hanhViId ? [] : genQuestions(old);
+      updated++;
+      return;
+    }
+    const r = { ...it, idx: rows.length ? Math.max(...rows.map((x) => x.idx)) + 1 : 0, tenGoc: it.ten, cauHoiAi: it.cauHoi || [], edited: false };
+    r.q = r.hanhViId ? [] : genQuestions(r);
+    rows.push(r);
+    added++;
+  });
+  for (const t of j.bo || []) {
+    const r = rows.find((x) => lkey(x.ten) === lkey(t));
+    if (r && r.checked) {
+      r.checked = false;
+      removed++;
+    }
+  }
+  return { added, updated, removed, tomTat: j.tomTat || null, note: String(j.ghiChu || '').slice(0, 300) };
+}
+
+/**
+ * Gắn hộp “Yêu cầu AI làm tiếp” dưới danh sách hành vi. opts: { text, primary, role, candidates, rows (mảng — sửa
+ * trực tiếp), result (kết quả phân tích — cập nhật tóm tắt), rerender(), state ({history, undo} dùng lại giữa các lần vẽ) }.
+ */
+export function mountRowsRefine(host, ctx, { text, primary, role, candidates, rows, result, rerender, state }) {
+  if (!host) return null;
+  const ai = ctx.hasAI('legal') ? ctx.ai('legal') : null;
+  host.innerHTML = refineHtml({
+    ai,
+    title: 'Yêu cầu AI làm tiếp',
+    placeholder: 'Ví dụ: tìm thêm hành vi lập chứng từ khống, tách hành vi nhận tiền theo từng lần, xem lại điều luật của hành vi 2…',
+    hint: 'AI xem lại tài liệu theo yêu cầu: thêm hành vi còn thiếu, sửa hành vi đã có, bỏ chọn hành vi không phù hợp.',
+    offlineHint: 'Kết nối AI trong Cài đặt để yêu cầu AI tìm thêm, sửa hành vi theo ý muốn.',
+  });
+  if (!ai) return null;
+  return bindRefine(host, {
+    history: state.history,
+    undo: state.undo,
+    context: () => ({ extra: ['Tìm thêm hành vi còn thiếu trong tài liệu', 'Xem lại điều luật áp dụng cho từng hành vi', 'Tách hành vi gộp thành từng hành vi riêng'] }),
+    snapshot: () => JSON.stringify({ rows, tomTat: result.tomTat }),
+    restore: (snap) => {
+      const o = JSON.parse(snap);
+      rows.splice(0, rows.length, ...o.rows);
+      result.tomTat = o.tomTat;
+    },
+    onDone: rerender,
+    run: async (request, { signal, say }) => {
+      const max = ai.local ? 5000 : 12000;
+      say(`${ai.local ? 'AI trên máy' : ai.label} đang thực hiện yêu cầu…`);
+      const out = await streamAI({ ...ai, system: ANALYZE_SYSTEM, cache: true, maxTokens: 4000, signal, messages: [{ role: 'user', content: analyzeRefinePrompt(text, request, { primary, candidates, role, current: rows.filter((r) => r.ten.trim()), max }) }] });
+      const r = refineRows(rows, out, primary);
+      if (r.tomTat) result.tomTat = r.tomTat;
+      const parts = [r.added && `thêm ${r.added}`, r.updated && `sửa ${r.updated}`, r.removed && `bỏ chọn ${r.removed}`].filter(Boolean);
+      toast(parts.length ? `AI đã ${parts.join(', ')} hành vi` : 'AI không thay đổi danh sách hành vi', { type: parts.length ? 'success' : 'info' });
+      return [r.note, parts.length ? `${parts.join(', ')} hành vi` : 'Không thay đổi'].filter(Boolean).join(' · ');
+    },
+  });
 }

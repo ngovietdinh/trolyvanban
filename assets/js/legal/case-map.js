@@ -205,11 +205,42 @@ Trả về JSON:
  "moc":[{"thoiGian":"dd/mm/yyyy hoặc mô tả","suKien":"sự kiện"}]}`;
 }
 
+/** Sơ đồ hiện tại → JSON cùng định dạng AI trả về (gửi kèm khi yêu cầu AI làm tiếp). */
+export function caseMapToAiJson(m) {
+  return {
+    tomTat: m.tomTat || '',
+    banChat: m.banChat || [],
+    nguoi: (m.people || []).map((p) => ({ ten: p.ten, vaiTro: p.vaiTro || '' })),
+    hanhVi: (m.crimes || []).flatMap((c) => c.items.map((it) => ({ ten: it.ten, dieu: c.dieu || '', nguoi: it.nguoi || [], soTien: it.soTien || '', trich: it.trich || '' }))),
+    quanHe: (m.edges || []).map((e) => ({ tu: e.tu, den: e.den, loai: e.loai, noiDung: e.noiDung || '', soTien: e.soTien || '' })),
+    moc: (m.timeline || []).map((t) => ({ thoiGian: t.thoiGian, suKien: t.suKien })),
+  };
+}
+
+/**
+ * Yêu cầu AI làm tiếp trên sơ đồ đang có: gửi sơ đồ (JSON) + yêu cầu của người dùng + đoạn tài liệu liên quan;
+ * AI trả về TOÀN BỘ sơ đồ sau khi sửa (cùng định dạng) để thay thế.
+ */
+export function caseMapRefinePrompt(m, request, { source = '', primary = null, max = 12000 } = {}) {
+  const cur = JSON.stringify(caseMapToAiJson(m));
+  return `${primary ? `Điều luật đang xem xét: Điều ${primary} BLHS.\n` : ''}SƠ ĐỒ VỤ VIỆC HIỆN TẠI (JSON):
+${cur.slice(0, 14000)}
+
+YÊU CẦU CỦA ĐIỀU TRA VIÊN:
+"""
+${String(request).slice(0, 2000)}
+"""
+${source ? `\nTÀI LIỆU, LỜI KHAI GỐC (để đối chiếu, bổ sung — chỉ dùng nội dung có trong này):\n"""\n${String(source).slice(0, max)}\n"""\n` : ''}
+Thực hiện yêu cầu trên sơ đồ hiện tại: giữ nguyên những gì đúng, sửa / bổ sung / bỏ theo yêu cầu, không suy diễn ngoài tài liệu.
+Trả về TOÀN BỘ sơ đồ sau khi sửa, cùng định dạng JSON:
+{"tomTat":"…","banChat":["…"],"nguoi":[{"ten":"…","vaiTro":"…"}],"hanhVi":[{"ten":"…","dieu":"…","nguoi":["…"],"soTien":"…","trich":"…"}],"quanHe":[{"tu":"…","den":"…","loai":"tien|chi-dao|khac","noiDung":"…","soTien":"…"}],"moc":[{"thoiGian":"…","suKien":"…"}],"ghiChu":"1 câu: đã thay đổi gì"}`;
+}
+
 /**
  * Ghép kết quả AI vào cấu trúc sơ đồ; điều luật được kiểm tra với Bộ luật trong phần mềm.
  * append = true: cộng dồn kết quả của phần tài liệu tiếp theo vào sơ đồ AI đã có (tài liệu dài chia nhiều phần).
  */
-export function mergeAiCaseMap(base, raw, { append = false } = {}) {
+export function mergeAiCaseMap(base, raw, { append = false, replace = false } = {}) {
   const j = typeof raw === 'string' ? extractJson(raw) : raw;
   if (!j || (!Array.isArray(j.hanhVi) && !Array.isArray(j.quanHe))) throw new Error('AI trả về kết quả không đúng định dạng — đang dùng sơ đồ phân tích trên máy');
   const byDieu = new Map();
@@ -220,8 +251,10 @@ export function mergeAiCaseMap(base, raw, { append = false } = {}) {
     if (!byDieu.has(k)) byDieu.set(k, { dieu: c ? c.dieu : '', ten: c ? c.ten : 'Hành vi khác (chưa xác định điều luật)', items: [] });
     byDieu.get(k).items.push({ ten: String(h.ten || '').trim(), trich: short(h.trich || '', 220), nguoi: (h.nguoi || []).filter(Boolean), soTien: h.soTien || '' });
   });
-  const people = new Map(base.people.map((p) => [key(p.ten), p]));
-  (j.nguoi || []).forEach((p) => p?.ten && people.set(key(p.ten), { ...(people.get(key(p.ten)) || { mentions: 1 }), ten: p.ten, vaiTro: p.vaiTro || people.get(key(p.ten))?.vaiTro || '' }));
+  // replace: sơ đồ AI trả về (khi làm tiếp theo yêu cầu) thay thế hoàn toàn — người bị AI bỏ thì bỏ.
+  const people = new Map(replace ? [] : base.people.map((p) => [key(p.ten), p]));
+  const before = new Map(base.people.map((p) => [key(p.ten), p]));
+  (j.nguoi || []).forEach((p) => p?.ten && people.set(key(p.ten), { ...(people.get(key(p.ten)) || before.get(key(p.ten)) || { mentions: 1 }), ten: p.ten, vaiTro: p.vaiTro || people.get(key(p.ten))?.vaiTro || '' }));
   const edges = (j.quanHe || []).filter((e) => e?.tu && e?.den).map((e) => ({ tu: e.tu, den: e.den, loai: ['tien', 'chi-dao'].includes(e.loai) ? e.loai : 'khac', noiDung: e.noiDung || '', soTien: e.soTien || '', trich: '', src: 'AI', n: 1 }));
   edges.forEach((e) => [e.tu, e.den].forEach((t) => !people.has(key(t)) && people.set(key(t), { ten: t, vaiTro: 'Người liên quan', mentions: 1 })));
   const timeline = (j.moc || []).filter((m) => m?.suKien).map((m) => ({ ts: parseDate(String(m.thoiGian || ''))?.ts ?? Number.MAX_SAFE_INTEGER, thoiGian: m.thoiGian || '', suKien: m.suKien, src: 'AI' })).sort((a, b) => a.ts - b.ts);
@@ -245,6 +278,9 @@ export function mergeAiCaseMap(base, raw, { append = false } = {}) {
       timeline: uniq([...base.timeline, ...timeline], tk).sort((a, b) => a.ts - b.ts),
       ai: true,
     };
+  }
+  if (replace) {
+    return { ...base, tomTat: j.tomTat || '', banChat: j.banChat || [], crimes: [...byDieu.values()], people: [...people.values()], edges, timeline, ai: true, note: String(j.ghiChu || '').slice(0, 300) };
   }
   return {
     ...base,
@@ -302,4 +338,27 @@ export function caseMapToTree(m, title = 'Vụ việc') {
     : [];
   const time = m.timeline.length ? [{ id: 'time', kind: 'docs', label: 'Dòng thời gian', sub: `${m.timeline.length} mốc`, count: m.timeline.length, children: m.timeline.map((t) => ({ id: id('t'), kind: 'time', label: t.suKien, sub: t.thoiGian })) }] : [];
   return { id: 'root', kind: 'root', label: title, sub: m.tomTat ? short(m.tomTat, 90) : '', count: m.crimes.reduce((s, c) => s + c.items.length, 0), children: [...crimes, ...people, ...time] };
+}
+
+/**
+ * Chọn đoạn tài liệu liên quan nhất tới yêu cầu (gửi kèm khi AI làm tiếp): câu có từ khóa của yêu cầu / tên người
+ * được nhắc được ưu tiên, giữ thứ tự gốc, không vượt quá max ký tự.
+ */
+export function relevantText(full, request, max = 12000) {
+  const t = String(full || '').trim();
+  if (t.length <= max) return t;
+  const words = [...new Set(key(request).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2))];
+  const sents = t.split(/(?<=[.!?;\n])\s+/).filter((x) => x.trim());
+  const scored = sents.map((s, i) => {
+    const k = key(s);
+    return { i, s, score: words.reduce((n, w) => n + (k.includes(w) ? 1 : 0), 0) + (/\d/.test(s) ? 0.3 : 0) };
+  });
+  const pick = new Set();
+  let len = 0;
+  for (const x of [...scored].sort((a, b) => b.score - a.score || a.i - b.i)) {
+    if (len + x.s.length + 1 > max) continue;
+    pick.add(x.i);
+    len += x.s.length + 1;
+  }
+  return scored.filter((x) => pick.has(x.i)).map((x) => x.s).join(' ');
 }

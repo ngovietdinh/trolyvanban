@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { trackErrors, freshApp } from './helpers.mjs';
+import { trackErrors, freshApp, pickAll } from './helpers.mjs';
 
 test.describe('Câu hỏi theo trình tự điều tra, lời khai lần tiếp theo', () => {
   test('cây hỏi đáp: câu hỏi có bước hỏi, có phần chốt lại cuối buổi', async ({ page }) => {
     const t = trackErrors(page);
     await freshApp(page, '#legal/353');
+    await pickAll(page);
     const hv = page.locator('[data-issue^="hv-"]').first();
     await expect(hv.locator('.lg-q').first().locator('.q-buoc')).toHaveText('Tự trình bày');
     await expect(hv.locator('.q-buoc', { hasText: 'Kiểm chứng' }).first()).toBeAttached();

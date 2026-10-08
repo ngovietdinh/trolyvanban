@@ -8,7 +8,7 @@ import { getRole } from '../legal/roles.js';
 import { analyzeOffline, analyzeWithAi, annotateResult, mergeResults } from '../legal/analyze.js';
 import { streamAI } from '../lib/ai.js';
 import { store } from '../lib/store.js';
-import { dropzoneHtml, bindDropzone, readAll, toRows, newRow, rowHtml, bindRows, commitRows } from './acts-review.js';
+import { dropzoneHtml, bindDropzone, readAll, toRows, newRow, rowHtml, bindRows, commitRows, mountRowsRefine } from './acts-review.js';
 
 export const METHOD_LABEL = { 'doi-chieu': 'Đối chiếu Bộ luật trong phần mềm', ai: 'AI phân tích', 'ket-hop': 'Kết hợp AI + đối chiếu Bộ luật' };
 
@@ -74,6 +74,9 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
   let result = null;
   let rows = [];
   let controller = null;
+  let docText = '';
+  let refineCtl = null;
+  const refineState = { history: [], undo: [] };
 
   ctx.modal(
     `<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button>
@@ -128,6 +131,9 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
               $('[data-stop]', actions).addEventListener('click', () => controller.abort());
             }
             result = await runMethod(ctx, method, { text, base: offline, primary: crime.dieu, role: getRole(roleId).ten, signal: controller?.signal, say });
+            docText = text;
+            refineState.history.length = 0;
+            refineState.undo.length = 0;
             say('');
             rows = toRows(result.items, { [crime.dieu]: selected });
             $('[data-step="input"]', box).hidden = true;
@@ -160,8 +166,11 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
                 .map((g) => `<div class="la-group"><h4>${g.d ? `Điều ${g.d} — ${escapeHtml(findCrime(g.d).ten)}${g.d === crime.dieu ? ' <em>(điều đang mở)</em>' : ' <em>(sẽ thêm làm điều liên quan)</em>'}` : 'Cần chọn điều luật'}</h4>${g.items.map((r) => rowHtml(r, ds)).join('')}</div>`)
                 .join('')}
               <button class="btn btn-ghost btn-sm" type="button" data-add-row>${icon('plus', 'ic-sm')}Thêm hành vi tự nhập</button>
-            </section>`;
+            </section>
+            <section class="la-refine" data-la-refine></section>`;
           bindRows(box, rows, { rerender: renderReview, onCount: updateCount });
+          refineCtl?.destroy();
+          refineCtl = mountRowsRefine($('[data-la-refine]', step), ctx, { text: docText, primary: crime.dieu, role: getRole(roleId).ten, candidates: [...new Set([crime.dieu, ...result.crimes.map((c) => c.dieu)])].filter(Boolean).slice(0, 12), rows, result, rerender: renderReview, state: refineState });
           $('[data-add-row]', box).addEventListener('click', () => {
             const r = newRow(rows, crime.dieu);
             rows.push(r);
