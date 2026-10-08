@@ -80,6 +80,13 @@ jobs:
             print(im.get('name'), fr.get('symbol'), fr.get('imageOffset'))
           " "$f"
           exit 1
+      # Cập nhật tại chỗ chạy thật trên macOS / Windows (máy chủ phát hành giả lập, có nguồn dự phòng):
+      # tải phần thay đổi, khởi động lại lên bản mới, kiểm tra sha256, tự quay về khi bản mới hỏng.
+      - name: Kiểm thử cập nhật tại chỗ
+        shell: bash
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node --test tests/desktop/update.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: tlvb-${{ matrix.target }}

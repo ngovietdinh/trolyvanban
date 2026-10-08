@@ -36,6 +36,16 @@ const DISMISS_MS = 12 * 60 * 60 * 1000; // “Để sau”: không nhắc lại 
 const inPlace = () => !!desktop?.update;
 let needInstaller = false;
 
+/**
+ * Bản cài đặt phải cài lại bộ cài (vỏ ứng dụng cũ chưa có cập nhật tại chỗ, hoặc bản mới cần vỏ mới): mở hộp thoại
+ * tải đúng bộ cài theo máy (Windows / Mac chip Apple / Mac Intel) — app.js xử lý sự kiện; không có thì mở trang tải.
+ */
+function openInstaller(reason) {
+  const go = window.dispatchEvent(new CustomEvent('tlvb:need-installer', { detail: { reason }, cancelable: true }));
+  if (go) window.open(DESKTOP_DOWNLOAD_URL, '_blank');
+}
+const INSTALLER_REASON = () => (inPlace() ? 'Bản mới thay đổi phần lõi của ứng dụng nên cần cài bộ cài mới một lần (cài đè, dữ liệu giữ nguyên). Sau đó các bản tiếp theo lại cập nhật tại chỗ.' : 'Bộ cài trên máy là bản cũ (trước v2.16) chưa có chức năng cập nhật tại chỗ. Cài bộ cài mới một lần (cài đè, dữ liệu giữ nguyên) — từ đó về sau bấm “Cập nhật ngay” là xong, không cần tải lại.');
+
 function banner(version, notes = []) {
   if (document.querySelector('.update-banner')) return;
   const d = lsGet(LS.dismissed);
@@ -79,10 +89,7 @@ export async function checkForUpdate() {
 /** Áp dụng bản mới: kích hoạt service worker đang chờ rồi tải lại trang (dữ liệu localStorage giữ nguyên). */
 export async function applyUpdate() {
   if (isDesktop) {
-    if (!inPlace() || needInstaller) {
-      window.open(DESKTOP_DOWNLOAD_URL, '_blank');
-      return;
-    }
+    if (!inPlace() || needInstaller) return openInstaller(INSTALLER_REASON());
     return applyInPlace();
   }
   const latest = await checkForUpdate().then((r) => r.latest).catch(() => null);
@@ -129,9 +136,7 @@ async function applyInPlace() {
     const r = await desktop.update.apply();
     if (r.needInstaller) {
       needInstaller = true;
-      toast('Bản mới cần cài lại bộ cài — đang mở trang tải.', { type: 'info', timeout: 6000 });
-      window.open(DESKTOP_DOWNLOAD_URL, '_blank');
-      return;
+      return openInstaller(INSTALLER_REASON());
     }
     if (r.upToDate) {
       toast('Bạn đang dùng phiên bản mới nhất.');
@@ -142,7 +147,7 @@ async function applyInPlace() {
     toast(`Đã cập nhật lên v${r.version} (${r.changed} tệp, ${(r.bytes / 1048576).toFixed(1)} MB) — khởi động lại…`, { timeout: 4000 });
     setTimeout(() => location.reload(), 900);
   } catch (err) {
-    toast(`${err.message || 'Cập nhật lỗi'} — có thể tải bộ cài mới ở menu Trợ giúp.`, { type: 'error', timeout: 8000 });
+    toast(`${err.message || 'Cập nhật lỗi'} — bấm “Cập nhật ngay” để thử lại; vẫn lỗi thì kiểm tra mạng (mạng cơ quan có thể chặn github.com, raw.githubusercontent.com, cdn.jsdelivr.net).`, { type: 'error', timeout: 10000 });
     btns.forEach((b) => ((b.disabled = false), (b.textContent = 'Cập nhật ngay')));
   } finally {
     off();

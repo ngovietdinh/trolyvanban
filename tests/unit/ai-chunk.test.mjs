@@ -26,22 +26,42 @@ test('chia phần ở ranh giới câu, không vượt kích thước', () => {
   assert.equal(chunkSizeFor({ provider: 'anthropic' }), CHUNK.online);
 });
 
-test('chạy theo phần: phần lỗi không làm hỏng cả lượt; tất cả lỗi thì báo lỗi; dừng được', async () => {
-  const seen = [];
-  const r = await runChunks(['a', 'b', 'c'], async (c, i) => {
-    if (i === 1) throw new Error('hết giờ');
-    return c.toUpperCase();
-  }, { onProgress: (i, n) => seen.push(`${i}/${n}`) });
-  assert.deepEqual(r.values, ['A', 'C']);
-  assert.equal(r.errors.length, 1);
-  assert.deepEqual(seen, ['1/3', '2/3', '3/3']);
-  await assert.rejects(runChunks(['a'], async () => { throw new Error('x'); }), /x/);
+test('chạy theo phần: phần lỗi tự chia đôi gửi lại; vẫn lỗi thì thử lại cuối lượt; giữ thứ tự; dừng được', async () => {
+  // Phần dài bị lỗi lần đầu → chia đôi → hai nửa thành công.
+  const big = Array.from({ length: 40 }, (_, i) => `Câu số ${i} có nội dung đủ dài để chia.`).join('\n');
+  let first = true;
+  const r = await runChunks(['đầu', big, 'cuối'], async (c) => {
+    if (c === big && first) {
+      first = false;
+      throw new Error('hết giờ');
+    }
+    return c.length > 100 ? 'NỬA' : c.toUpperCase();
+  }, { minSize: 200, retryDelay: 1 });
+  assert.equal(r.split, 1);
+  assert.deepEqual(r.values, ['ĐẦU', 'NỬA', 'NỬA', 'CUỐI']);
+  assert.equal(r.errors.length, 0);
+  // Phần ngắn lỗi tạm thời → thử lại cuối lượt thành công.
+  let n = 0;
+  const r2 = await runChunks(['a', 'b'], async (c) => {
+    if (c === 'b' && n++ === 0) throw new Error('quá tải');
+    return c;
+  }, { retryDelay: 1 });
+  assert.deepEqual(r2.values, ['a', 'b']);
+  assert.equal(r2.retried, 1);
+  // Lỗi mãi → báo số phần lỗi; tất cả lỗi → ném lỗi; song song 2 phần.
+  const r3 = await runChunks(['a', 'b', 'c'], async (c) => {
+    if (c === 'b') throw new Error('hỏng');
+    return c;
+  }, { retryDelay: 1, concurrency: 2 });
+  assert.deepEqual(r3.values, ['a', 'c']);
+  assert.equal(r3.errors.length, 1);
+  await assert.rejects(runChunks(['a'], async () => { throw new Error('x'); }, { retryDelay: 1 }), /x/);
   const ctl = new AbortController();
   ctl.abort();
   await assert.rejects(runChunks(['a'], async () => 'A', { signal: ctl.signal }), /Đã dừng/);
 });
 
-test('phân tích AI tài liệu dài: gửi nhiều phần nhỏ, gộp, bỏ trùng; phần hết giờ bị bỏ qua', async () => {
+test('phân tích AI tài liệu dài: gửi nhiều phần nhỏ, gộp, bỏ trùng; phần hết giờ tự chia nhỏ gửi lại cho đủ', async () => {
   const calls = [];
   const call = async (o) => {
     calls.push(o);
@@ -50,12 +70,16 @@ test('phân tích AI tài liệu dài: gửi nhiều phần nhỏ, gộp, bỏ t
   };
   const offline = analyzeOffline(LONG, { primary: '353' });
   const r = await analyzeWithAi(call, LONG, { primary: '353', offline, chunkSize: 3500 });
-  assert.ok(calls.length > 2);
+  assert.ok(calls.length > 3);
   assert.ok(calls.every((o) => o.messages[0].content.length < 3500 + 4000), 'mỗi lần gửi nhỏ');
   assert.ok(calls.every((o) => o.maxTokens <= 3000 && o.timeoutRetry === false));
   assert.match(calls[0].messages[0].content, /ĐÂY LÀ PHẦN 1\//);
   assert.equal(r.items.filter((x) => x.nguon === 'ai').length, 1, 'bỏ trùng giữa các phần');
-  assert.equal(r.aiParts.failed, 1);
+  assert.equal(r.aiParts.failed, 0, 'phần hết giờ đã được chia nhỏ gửi lại');
+  assert.equal(r.aiParts.split, 1);
+  // JSON bị cắt dở vẫn lấy được các hành vi trọn vẹn.
+  const cut = await analyzeWithAi(async () => '{"tomTat":"x","hanhVi":[{"ten":"Lập chứng từ chi khống, chi sai để rút tiền chiếm đoạt","dieu":"353","hanhViId":"chi-khong"},{"ten":"Hành vi b', 'Ông A lập chứng từ chi khống.', { primary: '353', offline: analyzeOffline('x') });
+  assert.equal(cut.items.filter((x) => x.nguon === 'ai').length, 1);
   // Tài liệu ngắn: một lần gọi như cũ.
   const one = [];
   await analyzeWithAi(async (o) => (one.push(o), '{"tomTat":"x","hanhVi":[]}'), 'Ông A lập chứng từ chi khống.', { primary: '353', offline: analyzeOffline('x') });

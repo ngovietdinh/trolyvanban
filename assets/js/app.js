@@ -690,6 +690,12 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+/* ---------- Bản cài đặt cần cài lại bộ cài: mở đúng bộ cài theo máy (Windows / Mac chip Apple / Mac Intel) ---------- */
+window.addEventListener('tlvb:need-installer', (e) => {
+  e.preventDefault();
+  openDownloadApp(ctx, { reason: e.detail?.reason || '' });
+});
+
 /* ---------- Tải ứng dụng máy tính (chỉ hiện trên bản web) ---------- */
 $$('[data-download-app]').forEach((el) => {
   el.hidden = isDesktop;

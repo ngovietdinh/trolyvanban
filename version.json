@@ -1,7 +1,8 @@
 {
-  "version": "2.22.0",
+  "version": "2.23.0",
   "date": "2026-10-08",
   "notes": [
-    "Tài liệu dài không còn bị hết thời gian chờ AI: lọc nội dung trên máy, chia nhiều phần nhỏ, báo tiến độ, kết quả trên máy hiện ngay, dừng được"
+    "AI bảo đảm kết quả về đủ: tự chia nhỏ phần lỗi gửi lại, thử lại cuối lượt, tự viết tiếp khi câu trả lời bị cắt",
+    "Cập nhật tại chỗ trên Mac/Windows có nguồn tải dự phòng; bộ cài cũ mở đúng bộ cài theo máy"
   ]
 }

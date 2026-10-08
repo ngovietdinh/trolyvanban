@@ -74,6 +74,7 @@ Phân tích tài liệu (Thêm hành vi từ tài liệu, Phân tích vụ việ
 - **Không gửi lại cả khối khi hết giờ chờ**: phần bị hết giờ / lỗi được bỏ qua, các phần khác vẫn dùng được, có thông báo số phần AI không trả lời.
 - **Kết quả trên máy hiện ngay** (Sơ đồ vụ việc): AI bổ sung dần sau mỗi phần; nút **Dừng AI** giữ nguyên kết quả đã có.
 - Ngữ cảnh Kho hồ sơ, kết luận AI, lời khai lần tiếp theo được giới hạn theo nhà cung cấp (AI trên máy nhỏ hơn).
+- **Bảo đảm kết quả về đủ** (v2.23): phần nào lỗi / hết giờ / trả sai định dạng thì **tự chia đôi và gửi lại** (tối đa 2 lần chia), phần vẫn lỗi được **thử lại cuối lượt**; dịch vụ trực tuyến gửi **2 phần song song**; câu trả lời chạm giới hạn độ dài thì **tự yêu cầu viết tiếp** đúng chỗ dừng và ghép lại (mọi chức năng AI, tối đa 3 lần); JSON bị cắt dở vẫn lấy được các phần tử trọn vẹn.
 
 ## Bản cài đặt trên máy tính (Windows, macOS)
 
@@ -86,6 +87,8 @@ Ngoài bản web, ứng dụng có **bộ cài đặt** chạy như phần mềm
 - **Cập nhật tại chỗ, không cần tải lại bộ cài** (từ v2.16.0): ứng dụng tự kiểm tra khi mở và mỗi 6 giờ; có bản mới thì hiện **“Cập nhật ngay”** — chỉ tải các tệp mã web thay đổi (thường vài MB, theo `web-manifest.json` đăng kèm mỗi bản phát hành, tải từ đúng commit, kiểm tra sha256), lưu vào thư mục dữ liệu (`web-updates/`) rồi khởi động lại; dữ liệu giữ nguyên. Bản cập nhật không khởi động được trong 25 giây → tự quay về bản trước. Khi bản mới cần thay vỏ ứng dụng (`shellApi` trong `desktop/package.json` tăng) thì nút chuyển thành **“Tải bộ cài mới”**. Bản đã cài trước v2.16.0 cần tải bộ cài một lần.
 - Bộ cài chưa ký số: Windows SmartScreen chọn *Thông tin thêm → Vẫn chạy*; macOS lần đầu mở sẽ báo “không thể mở vì Apple không thể kiểm tra phần mềm độc hại”: bấm *OK*, vào *Cài đặt hệ thống → Quyền riêng tư & Bảo mật*, kéo xuống mục Bảo mật, bấm *Vẫn mở* (Open Anyway) rồi nhập mật khẩu máy — chỉ cần làm một lần. Cách khác: mở Terminal, chạy `xattr -cr "/Applications/Tro Ly Van Ban AI.app"`.
 - **Đóng gói**: mỗi khi `version.json` trên `main` đổi, GitHub Actions (`.github/workflows/desktop.yml`) build bộ cài Windows và macOS rồi đăng lên Releases (cũng chạy tay được ở tab Actions). Build trên máy: `node scripts/desktop.mjs && cd desktop && npm install && npm run dist:win` (hoặc `dist:mac` trên máy Mac); chạy thử `npm run desktop:start`.
+
+**Cập nhật tại chỗ — nguồn tải dự phòng** (v2.23): danh sách tệp lấy từ bản phát hành (dự phòng qua GitHub API); từng tệp tải lần lượt từ raw.githubusercontent.com → cdn.jsdelivr.net → github.com/raw (mỗi nguồn thử 2 lần, phải khớp sha256) — mạng cơ quan chặn một nguồn vẫn cập nhật được. Bộ cài cũ (trước v2.16) chưa có cập nhật tại chỗ: phần mềm mở hộp thoại tải đúng bộ cài theo máy (Windows / Mac chip Apple / Mac Intel) kèm giải thích — cài đè một lần, dữ liệu giữ nguyên. Cài đặt → Kiểm tra cập nhật hiện phiên bản bộ cài và mã đang chạy. CI chạy kiểm thử cập nhật tại chỗ thật trên macOS và Windows trước mỗi lần phát hành.
 
 ## Phân hệ Tố tụng hình sự
 

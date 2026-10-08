@@ -53,7 +53,8 @@ export async function runMethod(ctx, method, { text, base, extraBase = null, pri
         role,
         signal,
         chunkSize: chunkSizeFor(ai),
-        onProgress: (i, n) => say?.(n > 1 ? `${who} đang phân tích phần ${i}/${n} (tài liệu dài được chia nhỏ để không bị hết thời gian chờ)…` : `${who} đang phân tích…`),
+        concurrency: ai.local ? 1 : 2,
+        onProgress: (i, n) => say?.(n > 1 ? `${who} đang phân tích phần ${i}/${n} — tài liệu dài được chia nhỏ, phần nào lỗi tự chia nhỏ hơn và gửi lại để kết quả về đủ…` : `${who} đang phân tích…`),
       });
       if (r.aiParts?.failed) toast(`AI không trả lời ${r.aiParts.failed}/${r.aiParts.total} phần của tài liệu — các phần đó dùng kết quả đối chiếu Bộ luật.`, { type: 'info', timeout: 6000 });
       result = method === 'ket-hop' ? mergeResults(r, extraBase) : r;

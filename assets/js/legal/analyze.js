@@ -347,7 +347,7 @@ Trả về JSON:
  * Gọi AI phân tích, hợp nhất với kết quả ngoại tuyến. call(opts) = streamAI đã gắn cấu hình.
  * Điều luật AI nêu được kiểm tra với hệ thống: không có trong hệ thống → gắn cờ ngoài danh mục.
  */
-export async function analyzeWithAi(call, text, { primary, offline, role = 'người được hỏi', signal, chunkSize = CHUNK.online, onProgress } = {}) {
+export async function analyzeWithAi(call, text, { primary, offline, role = 'người được hỏi', signal, chunkSize = CHUNK.online, onProgress, concurrency = 1 } = {}) {
   const candidates = [...new Set([String(primary), ...offline.crimes.map((c) => c.dieu)])].filter(Boolean).slice(0, 12);
   // Tài liệu dài: lọc câu có thông tin rồi chia phần, gửi lần lượt — tránh hết thời gian chờ.
   const chunks = splitText(focusText(text, { min: chunkSize }), chunkSize);
@@ -359,7 +359,7 @@ export async function analyzeWithAi(call, text, { primary, offline, role = 'ngư
       if (!part || !Array.isArray(part.hanhVi)) throw new Error('AI trả về kết quả không đúng định dạng — đang dùng kết quả phân tích trên máy.');
       return part;
     },
-    { signal, onProgress },
+    { signal, onProgress, concurrency, minSize: Math.min(1500, Math.round(chunkSize / 4)) },
   );
   const j = { tomTat: run.values.map((x) => x.tomTat).filter(Boolean).join(' ').slice(0, 900), hanhVi: run.values.flatMap((x) => x.hanhVi) };
   // Bỏ hành vi trùng giữa các phần.
@@ -396,7 +396,7 @@ export async function analyzeWithAi(call, text, { primary, offline, role = 'ngư
     ...dieus.map((d) => offline.crimes.find((c) => c.dieu === d) || { dieu: d, ten: findCrime(d).ten, score: 0, reasons: [] }).map((c) => ({ ...c, reasons: [...new Set([...(c.reasons || []), 'AI xác định có hành vi thuộc điều này'])] })),
     ...offline.crimes.filter((c) => !dieus.includes(c.dieu)),
   ];
-  return { tomTat: j.tomTat || offline.tomTat, keywords: offline.keywords, crimes, items: [...items, ...extra], ai: true, aiParts: { total: run.total, failed: run.errors.length } };
+  return { tomTat: j.tomTat || offline.tomTat, keywords: offline.keywords, crimes, items: [...items, ...extra], ai: true, aiParts: { total: run.total, failed: run.errors.length, split: run.split } };
 }
 
 /* ---------------- Câu hỏi cho hành vi mới ---------------- */

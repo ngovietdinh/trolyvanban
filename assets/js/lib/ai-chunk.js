@@ -60,23 +60,67 @@ export function splitText(text, size = CHUNK.online) {
 }
 
 /**
- * Chạy fn(chunk, i, n) lần lượt cho từng phần. Phần lỗi được ghi lại, không làm hỏng cả lượt.
- * Trả về { values: [kết quả các phần thành công], errors: [{ i, err }], total }. Dừng ngay khi signal bị hủy.
+ * Chạy fn(chunk, i, n) cho từng phần, bảo đảm kết quả về đủ:
+ * - phần lỗi / hết giờ chờ / trả về sai định dạng → tự chia đôi và gửi lại (tối đa 2 lần chia, phần còn ≥ minSize);
+ * - phần vẫn lỗi được thử lại một lần ở cuối lượt;
+ * - concurrency: số phần gửi cùng lúc (dịch vụ trực tuyến 2, AI trên máy 1).
+ * onProgress(đã xong + 1, tổng hiện tại) — tổng tăng khi có phần được chia nhỏ.
+ * Trả về { values (theo thứ tự nội dung), errors: [{ i, err }], total, split (số lần chia), retried }.
  */
-export async function runChunks(chunks, fn, { signal, onProgress } = {}) {
-  const values = [];
-  const errors = [];
-  for (let i = 0; i < chunks.length; i++) {
-    if (signal?.aborted) break;
-    onProgress?.(i + 1, chunks.length);
+export async function runChunks(chunks, fn, { signal, onProgress, concurrency = 1, minSize = 800, maxDepth = 2, retryDelay = 1500 } = {}) {
+  let seq = 0;
+  // key: thứ tự trong nội dung (phần con của phần i đứng ngay sau i).
+  const queue = chunks.map((text, i) => ({ text, key: [i], depth: 0, id: seq++ }));
+  const done = [];
+  const failed = [];
+  let total = queue.length;
+  let finished = 0;
+  let split = 0;
+  let retried = 0;
+  const attempt = async (job, last = false) => {
+    if (signal?.aborted) return;
+    onProgress?.(Math.min(finished + 1, total), total);
     try {
-      values.push(await fn(chunks[i], i, chunks.length));
+      done.push({ key: job.key, value: await fn(job.text, finished, total) });
+      finished++;
     } catch (err) {
-      if (signal?.aborted) break;
-      errors.push({ i, err });
+      if (signal?.aborted) return;
+      if (!last && job.depth < maxDepth && job.text.length >= minSize * 2) {
+        // Chia đôi phần lỗi rồi gửi lại từng nửa.
+        const halves = splitText(job.text, Math.ceil(job.text.length / 2) + 50);
+        if (halves.length > 1) {
+          split++;
+          total += halves.length - 1;
+          queue.unshift(...halves.map((t, k) => ({ text: t, key: [...job.key, k], depth: job.depth + 1, id: seq++ })));
+          return;
+        }
+      }
+      if (last) {
+        finished++;
+        failed.push({ i: job.key[0], err });
+      } else failed.push({ job, err });
+    }
+  };
+  const worker = async () => {
+    while (queue.length && !signal?.aborted) await attempt(queue.shift());
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, queue.length)) }, worker));
+  // Thử lại lần cuối các phần còn lỗi (sau một nhịp nghỉ — máy chủ có thể vừa quá tải).
+  const again = failed.splice(0).filter((f) => f.job);
+  if (again.length && !signal?.aborted) {
+    await new Promise((r) => setTimeout(r, retryDelay));
+    for (const f of again) {
+      retried++;
+      await attempt(f.job, true);
     }
   }
-  if (signal?.aborted && !values.length) throw new Error('Đã dừng phân tích.');
-  if (!values.length && errors.length) throw errors.at(-1).err;
-  return { values, errors, total: chunks.length };
+  if (signal?.aborted && !done.length) throw new Error('Đã dừng phân tích.');
+  const errors = failed.filter((f) => !f.job);
+  if (!done.length && errors.length) throw errors.at(-1).err;
+  const cmpKey = (a, b) => {
+    for (let k = 0; k < Math.max(a.length, b.length); k++) if ((a[k] ?? -1) !== (b[k] ?? -1)) return (a[k] ?? -1) - (b[k] ?? -1);
+    return 0;
+  };
+  done.sort((a, b) => cmpKey(a.key, b.key));
+  return { values: done.map((d) => d.value), errors, total, split, retried };
 }

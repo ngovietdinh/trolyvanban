@@ -523,6 +523,11 @@ export function render(ctx) {
         ? `<div class="note">${icon('info', 'ic-sm')}<span>Có phiên bản mới <strong>v${escapeHtml(r.latest)}</strong>.${r.notes?.length ? `<br>${r.notes.map((n) => '• ' + escapeHtml(n)).join('<br>')}` : ''}</span></div><button class="btn btn-primary btn-sm" type="button" data-apply-update>${icon('download', 'ic-sm')}${isDesktop && (!window.tlvbDesktop?.update || r.needInstaller) ? 'Tải bộ cài mới' : 'Cập nhật ngay'}</button>`
         : `<p class="note">${icon('check-circle', 'ic-sm')}<span>Bạn đang dùng phiên bản mới nhất (v${APP_VERSION}).</span></p>`;
       $('[data-apply-update]', out)?.addEventListener('click', applyUpdate);
+      // Bản cài đặt: hiện phiên bản bộ cài / mã web để biết vì sao phải tải bộ cài hay cập nhật tại chỗ được.
+      if (isDesktop) {
+        const v = window.tlvbDesktop?.version ? await window.tlvbDesktop.version().catch(() => null) : null;
+        out.insertAdjacentHTML('beforeend', `<p class="hint">${v ? `Bộ cài v${escapeHtml(v.shell)} · mã đang chạy v${escapeHtml(v.web)}${v.web !== v.packaged ? ' (đã cập nhật tại chỗ)' : ''} · cập nhật tại chỗ: có.` : 'Bộ cài trên máy là bản cũ (trước v2.16), chưa có cập nhật tại chỗ — cài bộ cài mới một lần.'}</p>`);
+      }
     } catch (err) {
       out.innerHTML = `<p class="note warn">${icon('alert', 'ic-sm')}<span>${escapeHtml(err.message)}</span></p>`;
     } finally {

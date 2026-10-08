@@ -14,9 +14,12 @@ const crypto = require('node:crypto');
 
 const SHELL_API = 1; // tăng khi main.cjs / preload.cjs thay đổi cách mã web gọi vào
 const REPO = 'ngovietdinh/trolyvanban';
-// Biến môi trường chỉ dùng cho kiểm thử tự động (máy chủ giả lập).
-const MANIFEST_URL = process.env.TLVB_UPDATE_MANIFEST || `https://github.com/${REPO}/releases/latest/download/web-manifest.json`;
-const RAW_BASE = process.env.TLVB_UPDATE_RAW || `https://raw.githubusercontent.com/${REPO}/`;
+// Nguồn tải có dự phòng: mạng cơ quan hay chặn raw.githubusercontent.com → thử jsDelivr, github.com/raw.
+// Biến môi trường chỉ dùng cho kiểm thử tự động (máy chủ giả lập; nhiều nguồn cách nhau bằng dấu phẩy).
+const MANIFEST_URLS = process.env.TLVB_UPDATE_MANIFEST ? process.env.TLVB_UPDATE_MANIFEST.split(',') : [`https://github.com/${REPO}/releases/latest/download/web-manifest.json`, `api:https://api.github.com/repos/${REPO}/releases/latest`];
+const RAW_BASES = process.env.TLVB_UPDATE_RAW
+  ? process.env.TLVB_UPDATE_RAW.split(',').map((b) => (commit, p) => `${b}${commit}/${p}`)
+  : [(commit, p) => `https://raw.githubusercontent.com/${REPO}/${commit}/${p}`, (commit, p) => `https://cdn.jsdelivr.net/gh/${REPO}@${commit}/${p}`, (commit, p) => `https://github.com/${REPO}/raw/${commit}/${p}`];
 const WATCHDOG_MS = +process.env.TLVB_UPDATE_WATCHDOG_MS || 25000;
 
 const cmp = (a, b) => {
@@ -68,12 +71,31 @@ function createUpdater(WEB) {
     return pick(WEB);
   }
 
-  async function fetchManifest() {
-    const res = await net.fetch(`${MANIFEST_URL}?t=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`Không lấy được thông tin bản cập nhật (${res.status}).`);
+  async function fetchManifestFrom(url) {
+    if (url.startsWith('api:')) {
+      // Dự phòng qua GitHub API: tìm tệp web-manifest.json trong bản phát hành mới nhất.
+      const rel = await net.fetch(url.slice(4), { cache: 'no-store', headers: { accept: 'application/vnd.github+json' } });
+      if (!rel.ok) throw new Error(`GitHub API ${rel.status}`);
+      const asset = ((await rel.json()).assets || []).find((a) => a.name === 'web-manifest.json');
+      if (!asset) throw new Error('Bản phát hành chưa có web-manifest.json');
+      url = asset.browser_download_url;
+    }
+    const res = await net.fetch(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`(${res.status})`);
     const m = await res.json();
     if (!m?.version || !Array.isArray(m.files) || !m.commit) throw new Error('Thông tin bản cập nhật không hợp lệ.');
     return m;
+  }
+  async function fetchManifest() {
+    let last;
+    for (const url of MANIFEST_URLS) {
+      try {
+        return await fetchManifestFrom(url);
+      } catch (err) {
+        last = err;
+      }
+    }
+    throw new Error(`Không lấy được thông tin bản cập nhật ${last?.message || ''} — kiểm tra kết nối Internet (mạng cơ quan có thể chặn github.com).`.replace(/\s+/g, ' '));
   }
 
   async function check() {
@@ -116,11 +138,24 @@ function createUpdater(WEB) {
         if (b && sha256(b) === f.h) buf = b;
       }
       if (!buf) {
-        const url = `${RAW_BASE}${m.commit}/${f.p.split(path.sep).map(encodeURIComponent).join('/')}`;
-        const res = await net.fetch(url, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`Tải “${f.p}” lỗi (${res.status}).`);
-        buf = Buffer.from(await res.arrayBuffer());
-        if (sha256(buf) !== f.h) throw new Error(`Tệp “${f.p}” tải về không khớp mã kiểm tra — đã hủy cập nhật.`);
+        // Thử lần lượt các nguồn, mỗi nguồn 2 lần; tệp phải khớp sha256 mới được dùng.
+        const rel = f.p.split(path.sep).map(encodeURIComponent).join('/');
+        let lastErr = null;
+        for (const src of RAW_BASES) {
+          for (let k = 0; k < 2 && !buf; k++) {
+            try {
+              const res = await net.fetch(src(m.commit, rel), { cache: 'no-store' });
+              if (!res.ok) throw new Error(`Tải “${f.p}” lỗi (${res.status}).`);
+              const b = Buffer.from(await res.arrayBuffer());
+              if (sha256(b) !== f.h) throw new Error(`Tệp “${f.p}” tải về không khớp mã kiểm tra — đã hủy cập nhật.`);
+              buf = b;
+            } catch (err) {
+              lastErr = err;
+            }
+          }
+          if (buf) break;
+        }
+        if (!buf) throw lastErr || new Error(`Không tải được “${f.p}”.`);
         bytes += buf.length;
       }
       const out = path.join(tmp, f.p);

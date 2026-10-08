@@ -46,11 +46,12 @@ export async function latestInstallers() {
 
 const mb = (n) => `${Math.round(n / 1048576)} MB`;
 
-export function openDownloadApp(ctx) {
+export function openDownloadApp(ctx, { reason = '' } = {}) {
   const os = detectOs();
   ctx.modal(
     `<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button>
-    <h2 class="modal-title">Tải ứng dụng máy tính</h2>
+    <h2 class="modal-title">${reason ? 'Cài bộ cài mới (một lần)' : 'Tải ứng dụng máy tính'}</h2>
+    ${reason ? `<p class="note">${icon('info', 'ic-sm')}<span>${escapeHtml(reason)}</span></p>` : ''}
     <p class="hint">Cài lên Windows hoặc macOS: chạy như phần mềm riêng, dùng được khi mất mạng, tự cập nhật (chỉ tải phần thay đổi), tài khoản tạo mới có toàn quyền. Dữ liệu bản web và bản cài đặt tách riêng — chuyển bằng Xuất sao lưu / Khôi phục.</p>
     <div class="dl-body" data-dl-body><p class="hint">${icon('refresh', 'ic-sm spin')}Đang lấy bản mới nhất…</p></div>`,
     {

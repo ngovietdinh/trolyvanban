@@ -216,6 +216,7 @@ export async function streamClaude(opts) {
       const model = models[mi];
       // Có AI trên máy dự phòng: lỗi mạng thì không chờ thử lại, chuyển ngay.
       const r = await tryWithRetry({ ...opts, provider: c.provider, apiKey: c.apiKey, model, quickNetFail: !!localEntry && c.provider !== 'local' });
+      if (r.ok && r.truncated) r.text = await continueTruncated({ ...opts, provider: c.provider, apiKey: c.apiKey, model }, r.text);
       if (r.ok) {
         Object.assign(meta, { provider: c.provider, model, cached: false, switched: c !== first || mi > 0 });
         if (cacheKey && r.text && r.text.trim()) hooks.cacheSet?.(cacheKey, { text: r.text, provider: c.provider, at: Date.now() });
@@ -266,20 +267,50 @@ const sleep = (ms, signal) =>
     signal?.addEventListener('abort', () => (clearTimeout(t), resolve()), { once: true });
   });
 
+/**
+ * Câu trả lời bị cắt vì chạm giới hạn độ dài: tự yêu cầu viết tiếp đúng chỗ dừng (tối đa opts.maxContinue lần,
+ * mặc định 3) rồi ghép lại — bảo đảm kết quả về đủ (kể cả JSON dài). Lỗi khi viết tiếp: giữ phần đã có.
+ */
+export const CONTINUE_PROMPT = 'Câu trả lời trước bị cắt giữa chừng do giới hạn độ dài. Hãy viết tiếp NGAY từ ký tự bị cắt, không lặp lại phần đã viết, không thêm lời dẫn, giữ đúng định dạng (nếu là JSON thì viết tiếp phần còn lại của JSON).';
+/** Ghép phần viết tiếp, bỏ đoạn bị lặp lại ở chỗ nối. */
+export function stitch(a, b) {
+  const tail = a.slice(-200);
+  for (let n = Math.min(tail.length, b.length); n >= 12; n--) if (tail.endsWith(b.slice(0, n))) return a + b.slice(n);
+  return a + b.replace(/^```(?:json)?\s*/i, '');
+}
+async function continueTruncated(opts, text) {
+  let all = text;
+  for (let round = 0; round < (opts.maxContinue ?? 3); round++) {
+    if (opts.signal?.aborted) break;
+    const r = await tryWithRetry({
+      ...opts,
+      messages: [...opts.messages, { role: 'assistant', content: all }, { role: 'user', content: CONTINUE_PROMPT }],
+      onText: (d, part) => opts.onText?.(d, stitch(all, part)),
+    });
+    if (!r.ok || !r.text) break;
+    all = stitch(all, r.text);
+    hooks.event?.({ type: 'continue', provider: opts.provider, message: `Viết tiếp lần ${round + 1}` });
+    if (!r.truncated) return all;
+  }
+  return all;
+}
+
 /** Gọi một mô hình; tự thử lại khi quá tải tạm thời (429/5xx/mạng/hết giờ) nếu chưa có chữ nào hiện ra. */
 async function tryWithRetry(opts) {
   let lastErr;
   for (let attempt = 0; attempt <= AI_RETRY.delays.length; attempt++) {
     let gotText = false;
+    const out = {};
     try {
       const text = await streamWithTimeout({
         ...opts,
+        out,
         onText: (d, all) => {
           if (d) gotText = true;
           opts.onText?.(d, all);
         },
       });
-      return { ok: true, text };
+      return { ok: true, text, truncated: !!out.truncated };
     } catch (err) {
       lastErr = err;
       if (opts.signal?.aborted) break;
@@ -309,7 +340,7 @@ function toOpenAI(messages) {
 }
 const toGeminiParts = (content) => parts(content).map((p) => (p.type === 'image' ? { inline_data: { mime_type: p.mime || 'image/jpeg', data: p.data } } : { text: p.text }));
 
-async function streamAnthropic({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, quickNetFail = false }) {
+async function streamAnthropic({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, quickNetFail = false, out = null }) {
   const Anthropic = await loadSdk();
   // quickNetFail: có AI trên máy dự phòng → không để thư viện tự thử lại khi mất mạng.
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true, ...(quickNetFail ? { maxRetries: 0 } : {}) });
@@ -329,7 +360,10 @@ async function streamAnthropic({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_
     }
     const final = await stream.finalMessage();
     if (final.stop_reason === 'refusal') throw new Error('Yêu cầu này không thể xử lý. Vui lòng diễn đạt lại nội dung.');
-    if (final.stop_reason === 'max_tokens') text += '\n\n[Nội dung đã đạt giới hạn độ dài.]';
+    if (final.stop_reason === 'max_tokens') {
+      if (out) out.truncated = true;
+      else text += '\n\n[Nội dung đã đạt giới hạn độ dài.]';
+    }
     return text;
   } catch (err) {
     // Lỗi kết nối (mất mạng) → -1 như các nhà cung cấp khác, để chuyển ngay sang AI trên máy.
@@ -398,7 +432,7 @@ async function doFetch(url, init, provider, signal) {
   return res;
 }
 
-async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000 }) {
+async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, out = null }) {
   const cfg = PROVIDERS[provider];
   const res = await doFetch(
     `${cfg.base}/chat/completions`,
@@ -416,6 +450,7 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
       if (!data || data === '[DONE]') return;
       const j = JSON.parse(data);
       if (j.error) throw aiError(httpError(+j.error.code || +j.error.status || 500, provider, JSON.stringify(j.error)), +j.error.code || 500);
+      if (j.choices?.[0]?.finish_reason === 'length' && out) out.truncated = true;
       const d = j.choices?.[0]?.delta?.content;
       if (d) {
         text += d;
@@ -429,7 +464,7 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
   return text;
 }
 
-async function streamGemini({ apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000 }) {
+async function streamGemini({ apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, out = null }) {
   const cfg = PROVIDERS.gemini;
   const contents = messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: toGeminiParts(m.content) }));
   const res = await doFetch(
@@ -448,6 +483,7 @@ async function streamGemini({ apiKey, model, system = SYSTEM_PROMPT, messages, o
       if (!data) return;
       const j = JSON.parse(data);
       if (j.error) throw aiError(httpError(+j.error.code || 500, 'gemini', JSON.stringify(j.error)), +j.error.code || 500);
+      if (j.candidates?.[0]?.finishReason === 'MAX_TOKENS' && out) out.truncated = true;
       const d = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
       if (d) {
         text += d;
@@ -522,6 +558,37 @@ export function extractJson(text) {
         return null;
       }
     }
+  }
+  // JSON bị cắt giữa chừng (AI chạm giới hạn độ dài): giữ các phần tử đã trọn vẹn.
+  return repairJson(s.slice(start));
+}
+
+/** Cứu JSON bị cắt: cắt về phần tử trọn vẹn gần nhất rồi đóng các ngoặc còn mở. */
+export function repairJson(s) {
+  const safe = []; // [vị trí cắt, chuỗi ngoặc đóng cần thêm]
+  const stack = [];
+  let inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (ch === '\\') i++;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']');
+    else if (ch === '}' || ch === ']') {
+      stack.pop();
+      safe.push([i + 1, stack.slice().reverse().join('')]);
+      // Chỉ cắt giữa các phần tử của mảng hoặc các trường cấp ngoài cùng — không giữ một đối tượng thiếu trường.
+    } else if (ch === ',' && (stack.at(-1) === ']' || stack.length === 1)) safe.push([i, stack.slice().reverse().join('')]);
+  }
+  for (let k = safe.length - 1, n = 0; k >= 0 && n < 400; k--, n++) {
+    const [pos, close] = safe[k];
+    try {
+      const v = JSON.parse(s.slice(0, pos) + close);
+      if (v && typeof v === 'object') return v;
+    } catch {}
   }
   return null;
 }
