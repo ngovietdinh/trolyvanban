@@ -2,7 +2,9 @@
 //
 // diagram = {
 //   v: 1,
-//   nodes: [{ id, kind: 'crime'|'act'|'person'|'money'|'box'|'note', label, sub, x, y, color?, origin: 'auto'|'user', edited? }],
+//   layout: 'mindmap' | 'cay' | 'tang'          — kiểu bố cục (sơ đồ tư duy / cây ngang / theo tầng),
+//   nodes: [{ id, kind: 'root'|'crime'|'act'|'person'|'money'|'box'|'note', label, sub, x, y, color?, w?, h?, fs?,
+//             collapsed?, origin: 'auto'|'user', edited? }],   — w/h: kích thước kéo tay, fs: cỡ chữ (0.85–1.6),
 //   edges: [{ id, from, to, label, kind: 'tien'|'chi-dao'|'khac'|'thuoc', origin, edited? }],
 //   strokes: [{ id, color, width, points: [[x, y], …] }],
 // }
@@ -10,6 +12,7 @@
 // dựng lại sau khi AI làm tiếp vẫn giữ vị trí, nhãn đã sửa, nút – mũi tên – nét vẽ người dùng tự thêm.
 
 export const NODE_KINDS = {
+  root: { label: 'Chủ đề trung tâm', fill: '#22304f', stroke: '#22304f', ink: '#ffffff' },
   crime: { label: 'Điều luật', fill: '#fde8e4', stroke: '#c2410c' },
   act: { label: 'Hành vi', fill: '#e7eefc', stroke: '#2f5bd3' },
   person: { label: 'Người', fill: '#e6f4ea', stroke: '#1f8a4c' },
@@ -24,6 +27,10 @@ export const EDGE_KINDS = {
   thuoc: { label: 'Thuộc / liên quan', color: '#8a8f99', dash: true },
 };
 export const PEN_COLORS = ['#c0392b', '#2f5bd3', '#1f8a4c', '#b7791f', '#111111'];
+/** Màu các nhánh của sơ đồ tư duy (mỗi nhánh cấp 1 một màu, nhánh con theo màu nhánh mẹ). */
+export const BRANCH_COLORS = ['#e8590c', '#1c7ed6', '#2b8a3e', '#ae3ec9', '#f08c00', '#0c8599', '#c2255c', '#5c940d'];
+export const LAYOUTS = { mindmap: 'Sơ đồ tư duy', cay: 'Cây ngang', tang: 'Theo tầng' };
+export const FONT_STEPS = [0.85, 1, 1.2, 1.45, 1.7];
 
 const key = (s) => String(s || '').normalize('NFC').toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ').trim();
 let seq = 0;
@@ -55,14 +62,22 @@ export function wrap(text, n = 24, max = 4) {
   return lines.length ? lines : [''];
 }
 
+export const fontScale = (n) => n.fs || (n.kind === 'root' ? 1.35 : 1);
+
+/** Kích thước nút: tự co theo chữ, hoặc theo kích thước kéo tay (w, h) — chữ tự ngắt dòng theo bề rộng. */
 export function nodeSize(n) {
-  const per = n.kind === 'note' ? 26 : 24;
-  const lines = wrap(n.label, per, n.kind === 'note' ? 8 : 4);
-  const sub = n.sub ? wrap(n.sub, per + 6, 2) : [];
-  const longest = Math.max(...lines.map((l) => l.length), ...sub.map((l) => l.length * 0.85), 6);
-  const w = Math.round(Math.min(250, Math.max(n.kind === 'note' ? 150 : 120, longest * 7.4 + 30)));
-  const h = Math.round(18 + lines.length * 17 + sub.length * 14 + (sub.length ? 4 : 0));
-  return { w, h: Math.max(h, 40), lines, sub };
+  const fs = fontScale(n);
+  const cw = 7.7 * fs;
+  const per = n.w ? Math.max(6, Math.floor((n.w - 28) / cw)) : n.kind === 'note' ? 26 : 22;
+  const lines = wrap(n.label, per, n.w ? 14 : n.kind === 'note' ? 8 : 4);
+  const sub = n.sub ? wrap(n.sub, Math.round(per * 1.2), n.w ? 5 : 2) : [];
+  const lh = Math.round(18 * fs);
+  const sh = Math.round(15 * fs);
+  const longest = Math.max(...lines.map((l) => l.length), ...sub.map((l) => l.length * 0.85), 5);
+  const w = n.w ? Math.max(70, Math.round(n.w)) : Math.round(Math.min(290 * fs, Math.max(n.kind === 'note' ? 150 : n.kind === 'root' ? 170 : 104, longest * cw + 30)));
+  const contentH = 16 + lines.length * lh + sub.length * sh + (sub.length ? 4 : 0);
+  const h = Math.round(Math.max(n.h || 0, contentH, n.kind === 'root' ? 64 : 40));
+  return { w, h, lines, sub, fs, lh, sh };
 }
 
 /** Điểm trên cạnh khung nút theo hướng tới (tx, ty). */
@@ -80,7 +95,7 @@ export function borderPoint(n, tx, ty) {
 /* ---------------- Dựng từ sơ đồ vụ việc ---------------- */
 
 /** Sơ đồ vụ việc (buildCaseMap / AI) → nút và mũi tên tự sinh. */
-export function autoFromCaseMap(m) {
+export function autoFromCaseMap(m, { title = '' } = {}) {
   const nodes = [];
   const edges = [];
   const byId = new Map();
@@ -97,10 +112,14 @@ export function autoFromCaseMap(m) {
     edges.push({ id, from, to, label, kind, origin: 'auto' });
   };
   const personId = (t) => `p:${key(t)}`;
+  // Chủ đề trung tâm: vụ việc → các điều luật → hành vi → người thực hiện; người không gắn hành vi nối thẳng vào giữa.
+  const acts = (m.crimes || []).reduce((s, c) => s + (c.items || []).length, 0);
+  add({ id: 'root', kind: 'root', label: title || 'Vụ việc', sub: [acts && `${acts} hành vi`, (m.people || []).length && `${m.people.length} người`].filter(Boolean).join(' · ') });
   for (const p of m.people || []) add({ id: personId(p.ten), kind: 'person', label: p.ten, sub: p.vaiTro || '' });
   for (const c of m.crimes || []) {
     const cid = `c:${c.dieu || 'khac'}`;
     add({ id: cid, kind: 'crime', label: c.dieu ? `Điều ${c.dieu}` : 'Chưa xác định điều luật', sub: String(c.ten || '').replace(/^Tội /, '') });
+    edge('root', cid, '', 'thuoc');
     for (const it of c.items || []) {
       const aid = `a:${c.dieu || 'khac'}:${key(it.ten).slice(0, 80)}`;
       add({ id: aid, kind: 'act', label: it.ten, sub: it.soTien || '' });
@@ -118,12 +137,15 @@ export function autoFromCaseMap(m) {
     add({ id: personId(e.den), kind: 'person', label: e.den, sub: '' });
     edge(personId(e.tu), personId(e.den), `${e.noiDung || ''}${e.soTien ? ` ${e.soTien}` : ''}`.trim(), ['tien', 'chi-dao'].includes(e.loai) ? e.loai : 'khac');
   }
+  // Người chưa gắn với hành vi nào → nhánh trực tiếp của chủ đề trung tâm.
+  const doers = new Set(edges.filter((e) => e.label === 'thực hiện').map((e) => e.from));
+  nodes.filter((n) => n.kind === 'person' && !doers.has(n.id)).forEach((n) => edge('root', n.id, '', 'thuoc'));
   return { nodes, edges };
 }
 
 /** Sơ đồ mới từ sơ đồ vụ việc (đã sắp xếp). */
-export function diagramFromCaseMap(m) {
-  return autoLayout({ ...emptyDiagram(), ...autoFromCaseMap(m) });
+export function diagramFromCaseMap(m, { title = '', layout = 'mindmap' } = {}) {
+  return layoutDiagram({ ...emptyDiagram(), layout, ...autoFromCaseMap(m, { title }) });
 }
 
 /**
@@ -131,14 +153,14 @@ export function diagramFromCaseMap(m) {
  * vị trí các nút cũ, nhãn đã sửa tay, nút / mũi tên / nét vẽ người dùng tự thêm. Nút tự sinh không còn thì bỏ
  * (kèm mũi tên nối tới nó). Nút mới được đặt theo bố cục tự động quanh các nút cũ.
  */
-export function syncFromCaseMap(d, m) {
-  const auto = autoFromCaseMap(m);
+export function syncFromCaseMap(d, m, { title = '' } = {}) {
+  const auto = autoFromCaseMap(m, { title: title || d.nodes.find((n) => n.id === 'root')?.label || '' });
   const old = new Map(d.nodes.map((n) => [n.id, n]));
   const keepUser = d.nodes.filter((n) => n.origin !== 'auto');
   const nodes = auto.nodes.map((n) => {
     const o = old.get(n.id);
     if (!o) return { ...n, fresh: true };
-    return { ...n, x: o.x, y: o.y, color: o.color, ...(o.edited ? { label: o.label, sub: o.sub, kind: o.kind, edited: true } : {}) };
+    return { ...n, x: o.x, y: o.y, color: o.color, w: o.w, h: o.h, fs: o.fs, collapsed: o.collapsed, ...(o.edited ? { label: o.label, sub: o.sub, kind: o.kind, edited: true } : {}) };
   });
   const all = [...nodes, ...keepUser];
   const ids = new Set(all.map((n) => n.id));
@@ -149,7 +171,8 @@ export function syncFromCaseMap(d, m) {
   ].filter((e) => ids.has(e.from) && ids.has(e.to));
   const out = { ...d, nodes: all, edges };
   if (nodes.some((n) => n.fresh)) {
-    if (nodes.every((n) => n.fresh) && !keepUser.length) autoLayout(out);
+    // Sơ đồ tư duy / cây: sắp lại theo cây (vị trí do bố cục quyết định); theo tầng: chỉ đặt nút mới.
+    if ((out.layout || 'tang') !== 'tang' || (nodes.every((n) => n.fresh) && !keepUser.length)) layoutDiagram(out);
     else placeFresh(out);
   }
   out.nodes.forEach((n) => delete n.fresh);
@@ -158,7 +181,7 @@ export function syncFromCaseMap(d, m) {
 
 /* ---------------- Bố cục ---------------- */
 
-const RANK = { crime: 0, act: 1, money: 1, person: 2, box: 3, note: 3 };
+const RANK = { root: 0, crime: 0, act: 1, money: 1, person: 2, box: 3, note: 3 };
 
 /** Bố cục theo tầng: Điều luật → Hành vi → Người → khối khác; thứ tự trong tầng theo trọng tâm các nút nối tới. */
 export function autoLayout(d, { gapX = 50, gapY = 120 } = {}) {
@@ -198,6 +221,177 @@ export function autoLayout(d, { gapX = 50, gapY = 120 } = {}) {
   return d;
 }
 
+/* ---------------- Cây (cho sơ đồ tư duy, thu gọn nhánh) ---------------- */
+
+const KIND_ORDER = { root: 0, crime: 1, act: 2, money: 3, person: 4, box: 5, note: 6 };
+
+/**
+ * Cây khung của sơ đồ: duyệt rộng từ chủ đề trung tâm (hoặc nút có nhiều liên kết nhất) theo mũi tên (không xét
+ * chiều). Trả { roots, parent, children, depth, branch, treeEdges }; mũi tên không thuộc cây là liên kết chéo.
+ */
+export function treeOf(d) {
+  const byId = new Map(d.nodes.map((n) => [n.id, n]));
+  // Liên kết cấu trúc (thuộc, thực hiện) dựng khung cây trước; quan hệ (tiền, chỉ đạo…) chỉ dùng khi còn nút chưa nối.
+  const structural = (e) => e.kind === 'thuoc' || e.label === 'thực hiện';
+  const adjOf = (pred) => {
+    const adj = new Map(d.nodes.map((n) => [n.id, []]));
+    for (const e of d.edges) {
+      if (!byId.has(e.from) || !byId.has(e.to) || e.from === e.to || !pred(e)) continue;
+      adj.get(e.from).push({ id: e.to, e });
+      adj.get(e.to).push({ id: e.from, e });
+    }
+    return adj;
+  };
+  const adjS = adjOf(structural);
+  const adjAll = adjOf(() => true);
+  const order = (a, b) => (KIND_ORDER[byId.get(a.id).kind] ?? 9) - (KIND_ORDER[byId.get(b.id).kind] ?? 9);
+  const parent = new Map();
+  const children = new Map(d.nodes.map((n) => [n.id, []]));
+  const depth = new Map();
+  const branch = new Map();
+  const treeEdges = new Set();
+  const roots = [];
+  const bfs = (start, adj) => {
+    const q = [start];
+    while (q.length) {
+      const id = q.shift();
+      for (const nb of [...adj.get(id)].sort(order)) {
+        if (depth.has(nb.id)) continue;
+        depth.set(nb.id, depth.get(id) + 1);
+        parent.set(nb.id, id);
+        children.get(id).push(nb.id);
+        treeEdges.add(nb.e.id);
+        branch.set(nb.id, depth.get(id) === 0 ? children.get(id).length - 1 : branch.get(id));
+        q.push(nb.id);
+      }
+    }
+  };
+  const starts = [...d.nodes].sort((a, b) => (a.kind === 'root' ? -1 : 0) - (b.kind === 'root' ? -1 : 0) || adjAll.get(b.id).length - adjAll.get(a.id).length || (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9));
+  for (const s of starts) {
+    if (depth.has(s.id)) continue;
+    roots.push(s.id);
+    depth.set(s.id, 0);
+    bfs(s.id, adjS);
+    // Nối thêm các nút chỉ liên hệ qua quan hệ với cụm này (theo thứ tự đã có trong cụm).
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const id of [...depth.keys()]) {
+        for (const nb of [...adjAll.get(id)].sort(order)) {
+          if (depth.has(nb.id)) continue;
+          depth.set(nb.id, depth.get(id) + 1);
+          parent.set(nb.id, id);
+          children.get(id).push(nb.id);
+          treeEdges.add(nb.e.id);
+          branch.set(nb.id, depth.get(id) === 0 ? children.get(id).length - 1 : branch.get(id));
+          bfs(nb.id, adjS);
+          grew = true;
+        }
+      }
+    }
+  }
+  return { roots, parent, children, depth, branch, treeEdges };
+}
+
+/** Các nút bị ẩn vì nằm trong nhánh đang thu gọn. */
+export function hiddenSet(d, t = treeOf(d)) {
+  const hidden = new Set();
+  const hide = (id) => t.children.get(id)?.forEach((c) => (hidden.add(c), hide(c)));
+  d.nodes.filter((n) => n.collapsed).forEach((n) => hide(n.id));
+  return hidden;
+}
+
+/** Bố cục theo kiểu của sơ đồ (d.layout). */
+export function layoutDiagram(d) {
+  return (d.layout || 'tang') === 'tang' ? autoLayout(d) : mindmapLayout(d, { both: d.layout !== 'cay' });
+}
+
+/**
+ * Sơ đồ tư duy: chủ đề ở giữa, các nhánh tỏa hai bên (both) hoặc cây ngang sang phải; nhánh con xếp gọn theo chiều
+ * dọc, không chồng nhau. Nhánh đang thu gọn chỉ chiếm chỗ của nút mẹ.
+ */
+export function mindmapLayout(d, { both = true, gapY = 16, gapX = 64 } = {}) {
+  const t = treeOf(d);
+  const byId = new Map(d.nodes.map((n) => [n.id, n]));
+  const kids = (id) => (byId.get(id)?.collapsed ? [] : t.children.get(id) || []);
+  const span = new Map();
+  const spanOf = (id) => {
+    if (span.has(id)) return span.get(id);
+    const own = nodeSize(byId.get(id)).h;
+    const ks = kids(id);
+    const v = Math.max(own, ks.reduce((s, c) => s + spanOf(c), 0) + gapY * Math.max(0, ks.length - 1));
+    span.set(id, v);
+    return v;
+  };
+  const place = (id, dir) => {
+    const n = byId.get(id);
+    const ks = kids(id);
+    const total = ks.reduce((s, c) => s + spanOf(c), 0) + gapY * Math.max(0, ks.length - 1);
+    let y = n.y - total / 2;
+    const w = nodeSize(n).w;
+    for (const c of ks) {
+      const cn = byId.get(c);
+      const sp = spanOf(c);
+      cn.y = Math.round(y + sp / 2);
+      cn.x = Math.round(n.x + dir * (w / 2 + gapX + nodeSize(cn).w / 2));
+      place(c, dir);
+      y += sp + gapY;
+    }
+    // Nút trong nhánh thu gọn: đặt tại nút mẹ (không hiển thị).
+    if (n.collapsed) {
+      const hide = (k) => (t.children.get(k) || []).forEach((c) => ((byId.get(c).x = n.x), (byId.get(c).y = n.y), hide(c)));
+      hide(id);
+    }
+  };
+  let bottom = null;
+  t.roots.forEach((rid, ri) => {
+    const r = byId.get(rid);
+    if (ri === 0) {
+      if (!Number.isFinite(r.x)) r.x = 0;
+      if (!Number.isFinite(r.y)) r.y = 0;
+      const ks = kids(rid);
+      if (!both) {
+        place(rid, 1);
+      } else {
+        // Chia nhánh cấp 1 sang phải / trái cho cân (theo tổng chiều cao), giữ thứ tự.
+        const right = [];
+        const left = [];
+        let sr = 0;
+        let sl = 0;
+        for (const c of ks) {
+          if (sr <= sl) (right.push(c), (sr += spanOf(c) + gapY));
+          else (left.push(c), (sl += spanOf(c) + gapY));
+        }
+        const side = (list, dir) => {
+          const total = list.reduce((s, c) => s + spanOf(c), 0) + gapY * Math.max(0, list.length - 1);
+          let y = r.y - total / 2;
+          const w = nodeSize(r).w;
+          for (const c of list) {
+            const cn = byId.get(c);
+            const sp = spanOf(c);
+            cn.y = Math.round(y + sp / 2);
+            cn.x = Math.round(r.x + dir * (w / 2 + gapX + 20 + nodeSize(cn).w / 2));
+            place(c, dir);
+            y += sp + gapY;
+          }
+        };
+        side(right, 1);
+        side(left.reverse(), -1);
+        if (r.collapsed) place(rid, 1);
+      }
+      bottom = bounds(d, 0);
+    } else {
+      // Cụm không nối với chủ đề trung tâm: xếp bên dưới, mỗi cụm một cây ngang.
+      const sp = spanOf(rid);
+      r.x = Math.round((bottom?.x ?? 0) + nodeSize(r).w / 2);
+      r.y = Math.round((bottom ? bottom.y + bottom.h : 0) + 90 + sp / 2);
+      place(rid, 1);
+      bottom = bounds(d, 0);
+    }
+  });
+  return d;
+}
+
 /** Đặt các nút mới (fresh) cạnh nút đã có cùng loại, không chồng lên nút khác. */
 function placeFresh(d) {
   const placed = d.nodes.filter((n) => !n.fresh);
@@ -220,7 +414,9 @@ export function bounds(d, pad = 40) {
   let y0 = Infinity;
   let x1 = -Infinity;
   let y1 = -Infinity;
+  const hidden = d.nodes.some((n) => n.collapsed) ? hiddenSet(d) : null;
   for (const n of d.nodes) {
+    if (hidden?.has(n.id) || !Number.isFinite(n.x)) continue;
     const { w, h } = nodeSize(n);
     x0 = Math.min(x0, n.x - w / 2);
     y0 = Math.min(y0, n.y - h / 2);
@@ -296,7 +492,7 @@ function segHitsNode(a, b, n) {
   return false;
 }
 
-export function edgeGeom(d, e) {
+export function edgeGeom(d, e, { arc = 0 } = {}) {
   const a = d.nodes.find((n) => n.id === e.from);
   const b = d.nodes.find((n) => n.id === e.to);
   if (!a || !b) return null;
@@ -306,7 +502,7 @@ export function edgeGeom(d, e) {
   const nth = same.indexOf(e);
   // Đường thẳng cắt qua nút khác → uốn cong vòng qua (tránh che nhãn và nhầm hướng).
   const blocked = d.nodes.some((n) => n !== a && n !== b && segHitsNode(a, b, n));
-  const bend = (twin ? 28 : 0) + nth * 34 + (blocked ? 70 : 0);
+  const bend = (twin ? 28 : 0) + nth * 34 + (blocked && !arc ? 70 : 0) + arc;
   const mx0 = (a.x + b.x) / 2;
   const my0 = (a.y + b.y) / 2;
   const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
@@ -320,46 +516,124 @@ export function edgeGeom(d, e) {
   return { path, lx, ly };
 }
 
-/** Phần thân SVG (mũi tên, nút, nét vẽ). sel: id đang chọn (để tô viền). */
-export function diagramSvgBody(d, { sel = null } = {}) {
+const tint = (hex, a) => {
+  const v = parseInt(hex.slice(1), 16);
+  const mix = (c) => Math.round(c + (255 - c) * (1 - a));
+  return `#${[(v >> 16) & 255, (v >> 8) & 255, v & 255].map((c) => mix(c).toString(16).padStart(2, '0')).join('')}`;
+};
+
+/** Đường nhánh cong (sơ đồ tư duy) từ cạnh nút mẹ tới cạnh nút con. */
+function branchPath(a, b) {
+  const wa = nodeSize(a).w / 2;
+  const wb = nodeSize(b).w / 2;
+  const dir = b.x >= a.x ? 1 : -1;
+  const sx = a.x + dir * wa;
+  const ex = b.x - dir * wb;
+  const mx = (sx + ex) / 2;
+  return { path: `M${sx.toFixed(1)},${a.y.toFixed(1)} C${mx.toFixed(1)},${a.y.toFixed(1)} ${mx.toFixed(1)},${b.y.toFixed(1)} ${ex.toFixed(1)},${b.y.toFixed(1)}`, lx: mx, ly: (a.y + b.y) / 2, dir };
+}
+
+/**
+ * Phần thân SVG (mũi tên, nút, nét vẽ). sel: id đang chọn. ui: vẽ thêm điều khiển trên hình (thu gọn nhánh,
+ * gợi ý, tay nắm đổi kích thước) — chỉ trong màn hình sửa, không có khi xuất tệp. ideas(n): số gợi ý của nút.
+ */
+export function diagramSvgBody(d, { sel = null, ui = false, ideas = null } = {}) {
+  let crossN = 0;
+  const tree = (d.layout || 'tang') !== 'tang';
+  const t = treeOf(d);
+  const hidden = hiddenSet(d, t);
+  const byId = new Map(d.nodes.map((n) => [n.id, n]));
+  const colorOf = (id) => {
+    const n = byId.get(id);
+    if (n?.color) return n.color;
+    if (!tree) return (NODE_KINDS[n?.kind] || NODE_KINDS.box).stroke;
+    if (!t.depth.get(id)) return NODE_KINDS.root.stroke;
+    return BRANCH_COLORS[(t.branch.get(id) ?? 0) % BRANCH_COLORS.length];
+  };
   const markers = Object.entries(EDGE_KINDS)
     .map(([k, v]) => `<marker id="dg-arr-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${v.color}"/></marker>`)
     .join('');
+  const label = (lab, x, y, color) => {
+    if (!lab) return '';
+    const s = lab.length > 40 ? `${lab.slice(0, 38)}…` : lab;
+    const lw = s.length * 6.8 + 14;
+    return `<rect x="${(x - lw / 2).toFixed(1)}" y="${(y - 10).toFixed(1)}" width="${lw.toFixed(1)}" height="18" rx="6" fill="#ffffff" fill-opacity="0.94" stroke="${color}" stroke-opacity="0.4"/><text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="middle" font-size="12" font-weight="600" fill="${color}" font-family="system-ui, sans-serif">${esc(s)}</text>`;
+  };
   const edges = d.edges
+    .filter((e) => !hidden.has(e.from) && !hidden.has(e.to))
     .map((e) => {
-      const g = edgeGeom(d, e);
-      if (!g) return '';
       const k = EDGE_KINDS[e.kind] || EDGE_KINDS.khac;
-      const lab = e.label ? (e.label.length > 40 ? `${e.label.slice(0, 38)}…` : e.label) : '';
-      const lw = lab.length * 6.3 + 12;
-      return `<g class="dg-edge${sel === e.id ? ' sel' : ''}" data-edge="${esc(e.id)}"><path class="dg-hit" d="${g.path}" stroke="transparent" stroke-width="14" fill="none"/><path d="${g.path}" stroke="${sel === e.id ? '#2563eb' : k.color}" stroke-width="${sel === e.id ? 2.6 : 1.8}" fill="none" ${k.dash ? 'stroke-dasharray="5 4"' : ''} marker-end="url(#dg-arr-${e.kind in EDGE_KINDS ? e.kind : 'khac'})"><title>${esc(e.label || k.label)}</title></path>${lab ? `<rect x="${(g.lx - lw / 2).toFixed(1)}" y="${(g.ly - 9).toFixed(1)}" width="${lw.toFixed(1)}" height="16" rx="5" fill="#ffffff" fill-opacity="0.92" stroke="${k.color}" stroke-opacity="0.35"/><text x="${g.lx.toFixed(1)}" y="${(g.ly + 3).toFixed(1)}" text-anchor="middle" font-size="11" fill="${k.color}" font-family="system-ui, sans-serif">${esc(lab)}</text>` : ''}</g>`;
+      const a = byId.get(e.from);
+      const b = byId.get(e.to);
+      if (!a || !b) return '';
+      const isSel = sel === e.id;
+      if (tree && t.treeEdges.has(e.id)) {
+        // Nhánh của sơ đồ tư duy: đường cong theo màu nhánh, càng xa trung tâm càng mảnh.
+        const [pa, ch] = t.parent.get(e.to) === e.from ? [a, b] : [b, a];
+        const g = branchPath(pa, ch);
+        const c = colorOf(ch.id);
+        const wdt = Math.max(1.8, 5 - (t.depth.get(ch.id) || 1) * 1.1);
+        const arrow = e.kind === 'tien' || e.kind === 'chi-dao' ? ` marker-end="url(#dg-arr-${e.kind})"` : '';
+        return `<g class="dg-edge dg-branch${isSel ? ' sel' : ''}" data-edge="${esc(e.id)}"><path class="dg-hit" d="${g.path}" stroke="transparent" stroke-width="14" fill="none"/><path d="${g.path}" stroke="${isSel ? '#2563eb' : c}" stroke-width="${isSel ? wdt + 1 : wdt}" fill="none" stroke-linecap="round"${arrow}><title>${esc(e.label || k.label)}</title></path>${label(e.label && e.label !== 'thực hiện' ? e.label : '', g.lx, g.ly, c)}</g>`;
+      }
+      // Sơ đồ tư duy: quan hệ chéo (tiền, chỉ đạo… giữa các nhánh) vẽ thành vòng cung tránh trục chính, có thể ẩn.
+      if (tree && d.hideCross) return '';
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      const g = edgeGeom(d, e, tree ? { arc: (crossN++ % 2 ? -1 : 1) * Math.max(50, len * 0.28) } : {});
+      if (!g) return '';
+      const cross = tree ? ' dg-cross' : '';
+      return `<g class="dg-edge${cross}${isSel ? ' sel' : ''}" data-edge="${esc(e.id)}"><path class="dg-hit" d="${g.path}" stroke="transparent" stroke-width="14" fill="none"/><path d="${g.path}" stroke="${isSel ? '#2563eb' : k.color}" stroke-width="${isSel ? 2.6 : 1.8}" fill="none" ${k.dash || tree ? 'stroke-dasharray="6 4"' : ''} marker-end="url(#dg-arr-${e.kind in EDGE_KINDS ? e.kind : 'khac'})"><title>${esc(e.label || k.label)}</title></path>${label(e.label, g.lx, g.ly, k.color)}</g>`;
     })
     .join('');
   const nodes = d.nodes
+    .filter((n) => !hidden.has(n.id) && Number.isFinite(n.x))
     .map((n) => {
       const k = NODE_KINDS[n.kind] || NODE_KINDS.box;
-      const { w, h, lines, sub } = nodeSize(n);
+      const { w, h, lines, sub, fs, lh, sh } = nodeSize(n);
       const x = n.x - w / 2;
       const y = n.y - h / 2;
-      const stroke = n.color || k.stroke;
-      const rx = n.kind === 'person' ? h / 2 : n.kind === 'note' ? 3 : 9;
-      let ty = y + 15 + (h - 18 - lines.length * 17 - sub.length * 14 - (sub.length ? 4 : 0)) / 2 + 12;
+      const depth = t.depth.get(n.id) || 0;
+      const c = colorOf(n.id);
+      // Sơ đồ tư duy: chủ đề đậm; nhánh cấp 1 nền màu nhạt của nhánh; cấp sâu hơn nền trắng viền màu nhánh.
+      const isRoot = n.kind === 'root';
+      const fill = isRoot ? k.fill : tree ? (depth === 1 ? tint(c, 0.16) : '#ffffff') : k.fill;
+      const stroke = isRoot ? k.stroke : tree ? c : n.color || k.stroke;
+      const ink = isRoot ? '#ffffff' : '#1b1b22';
+      const subInk = isRoot ? '#dfe6f5' : '#555561';
+      const rx = isRoot ? 18 : n.kind === 'person' && !n.w ? h / 2 : n.kind === 'note' ? 4 : 10;
+      const bodyH = 16 + lines.length * lh + sub.length * sh + (sub.length ? 4 : 0);
+      let ty = y + (h - bodyH) / 2 + 8 + lh * 0.78;
       const tl = lines.map((l) => {
-        const t = `<text x="${n.x.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" font-size="13" font-weight="${n.kind === 'note' ? 400 : 650}" fill="#1b1b22" font-family="system-ui, sans-serif">${esc(l)}</text>`;
-        ty += 17;
-        return t;
+        const out = `<text x="${n.x.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" font-size="${(14 * fs).toFixed(1)}" font-weight="${n.kind === 'note' ? 400 : isRoot || depth <= 1 ? 700 : 600}" fill="${ink}" font-family="system-ui, sans-serif">${esc(l)}</text>`;
+        ty += lh;
+        return out;
       });
-      ty += sub.length ? 2 : 0;
+      ty += sub.length ? 3 : 0;
       const sl = sub.map((l) => {
-        const t = `<text x="${n.x.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" font-size="11" fill="#555561" font-family="system-ui, sans-serif">${esc(l)}</text>`;
-        ty += 14;
-        return t;
+        const out = `<text x="${n.x.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" font-size="${(12 * fs).toFixed(1)}" fill="${subInk}" font-family="system-ui, sans-serif">${esc(l)}</text>`;
+        ty += sh;
+        return out;
       });
-      return `<g class="dg-node dg-k-${n.kind}${sel === n.id ? ' sel' : ''}" data-node="${esc(n.id)}" tabindex="0" role="button" aria-label="${esc(`${k.label}: ${n.label}${n.sub ? ` — ${n.sub}` : ''}`)}"><rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w}" height="${h}" rx="${rx}" fill="${k.fill}" stroke="${sel === n.id ? '#2563eb' : stroke}" stroke-width="${sel === n.id ? 2.8 : 1.6}" ${n.kind === 'note' ? 'stroke-dasharray="0"' : ''}/>${tl.join('')}${sl.join('')}</g>`;
+      let extra = '';
+      if (ui) {
+        const nKids = (t.children.get(n.id) || []).length;
+        const right = !tree || n.x >= (byId.get(t.parent.get(n.id))?.x ?? n.x - 1);
+        if (nKids && (tree || n.collapsed)) {
+          const cx = isRoot ? n.x : right ? x + w + 9 : x - 9;
+          const cy = isRoot ? y + h + 9 : n.y;
+          extra += `<g class="dg-toggle" data-toggle="${esc(n.id)}" role="button" aria-label="${n.collapsed ? `Mở nhánh (${nKids})` : 'Thu gọn nhánh'}"><circle cx="${cx}" cy="${cy}" r="9" fill="#ffffff" stroke="${stroke}" stroke-width="1.6"/><text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="${n.collapsed ? 10 : 13}" font-weight="700" fill="${stroke}" font-family="system-ui, sans-serif">${n.collapsed ? nKids : '−'}</text></g>`;
+        }
+        const nIdeas = ideas ? ideas(n) : 0;
+        if (nIdeas) extra += `<g class="dg-idea" data-ideas="${esc(n.id)}" role="button" aria-label="Gợi ý cho “${esc(n.label)}”"><title>${nIdeas} gợi ý — bấm để xem, thêm nhánh</title><circle cx="${x + w - 2}" cy="${y + 2}" r="10" fill="#7048e8"/><text x="${x + w - 2}" y="${y + 6.5}" text-anchor="middle" font-size="12" fill="#ffffff" font-family="system-ui, sans-serif">✦</text></g>`;
+        if (sel === n.id) extra += `<rect class="dg-resize" data-resize="${esc(n.id)}" x="${x + w - 7}" y="${y + h - 7}" width="12" height="12" rx="3" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"><title>Kéo để đổi kích thước</title></rect>`;
+      }
+      const shadow = tree || isRoot ? ' filter="url(#dg-shadow)"' : '';
+      return `<g class="dg-node dg-k-${n.kind}${sel === n.id ? ' sel' : ''}${n.collapsed ? ' collapsed' : ''}" data-node="${esc(n.id)}" tabindex="0" role="button" aria-label="${esc(`${k.label}: ${n.label}${n.sub ? ` — ${n.sub}` : ''}`)}"><rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w}" height="${h}" rx="${rx}" fill="${fill}" stroke="${sel === n.id ? '#2563eb' : stroke}" stroke-width="${sel === n.id ? 2.8 : isRoot ? 0 : tree ? 2 : 1.6}"${shadow}/>${tl.join('')}${sl.join('')}${extra}</g>`;
     })
     .join('');
   const strokes = d.strokes.map((s) => `<path class="dg-stroke" data-stroke="${esc(s.id)}" d="${strokePath(s.points)}" stroke="${s.color}" stroke-width="${s.width || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
-  return `<defs>${markers}</defs><g class="dg-edges">${edges}</g><g class="dg-nodes">${nodes}</g><g class="dg-strokes">${strokes}</g>`;
+  const defs = `<defs>${markers}<filter id="dg-shadow" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#1b1b22" flood-opacity="0.16"/></filter></defs>`;
+  return `${defs}<g class="dg-edges">${edges}</g><g class="dg-nodes">${nodes}</g><g class="dg-strokes">${strokes}</g>`;
 }
 
 /** SVG độc lập để xuất tệp (nền trắng, vừa khung). */
@@ -385,5 +659,55 @@ export function labelSuggestions(text, { kind = 'node', map = null, d = null } =
   (map?.crimes || []).flatMap((c) => c.items).filter((it) => !used.has(key(it.ten))).slice(0, 3).forEach((it) => out.push({ label: it.ten.length > 40 ? `${it.ten.slice(0, 38)}…` : it.ten, insert: it.ten }));
   if (!t) ['Thời gian, địa điểm', 'Hậu quả, thiệt hại', 'Tài liệu, chứng cứ', 'Mâu thuẫn cần làm rõ', 'Việc cần làm tiếp'].forEach((h) => out.push({ label: h, line: `${h}: ` }));
   (map?.amounts || []).slice(0, 2).forEach((a) => !t.includes(key(a)) && out.push({ label: a, insert: ` ${a}` }));
+  return out.slice(0, 10);
+}
+
+/* ---------------- Gợi ý ngay trên từng hình ---------------- */
+
+const IDEA_BY_KIND = {
+  root: ['Người liên quan', 'Hành vi vi phạm', 'Dòng tiền, tài sản', 'Dòng thời gian', 'Tài liệu, chứng cứ', 'Mâu thuẫn cần làm rõ', 'Việc cần làm tiếp'],
+  crime: ['Dấu hiệu định tội đã có căn cứ', 'Dấu hiệu còn phải chứng minh', 'Tình tiết định khung', 'Hậu quả, thiệt hại'],
+  act: ['Thời gian, địa điểm', 'Người thực hiện, giúp sức', 'Thủ đoạn, cách thức', 'Số tiền, thiệt hại', 'Mục đích, động cơ', 'Tài liệu, chứng cứ', 'Câu hỏi cần làm rõ'],
+  person: ['Vai trò, chức vụ', 'Đã đưa / nhận bao nhiêu tiền', 'Liên hệ với ai', 'Lời khai đã có', 'Điểm mâu thuẫn trong lời khai', 'Câu hỏi cho lần khai tới'],
+  money: ['Nguồn tiền', 'Chuyển cho ai, khi nào', 'Hình thức (tiền mặt / chuyển khoản)', 'Chứng từ, sao kê', 'Số tiền đã thu hồi'],
+  box: ['Làm rõ thêm', 'Căn cứ, tài liệu', 'Việc cần làm tiếp'],
+  note: ['Việc cần làm tiếp', 'Người phụ trách', 'Thời hạn'],
+};
+
+/**
+ * Gợi ý nhánh con cho một nút: theo loại nút (đầu mục điều tra thường cần), theo dữ liệu vụ việc (người, hành vi,
+ * dòng tiền liên quan chưa có trên sơ đồ) và dấu hiệu định tội của điều luật. Bỏ các gợi ý đã có trong nhánh.
+ * Trả [{ label, kind }].
+ */
+export function nodeIdeas(n, d, { map = null, crimeOf = null } = {}) {
+  if (!n) return [];
+  const t = treeOf(d);
+  const near = new Set([...(t.children.get(n.id) || []), t.parent.get(n.id)].filter(Boolean).map((id) => key(d.nodes.find((x) => x.id === id)?.label)));
+  const onMap = new Set(d.nodes.map((x) => key(x.label)));
+  const out = [];
+  const push = (label, kind = 'box') => {
+    const k = key(label);
+    if (!k || near.has(k) || out.some((x) => key(x.label) === k)) return;
+    out.push({ label, kind });
+  };
+  const nk = key(n.label);
+  if (n.kind === 'crime') {
+    const dieu = (n.label.match(/\d+/) || [])[0];
+    const c = dieu && crimeOf ? crimeOf(dieu) : null;
+    (c?.dauHieu || []).slice(0, 4).forEach((s) => push(`Dấu hiệu: ${s.length > 70 ? `${s.slice(0, 68)}…` : s}`));
+    (map?.crimes || []).filter((x) => x.dieu === dieu).flatMap((x) => x.items).forEach((it) => !onMap.has(key(it.ten)) && push(it.ten, 'act'));
+  }
+  if (n.kind === 'act' && map) {
+    const it = (map.crimes || []).flatMap((c) => c.items).find((x) => key(x.ten) === nk);
+    (it?.nguoi || []).forEach((p) => push(p, 'person'));
+    if (it?.soTien) push(it.soTien, 'money');
+  }
+  if (n.kind === 'person' && map) {
+    (map.edges || []).filter((e) => key(e.tu) === nk || key(e.den) === nk).forEach((e) => push(key(e.tu) === nk ? `${e.noiDung || 'liên quan'} ${e.den}${e.soTien ? `: ${e.soTien}` : ''}` : `${e.tu} ${e.noiDung || 'liên quan'}${e.soTien ? `: ${e.soTien}` : ''}`, e.loai === 'tien' ? 'money' : 'box'));
+    const p = (map.people || []).find((x) => key(x.ten) === nk);
+    if (p?.vaiTro && !key(n.sub).includes(key(p.vaiTro))) push(`Vai trò: ${p.vaiTro}`);
+  }
+  if (n.kind === 'root' && map) (map.people || []).filter((p) => !onMap.has(key(p.ten))).slice(0, 4).forEach((p) => push(p.ten, 'person'));
+  (IDEA_BY_KIND[n.kind] || IDEA_BY_KIND.box).forEach((l) => push(l));
   return out.slice(0, 10);
 }

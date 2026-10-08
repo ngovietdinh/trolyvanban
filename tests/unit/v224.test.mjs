@@ -96,7 +96,7 @@ test('đoạn tài liệu gửi kèm ưu tiên câu liên quan tới yêu cầu,
 
 test('sơ đồ tùy chỉnh: dựng từ sơ đồ vụ việc, bố cục theo tầng, không chồng nút', () => {
   const m = buildCaseMap({ sources: SRC, primary: '353' });
-  const d = diagramFromCaseMap(m);
+  const d = diagramFromCaseMap(m, { layout: 'tang' });
   assert.ok(d.nodes.some((x) => x.kind === 'crime' && x.label === 'Điều 353'));
   assert.ok(d.nodes.some((x) => x.kind === 'person'));
   assert.ok(d.edges.some((e) => e.kind === 'thuoc'));
@@ -116,7 +116,7 @@ test('sơ đồ tùy chỉnh: dựng từ sơ đồ vụ việc, bố cục theo
 
 test('cập nhật từ sơ đồ vụ việc mới: giữ vị trí, nhãn đã sửa, nút / mũi tên / nét vẽ tự thêm', () => {
   const m = buildCaseMap({ sources: SRC, primary: '353' });
-  const d = diagramFromCaseMap(m);
+  const d = diagramFromCaseMap(m, { layout: 'tang' });
   const crime = d.nodes.find((x) => x.kind === 'crime');
   crime.x = 999;
   crime.label = 'Điều 353 (sửa)';
@@ -166,4 +166,48 @@ test('AI làm tiếp danh sách hành vi: lời nhắc có hành vi đang có v�
   assert.equal(items[0].dieu, '353');
   assert.equal(items[0].checked, true);
   assert.equal(items[1].ngoaiDanhMuc, true);
+});
+
+test('v2.25 sơ đồ tư duy: chủ đề trung tâm → điều luật → hành vi → người; quan hệ tiền là liên kết chéo; không chồng hình', async () => {
+  const { treeOf, mindmapLayout, nodeIdeas, hiddenSet, nodeSize: ns } = await import('../../assets/js/legal/diagram.js');
+  const { findCrime } = await import('../../assets/js/legal/engine.js');
+  const m = buildCaseMap({ sources: SRC, primary: '353' });
+  const d = diagramFromCaseMap(m, { title: 'Vụ A' });
+  assert.equal(d.layout, 'mindmap');
+  const root = d.nodes.find((n) => n.kind === 'root');
+  assert.equal(root.label, 'Vụ A');
+  const t = treeOf(d);
+  assert.equal(t.roots[0], root.id);
+  const crime = d.nodes.find((n) => n.kind === 'crime');
+  assert.equal(t.parent.get(crime.id), root.id);
+  const act = d.nodes.find((n) => n.kind === 'act');
+  assert.equal(t.parent.get(act.id), crime.id);
+  const money = d.edges.find((e) => e.kind === 'tien');
+  if (money) assert.ok(!t.treeEdges.has(money.id) || t.parent.get(money.to) === money.from || t.parent.get(money.from) === money.to);
+  // Không chồng nhau.
+  for (const a of d.nodes)
+    for (const b of d.nodes) {
+      if (a === b) continue;
+      const za = ns(a);
+      const zb = ns(b);
+      const overlap = Math.abs(a.x - b.x) < (za.w + zb.w) / 2 && Math.abs(a.y - b.y) < (za.h + zb.h) / 2;
+      assert.ok(!overlap, `${a.label} chồng ${b.label}`);
+    }
+  // Hai bên chủ đề đều có nhánh khi có từ 2 nhánh cấp 1 trở lên.
+  const first = t.children.get(root.id).map((id) => d.nodes.find((n) => n.id === id));
+  if (first.length >= 2) assert.ok(first.some((n) => n.x > root.x) && first.some((n) => n.x < root.x));
+  // Thu gọn nhánh điều luật → ẩn hành vi bên dưới.
+  crime.collapsed = true;
+  mindmapLayout(d);
+  assert.ok(hiddenSet(d).has(act.id));
+  // Gợi ý trên hình: điều luật có dấu hiệu định tội, hành vi có đầu mục điều tra.
+  const ci = nodeIdeas(crime, d, { map: m, crimeOf: findCrime });
+  assert.ok(ci.some((x) => x.label.startsWith('Dấu hiệu:')));
+  const ai = nodeIdeas(act, d, { map: m });
+  assert.ok(ai.some((x) => x.label === 'Thời gian, địa điểm'));
+  // Kích thước kéo tay, cỡ chữ.
+  const z0 = ns(act);
+  const big = ns({ ...act, w: z0.w + 120, fs: 1.45 });
+  assert.equal(big.w, z0.w + 120);
+  assert.ok(big.lh > z0.lh);
 });

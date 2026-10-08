@@ -117,7 +117,8 @@ test.describe('v2.24 — sơ đồ logic tùy chỉnh, AI làm tiếp', () => {
     await page.locator('[data-dg-label]').fill('Nguyễn Văn An');
     await page.locator('[data-dg-sub]').fill('Kế toán');
     await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.4);
-    await expect(dg.locator('.dg-node')).toHaveCount(2);
+    // Sơ đồ trống có sẵn chủ đề trung tâm + 2 hình vừa thêm.
+    await expect(dg.locator('.dg-node')).toHaveCount(3);
     await page.locator('[data-dg-label]').fill('Trần Văn Bình');
     await expect(dg.locator('.dg-node', { hasText: 'Nguyễn Văn An' })).toContainText('Kế toán');
     // Nối mũi tên.
@@ -139,18 +140,22 @@ test.describe('v2.24 — sơ đồ logic tùy chỉnh, AI làm tiếp', () => {
     expect(nb2.y).toBeGreaterThan(nb.y + 20);
     // Ghi chú.
     await page.click('[data-dg-mode="text"]');
-    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.15);
+    const bt = await stableBox(page, canvas);
+    await page.mouse.click(bt.x + bt.width * 0.5, bt.y + bt.height * 0.15);
     await page.locator('[data-dg-label]').fill('Cần làm rõ nguồn tiền');
     await expect(dg.locator('.dg-k-note')).toContainText('Cần làm rõ');
     // Vẽ tay rồi tẩy.
+    // Khung vẽ cao: bấm thanh công cụ có thể cuộn trang → đo lại vị trí khung trước khi vẽ / tẩy.
     await page.click('[data-dg-mode="pen"]');
-    await page.mouse.move(box.x + 40, box.y + box.height - 60);
+    const bp = await stableBox(page, canvas);
+    await page.mouse.move(bp.x + 40, bp.y + bp.height - 60);
     await page.mouse.down();
-    await page.mouse.move(box.x + 140, box.y + box.height - 50, { steps: 8 });
+    await page.mouse.move(bp.x + 140, bp.y + bp.height - 50, { steps: 8 });
     await page.mouse.up();
     await expect(dg.locator('.dg-stroke')).toHaveCount(1);
     await page.click('[data-dg-mode="erase"]');
-    await page.mouse.click(box.x + 90, box.y + box.height - 55);
+    const be = await stableBox(page, canvas);
+    await page.mouse.click(be.x + 90, be.y + be.height - 55);
     await expect(dg.locator('.dg-stroke')).toHaveCount(0);
     // Hoàn tác lấy lại nét vẽ, làm lại xóa đi.
     await page.click('[data-dg-undo]');
@@ -177,7 +182,7 @@ test.describe('v2.24 — sơ đồ logic tùy chỉnh, AI làm tiếp', () => {
     // Lưu lại: mở lại vẫn còn.
     await page.reload();
     await page.click('[data-cm-blank]');
-    await expect(page.locator('[data-dg] .dg-node')).toHaveCount(2);
+    await expect(page.locator('[data-dg] .dg-node')).toHaveCount(3);
     await expect(page.locator('[data-dg] .dg-edge')).toContainText('đưa 100 triệu');
     t.assertClean();
   });

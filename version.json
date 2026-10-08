@@ -1,7 +1,7 @@
 {
-  "version": "2.24.2",
+  "version": "2.25.0",
   "date": "2026-10-08",
   "notes": [
-    "Tiết kiệm token: lời nhắc xếp phần cố định trước để đọc lại từ cache (Claude, OpenRouter gắn cache_control; Groq, OpenAI, Gemini tự cache), mô hình suy luận chạy mức suy nghĩ thấp cho việc thường; Groq mặc định gpt-oss-120b, token cache không tính hạn mức; thêm OpenRouter"
+    "Sơ đồ tư duy: vụ việc ở giữa, nhánh màu tỏa hai bên, quan hệ tiền/chỉ đạo dạng vòng cung; đổi kiểu (tư duy, cây ngang, theo tầng); thu gọn nhánh; kéo to nhỏ từng hình, đổi cỡ chữ; Tab/Enter thêm nhánh; gợi ý ngay trên từng hình và AI gợi ý thêm; chụm 2 ngón thu phóng; toàn màn hình"
   ]
 }

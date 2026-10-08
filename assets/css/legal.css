@@ -4797,3 +4797,34 @@ body.dg-lock { overflow: hidden; }
 @media (max-width: 760px) {
   .rf-row { flex-direction: column; align-items: stretch; }
 }
+
+/* ================= Sơ đồ tư duy (v2.25) ================= */
+.dg-canvas { height: min(78vh, 780px); }
+.dg-props { max-height: min(78vh, 780px); }
+.dg-view { gap: 4px; }
+.dg-view .dg-sel { max-width: 150px; }
+.dg-toggle { cursor: pointer; }
+.dg-toggle:hover circle { fill: #eef2ff; }
+.dg-idea { cursor: pointer; opacity: 0.55; transition: opacity 0.15s; }
+.dg-node:hover .dg-idea, .dg-node.sel .dg-idea, .dg-idea:focus { opacity: 1; }
+.dg-resize { cursor: nwse-resize; }
+.dg-node.collapsed rect { stroke-dasharray: 6 3; }
+.dg-edge.dg-cross path:not(.dg-hit) { opacity: 0.8; }
+.dg-fs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dg-fs strong { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; color: var(--text); }
+.dg-pop { position: absolute; z-index: 5; max-height: calc(100% - 16px); overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 10px 12px 12px; display: grid; gap: 8px; }
+.dg-pop[hidden] { display: none; }
+.dg-pop-head { display: flex; align-items: flex-start; gap: 6px; }
+.dg-pop-head strong { flex: 1; font-size: 13px; line-height: 1.35; }
+.dg-pop .hint { margin: 0; }
+.dg-pop-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dg-pop-chips .dg-chip { text-align: left; font-weight: 500; }
+.dg-chip.ai { border-color: #b197fc; color: #5f3dc4; background: #f3f0ff; }
+.dg-pop-ai { justify-self: start; }
+.dg-pop-add .input { width: 100%; }
+.dg.is-full .dg-canvas { height: auto; }
+@media (max-width: 760px) {
+  .dg-canvas { height: 62vh; }
+  .dg-view .dg-btn span { display: none; }
+  .dg-pop { left: 8px !important; right: 8px; width: auto !important; }
+}

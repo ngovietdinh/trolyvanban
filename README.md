@@ -84,6 +84,10 @@ Phân tích tài liệu (Thêm hành vi từ tài liệu, Phân tích vụ việ
 - **Gợi ý đầu mục khi nhập** (`assets/js/lib/suggest.js`): hàng gợi ý dưới ô thêm / sửa câu hỏi, ô Hỏi khi ghi lời khai, tóm tắt hồ sơ, yêu cầu AI, nhãn sơ đồ — dựa vào nội dung đang gõ và hồ sơ (người liên quan, dấu hiệu định tội, hành vi, số tiền).
 - **Thu gọn thanh menu**: nút cạnh tên màn hình hoặc `Ctrl B`, nhớ lựa chọn.
 
+## Sơ đồ tư duy (v2.25)
+
+Tab **Vẽ & chỉnh sửa** của Sơ đồ vụ việc (`assets/js/legal/diagram.js`, `assets/js/views/diagram-editor.js`): sơ đồ dựng sẵn có **chủ đề trung tâm** (vụ việc) → điều luật → hành vi → người thực hiện; khung cây lấy theo liên kết “thuộc / thực hiện”, quan hệ tiền / chỉ đạo là liên kết chéo vẽ vòng cung (ẩn / hiện được). Ba kiểu bố cục (`d.layout`): `mindmap` (hai bên, cân theo chiều cao nhánh), `cay` (cây ngang), `tang` (theo tầng, như v2.24). Thu gọn nhánh (`collapsed`), kéo to nhỏ (`w`, `h`), cỡ chữ (`fs`), Tab / Enter thêm nhánh, chụm 2 ngón để thu phóng. Gợi ý trên từng hình (`nodeIdeas`): đầu mục điều tra theo loại hình, dấu hiệu định tội của điều luật, người / dòng tiền liên quan chưa có trên sơ đồ; **AI gợi ý thêm** gửi tóm tắt vụ việc (phần cố định, đọc lại từ cache) + đường đi tới hình đang xét.
+
 ## Groq gói miễn phí (v2.24.1)
 
 `assets/js/lib/groq-quota.js` canh hạn mức theo từng mô hình (mặc định 30 yêu cầu/phút, 1.000/ngày, 8.000 token/phút, 200.000 token/ngày — sửa ở Cài đặt → Groq): ước lượng token gửi đi (~3,2 ký tự/token tiếng Việt), `max_tokens` không quá 4.096 và không vượt phần còn lại của hạn mức phút; chờ khi phút đã dùng gần hết; 429 thì chờ đúng `Retry-After`; tài liệu chia phần ~4.000 ký tự, gửi lần lượt; ngữ cảnh gửi kèm gọn như AI trên máy; tóm tắt văn bản dài theo từng phần; trợ lý chỉ gửi đoạn hội thoại gần nhất; hết hạn mức ngày → mô hình dự phòng / nhà cung cấp khác. Thống kê token đã dùng trong ngày lấy từ `x_groq.usage`.

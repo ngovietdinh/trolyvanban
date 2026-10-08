@@ -2,7 +2,7 @@
 // hoàn tác / làm lại, sắp xếp tự động, thu phóng, toàn màn hình, xuất PNG / SVG. Tự lưu sau mỗi thay đổi.
 import { $, $$, icon, toast, escapeHtml, downloadBlob } from '../ui.js';
 import { attachSuggest } from '../lib/suggest.js';
-import { NODE_KINDS, EDGE_KINDS, PEN_COLORS, newId, autoLayout, bounds, simplify, strokeAt, diagramSvgBody, diagramToSvg, labelSuggestions } from '../legal/diagram.js';
+import { NODE_KINDS, EDGE_KINDS, PEN_COLORS, LAYOUTS, FONT_STEPS, newId, layoutDiagram, bounds, simplify, strokeAt, diagramSvgBody, diagramToSvg, labelSuggestions, nodeIdeas, treeOf, hiddenSet, fontScale, nodeSize } from '../legal/diagram.js';
 
 const MODES = [
   ['select', 'move', 'Chọn, kéo thả (V)', 'Chọn'],
@@ -20,9 +20,11 @@ const HOTKEY = { v: 'select', n: 'node', c: 'connect', p: 'pen', t: 'text', e: '
  * - title: tên sơ đồ (xuất tệp);
  * - map: sơ đồ vụ việc (để gợi ý nhãn);
  * - onChange(diagram): gọi sau mỗi thay đổi (tự lưu);
- * - onRebuild(): dựng lại phần tự sinh từ sơ đồ vụ việc (nếu có) → trả về diagram mới.
+ * - onRebuild(): dựng lại phần tự sinh từ sơ đồ vụ việc (nếu có) → trả về diagram mới;
+ * - aiIdeas(node, { path, children, signal }) → Promise<string[]>: AI gợi ý nhánh con cho một hình (nếu có AI);
+ * - crimeOf(dieu): tra điều luật (gợi ý dấu hiệu định tội trên hình điều luật).
  */
-export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, onChange = () => {}, onRebuild = null }) {
+export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, onChange = () => {}, onRebuild = null, aiIdeas = null, crimeOf = null }) {
   let d = diagram;
   let mode = 'select';
   let sel = null; // { type: 'node'|'edge', id }
@@ -39,6 +41,12 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     <div class="dg-bar" role="toolbar" aria-label="Công cụ sơ đồ">
       <div class="dg-group dg-modes">${MODES.map(([m, ic, tip, l]) => `<button type="button" class="dg-btn" data-dg-mode="${m}" title="${tip}" aria-label="${tip}" aria-pressed="false">${icon(ic, 'ic-sm')}<span>${l}</span></button>`).join('')}</div>
       <div class="dg-group dg-opt" data-dg-opt></div>
+      <div class="dg-group dg-view">
+        <select class="select dg-sel" data-dg-lmode aria-label="Kiểu sơ đồ" title="Kiểu sơ đồ">${Object.entries(LAYOUTS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+        <button type="button" class="dg-btn" data-dg-collapse="all" title="Thu gọn tất cả nhánh (chỉ còn nhánh chính)" aria-label="Thu gọn tất cả nhánh">${icon('minimize', 'ic-sm')}</button>
+        <button type="button" class="dg-btn" data-dg-collapse="none" title="Mở tất cả nhánh" aria-label="Mở tất cả nhánh">${icon('maximize', 'ic-sm')}<span>Mở hết</span></button>
+        <button type="button" class="dg-btn" data-dg-cross aria-pressed="true" title="Ẩn / hiện quan hệ chéo giữa các nhánh (tiền, chỉ đạo…)" aria-label="Ẩn / hiện quan hệ chéo">${icon('link', 'ic-sm')}<span>Quan hệ</span></button>
+      </div>
       <span class="spacer"></span>
       <div class="dg-group">
         <button type="button" class="dg-btn" data-dg-undo title="Hoàn tác (Ctrl+Z)" aria-label="Hoàn tác">${icon('undo', 'ic-sm')}</button>
@@ -54,6 +62,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       <div class="dg-canvas" data-dg-canvas>
         <svg class="dg-svg" data-dg-svg xmlns="http://www.w3.org/2000/svg" role="application" aria-label="Sơ đồ logic — kéo thả để sắp xếp, bấm đúp để sửa"></svg>
         <p class="dg-tip" data-dg-tip></p>
+        <div class="dg-pop" data-dg-pop hidden role="dialog" aria-label="Gợi ý nhánh"></div>
       </div>
       <aside class="dg-props" data-dg-props></aside>
     </div>
@@ -80,14 +89,28 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     draw();
   };
   function changed() {
+    ideaCache = null;
     onChange(d);
     stat();
   }
+  // Số gợi ý trên từng hình (tính lại khi sơ đồ đổi cấu trúc, không tính lại khi đang kéo).
+  let ideaCache = null;
+  const ideasOf = (n) => nodeIdeas(n, d, { map, crimeOf });
+  const ideaCount = (n) => {
+    if (!ideaCache) ideaCache = new Map();
+    if (!ideaCache.has(n.id)) ideaCache.set(n.id, ideasOf(n).length);
+    return ideaCache.get(n.id);
+  };
+  const isTree = () => (d.layout || 'tang') !== 'tang';
+  /** Sắp lại theo cây (sơ đồ tư duy / cây ngang) — giữ chủ đề trung tâm tại chỗ. */
+  const relayout = () => isTree() && layoutDiagram(d);
   function restore(s) {
     const o = JSON.parse(s);
     d.nodes = o.nodes;
     d.edges = o.edges;
     d.strokes = o.strokes;
+    d.layout = o.layout;
+    d.hideCross = o.hideCross;
     if (sel && !(sel.type === 'node' ? d.nodes : d.edges).some((x) => x.id === sel.id)) sel = null;
     changed();
     draw();
@@ -142,7 +165,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
   let liveStroke = null;
   function draw() {
     const selId = sel?.id || null;
-    svg.innerHTML = `${diagramSvgBody(d, { sel: selId })}<g class="dg-temp" data-dg-temp>${connectFrom ? tempLine : ''}</g>${liveStroke ? `<path class="dg-live" d="M${liveStroke.points.map((p) => p.join(',')).join(' L')}" stroke="${liveStroke.color}" stroke-width="${liveStroke.width}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : ''}`;
+    svg.innerHTML = `${diagramSvgBody(d, { sel: selId, ui: true, ideas: ideaCount })}<g class="dg-temp" data-dg-temp>${connectFrom ? tempLine : ''}</g>${liveStroke ? `<path class="dg-live" d="M${liveStroke.points.map((p) => p.join(',')).join(' L')}" stroke="${liveStroke.color}" stroke-width="${liveStroke.width}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : ''}`;
     if (connectFrom) $(`[data-node="${CSS.escape(connectFrom)}"]`, svg)?.classList.add('from');
   }
   // Chỉ đổi lớp “đang chọn”, không dựng lại SVG (giữ phần tử dưới con trỏ để nhận bấm đúp).
@@ -151,12 +174,16 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     if (sel) $(`[data-${sel.type}="${CSS.escape(sel.id)}"]`, svg)?.classList.add('sel');
   }
   function stat() {
-    $('[data-dg-stat]', root).textContent = `${d.nodes.length} nút · ${d.edges.length} mũi tên · ${d.strokes.length} nét vẽ · tự lưu`;
+    const hid = d.nodes.some((n) => n.collapsed) ? hiddenSet(d).size : 0;
+    $('[data-dg-stat]', root).textContent = `${d.nodes.length} nút${hid ? ` (${hid} đang thu gọn)` : ''} · ${d.edges.length} mũi tên · ${d.strokes.length} nét vẽ · tự lưu`;
+    $('[data-dg-lmode]', root).value = d.layout || 'tang';
+    $('[data-dg-cross]', root).setAttribute('aria-pressed', String(!d.hideCross));
+    $('[data-dg-cross]', root).hidden = !isTree();
     $('[data-dg-undo]', root).disabled = !undo.length;
     $('[data-dg-redo]', root).disabled = !redo.length;
   }
   const TIPS = {
-    select: 'Kéo nút để sắp xếp · kéo chỗ trống để di chuyển khung · bấm đúp để sửa · Delete để xóa · Ctrl + lăn chuột để thu phóng',
+    select: 'Kéo hình để sắp xếp · kéo ô vuông xanh ở góc để đổi kích thước · ✦ để xem gợi ý · Tab: thêm nhánh con · Enter: thêm nhánh ngang hàng · bấm đúp để sửa · Ctrl + lăn chuột (hoặc chụm 2 ngón) để thu phóng',
     node: 'Bấm vào chỗ trống để thêm nút mới (chọn loại nút ở thanh công cụ)',
     connect: 'Bấm nút đầu, rồi bấm nút cuối để nối mũi tên · Esc để hủy',
     pen: 'Kéo để vẽ tự do lên sơ đồ — khoanh vùng, gạch chân, vẽ thêm mũi tên…',
@@ -191,6 +218,8 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
         <label class="dg-f"><span>Dòng phụ</span><input class="input" data-dg-sub value="${escapeHtml(n.sub || '')}" placeholder="Vai trò, số tiền, thời gian…" /></label>
         <label class="dg-f"><span>Loại</span><select class="select" data-dg-kind>${Object.entries(NODE_KINDS).map(([k, v]) => `<option value="${k}" ${k === n.kind ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
         <div class="dg-f"><span>Màu viền</span><div class="dg-colors">${['', ...PEN_COLORS].map((c) => `<button type="button" class="dg-color ${c === (n.color || '') ? 'on' : ''}" data-dg-ncolor="${c}" style="--c:${c || 'var(--line-strong)'}" aria-label="${c ? `Màu ${c}` : 'Màu mặc định'}"></button>`).join('')}</div></div>
+        <div class="dg-f"><span>Cỡ chữ, kích thước</span><div class="dg-fs"><button type="button" class="btn btn-sm" data-dg-fs="-1" aria-label="Chữ nhỏ hơn">A−</button><strong>${Math.round(fontScale(n) * 100)}%</strong><button type="button" class="btn btn-sm" data-dg-fs="1" aria-label="Chữ to hơn">A+</button>${n.w || n.h ? `<button type="button" class="btn btn-sm btn-ghost" data-dg-autosize>Tự co theo chữ</button>` : ''}</div></div>
+        <div class="dg-actions"><button type="button" class="btn btn-sm btn-primary" data-dg-child>${icon('plus', 'ic-sm')}Thêm nhánh con</button><button type="button" class="btn btn-sm" data-dg-ideas>✦ Gợi ý</button></div>
         <div class="dg-actions"><button type="button" class="btn btn-sm" data-dg-from>${icon('link', 'ic-sm')}Nối từ nút này</button><button type="button" class="btn btn-sm btn-ghost" data-dg-dup>${icon('copy', 'ic-sm')}Nhân bản</button><button type="button" class="btn btn-sm btn-ghost dg-del" data-dg-del>${icon('trash', 'ic-sm')}Xóa</button></div>`;
       const ta = $('[data-dg-label]', props);
       detachSg.push(attachSuggest(ta, (t) => labelSuggestions(t, { kind: 'node', map, d })));
@@ -214,7 +243,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       }
     } else {
       props.innerHTML = `<h4>${icon('info', 'ic-sm')}Sơ đồ tùy chỉnh</h4>
-        <p class="hint">Bấm một nút hoặc mũi tên để sửa. Bấm đúp vào chỗ trống để thêm nhanh một nút.</p>
+        <p class="hint">Bấm một hình hoặc mũi tên để sửa. Hình có ✦ là có gợi ý nhánh — bấm để thêm nhanh${aiIdeas ? ' hoặc nhờ AI gợi ý thêm' : ''}. Bấm đúp vào chỗ trống để thêm hình mới. Đổi “Kiểu sơ đồ” ở thanh công cụ: sơ đồ tư duy, cây ngang, theo tầng.</p>
         <div class="dg-quick">${Object.entries(NODE_KINDS).map(([k, v]) => `<button type="button" class="dg-chip" data-dg-add="${k}">${icon('plus', 'ic-sm')}${v.label}</button>`).join('')}</div>
         <ul class="dg-legend">${Object.values(EDGE_KINDS).map((v) => `<li><i style="--c:${v.color}" class="${v.dash ? 'dash' : ''}"></i>${v.label}</li>`).join('')}</ul>`;
     }
@@ -268,6 +297,144 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       return drawProps();
     }
     if (e && t.closest('[data-dg-rev]')) return mutate(() => ([e.from, e.to] = [e.to, e.from]));
+    const fsb = n && t.closest('[data-dg-fs]');
+    if (fsb) {
+      const cur = fontScale(n);
+      const i = FONT_STEPS.findIndex((f) => f >= cur - 0.01);
+      const next = FONT_STEPS[Math.max(0, Math.min(FONT_STEPS.length - 1, (i < 0 ? 1 : i) + +fsb.dataset.dgFs))];
+      mutate(() => ((n.fs = next), relayout()));
+      return drawProps();
+    }
+    if (n && t.closest('[data-dg-autosize]')) {
+      mutate(() => (delete n.w, delete n.h, relayout()));
+      return drawProps();
+    }
+    if (n && t.closest('[data-dg-child]')) return addChild(n, '', { edit: true });
+    if (n && t.closest('[data-dg-ideas]')) return openIdeas(n.id);
+  });
+
+  /* ---------- Nhánh, gợi ý ngay trên hình ---------- */
+  const CHILD_KIND = { root: 'box', crime: 'act', act: 'box', person: 'box', money: 'box', box: 'box', note: 'note' };
+  function addChild(parent, label, { kind, edit = false, sibling = false } = {}) {
+    const t = treeOf(d);
+    const host = sibling ? d.nodes.find((x) => x.id === t.parent.get(parent.id)) || parent : parent;
+    const k = kind || CHILD_KIND[host.kind] || 'box';
+    const kids = (t.children.get(host.id) || []).map((id) => d.nodes.find((x) => x.id === id));
+    const right = host.kind === 'root' ? kids.filter((x) => x.x >= host.x).length <= kids.filter((x) => x.x < host.x).length : host.x >= (d.nodes.find((x) => x.id === t.parent.get(host.id))?.x ?? host.x - 1);
+    const below = kids.length ? Math.max(...kids.map((x) => x.y + nodeSize(x).h / 2)) + 40 : host.y;
+    const n = { id: newId(), kind: k, label: label || (edit ? '' : NODE_KINDS[k].label), sub: '', x: Math.round(host.x + (right ? 1 : -1) * (nodeSize(host).w / 2 + 180)), y: Math.round(below), origin: 'user' };
+    mutate(() => {
+      host.collapsed = false;
+      d.nodes.push(n);
+      d.edges.push({ id: newId('e'), from: host.id, to: n.id, label: '', kind: 'thuoc', origin: 'user' });
+      relayout();
+    });
+    if (edit) {
+      sel = { type: 'node', id: n.id };
+      draw();
+      drawProps(true);
+    }
+    return n;
+  }
+  const pop = $('[data-dg-pop]', root);
+  let popFor = null;
+  let popCtl = null;
+  let popAi = [];
+  function closeIdeas() {
+    popCtl?.abort();
+    popCtl = null;
+    popFor = null;
+    pop.hidden = true;
+  }
+  function openIdeas(id, { keepAi = false } = {}) {
+    const n = d.nodes.find((x) => x.id === id);
+    if (!n) return closeIdeas();
+    if (popFor !== id) popAi = [];
+    if (!keepAi && popFor !== id) popCtl?.abort();
+    popFor = id;
+    sel = { type: 'node', id };
+    markSel();
+    const list = ideasOf(n);
+    const ai = popAi.filter((x) => !list.some((y) => y.label === x.label));
+    pop.innerHTML = `<div class="dg-pop-head"><strong>✦ Gợi ý cho “${escapeHtml(n.label.length > 40 ? `${n.label.slice(0, 38)}…` : n.label)}”</strong><button type="button" class="btn btn-ghost btn-sm btn-icon" data-pop-x aria-label="Đóng">${icon('x', 'ic-sm')}</button></div>
+      <p class="hint">Bấm để thêm thành nhánh con — sửa lại tùy ý.</p>
+      <div class="dg-pop-chips">${list.map((x, i) => `<button type="button" class="dg-chip" data-idea="${i}">${icon('plus', 'ic-sm')}${escapeHtml(x.label)}</button>`).join('') || '<small class="hint">Đã thêm hết gợi ý có sẵn.</small>'}</div>
+      ${ai.length ? `<div class="dg-pop-chips ai">${ai.map((x, i) => `<button type="button" class="dg-chip ai" data-idea-ai="${i}">✨ ${escapeHtml(x.label)}</button>`).join('')}</div>` : ''}
+      ${aiIdeas ? `<button type="button" class="btn btn-sm dg-pop-ai" data-pop-ai ${popCtl ? 'disabled' : ''}>${popCtl ? `${icon('refresh', 'ic-sm spin')}AI đang gợi ý…` : '✨ AI gợi ý thêm'}</button>` : ''}
+      <form class="dg-pop-add" data-pop-add><input class="input input-sm" placeholder="Tự thêm nhánh… (Enter)" aria-label="Tự thêm nhánh" /></form>`;
+    pop.hidden = false;
+    // Nút vừa bấm đã bị vẽ lại → giữ phím tắt (Esc) trong khung sơ đồ.
+    if (!root.contains(document.activeElement)) root.focus({ preventScroll: true });
+    pop._list = list;
+    pop._ai = ai;
+    // Đặt bảng gợi ý cạnh hình, không tràn khỏi khung vẽ.
+    const el = $(`[data-node="${CSS.escape(id)}"]`, svg);
+    const cr = canvas.getBoundingClientRect();
+    const r = el?.getBoundingClientRect();
+    const pw = Math.min(320, cr.width - 16);
+    pop.style.width = `${pw}px`;
+    let left = r ? r.right - cr.left + 10 : 10;
+    if (left + pw > cr.width - 8) left = r ? Math.max(8, r.left - cr.left - pw - 10) : 8;
+    if (left < 8 || cr.width < 520) left = Math.max(8, (cr.width - pw) / 2);
+    const top = r ? Math.max(8, Math.min(r.top - cr.top, cr.height - pop.offsetHeight - 8)) : 8;
+    pop.style.left = `${left}px`;
+    pop.style.top = `${Math.max(8, top)}px`;
+  }
+  pop.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+  pop.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape') return;
+    ev.stopPropagation();
+    closeIdeas();
+    root.focus({ preventScroll: true });
+  });
+  pop.addEventListener('click', async (ev) => {
+    const t = ev.target;
+    const n = d.nodes.find((x) => x.id === popFor);
+    if (t.closest('[data-pop-x]')) return closeIdeas();
+    if (!n) return;
+    const ib = t.closest('[data-idea]');
+    if (ib) {
+      const x = pop._list[+ib.dataset.idea];
+      addChild(n, x.label, { kind: x.kind });
+      return openIdeas(n.id, { keepAi: true });
+    }
+    const ab = t.closest('[data-idea-ai]');
+    if (ab) {
+      const x = pop._ai[+ab.dataset.ideaAi];
+      addChild(n, x.label, { kind: 'box' });
+      popAi = popAi.filter((y) => y !== x);
+      return openIdeas(n.id, { keepAi: true });
+    }
+    if (t.closest('[data-pop-ai]') && aiIdeas && !popCtl) {
+      popCtl = new AbortController();
+      const ctl = popCtl;
+      openIdeas(n.id, { keepAi: true });
+      try {
+        const t2 = treeOf(d);
+        const path = [];
+        for (let id = n.id; id; id = t2.parent.get(id)) path.unshift(d.nodes.find((x) => x.id === id)?.label);
+        const children = (t2.children.get(n.id) || []).map((id) => d.nodes.find((x) => x.id === id)?.label);
+        const got = await aiIdeas(n, { path, children, signal: ctl.signal });
+        if (ctl.signal.aborted) return;
+        const seen = new Set([...children, ...popAi.map((x) => x.label)].map((x) => String(x).toLowerCase()));
+        popAi = [...popAi, ...got.filter((l) => l && !seen.has(l.toLowerCase())).map((label) => ({ label }))];
+        if (!got.length) toast('AI chưa gợi ý được thêm nhánh nào', { type: 'info' });
+      } catch (err) {
+        if (!ctl.signal.aborted) toast(err.message, { type: 'error', timeout: 5000 });
+      }
+      if (popCtl === ctl) popCtl = null;
+      if (popFor === n.id) openIdeas(n.id, { keepAi: true });
+    }
+  });
+  pop.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const inp = ev.target.querySelector('input');
+    const n = d.nodes.find((x) => x.id === popFor);
+    const v = inp.value.trim();
+    if (!n || !v) return;
+    addChild(n, v);
+    openIdeas(n.id, { keepAi: true });
+    pop.querySelector('[data-pop-add] input')?.focus();
   });
 
   function addNode(kind, x, y, label) {
@@ -302,8 +469,45 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     lastDown = dbl ? { id: null, t: 0, x: 0, y: 0 } : { id, t: now, x: ev.clientX, y: ev.clientY };
     return dbl;
   };
+  const touches = new Map();
+  let pinch = null;
   svg.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0 && ev.pointerType === 'mouse') return;
+    // Chụm / mở 2 ngón để thu phóng (điện thoại, máy tính bảng).
+    if (ev.pointerType === 'touch') {
+      touches.set(ev.pointerId, [ev.clientX, ev.clientY]);
+      if (touches.size === 2) {
+        const [a, b] = [...touches.values()];
+        pinch = { dist: Math.hypot(a[0] - b[0], a[1] - b[1]), v: { ...view }, mid: pt({ clientX: (a[0] + b[0]) / 2, clientY: (a[1] + b[1]) / 2 }) };
+        drag = null;
+        liveStroke = null;
+        return;
+      }
+    }
+    const tog = ev.target.closest('[data-toggle]');
+    if (tog && mode !== 'pen' && mode !== 'erase') {
+      ev.preventDefault();
+      const n = d.nodes.find((x) => x.id === tog.dataset.toggle);
+      mutate(() => ((n.collapsed = !n.collapsed), relayout()));
+      return;
+    }
+    const idb = ev.target.closest('[data-ideas]');
+    if (idb && mode !== 'pen' && mode !== 'erase') {
+      ev.preventDefault();
+      drawProps();
+      return openIdeas(idb.dataset.ideas);
+    }
+    if (!pop.hidden) closeIdeas();
+    const rz = ev.target.closest('[data-resize]');
+    if (rz && mode === 'select') {
+      const n = d.nodes.find((x) => x.id === rz.dataset.resize);
+      const z = nodeSize(n);
+      const [x0, y0] = pt(ev);
+      drag = { type: 'resize', n, sx: x0, sy: y0, w0: z.w, h0: z.h, cx: n.x, cy: n.y, before: snap(), moved: false };
+      svg.setPointerCapture?.(ev.pointerId);
+      ev.preventDefault();
+      return;
+    }
     // Giữ phím tắt (Delete, Ctrl+Z, V/N/C/P/T/E) hoạt động sau khi bấm vào khung vẽ.
     if (!root.contains(document.activeElement) || props.contains(document.activeElement)) root.focus({ preventScroll: true });
     const [x, y] = pt(ev);
@@ -379,6 +583,17 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     ev.preventDefault();
   });
   svg.addEventListener('pointermove', (ev) => {
+    if (ev.pointerType === 'touch' && touches.has(ev.pointerId)) touches.set(ev.pointerId, [ev.clientX, ev.clientY]);
+    if (pinch && touches.size === 2) {
+      const [a, b] = [...touches.values()];
+      const dist = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1;
+      const k = Math.min(Math.max(pinch.dist / dist, 0.05), 20);
+      const nw = Math.min(Math.max(pinch.v.w * k, 200), 20000);
+      const f = nw / pinch.v.w;
+      view = { x: pinch.mid[0] - (pinch.mid[0] - pinch.v.x) * f, y: pinch.mid[1] - (pinch.mid[1] - pinch.v.y) * f, w: nw, h: pinch.v.h * f };
+      applyView();
+      return;
+    }
     if (mode === 'connect' && connectFrom) {
       const a = d.nodes.find((n) => n.id === connectFrom);
       const [x, y] = pt(ev);
@@ -396,7 +611,17 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       liveStroke.points.push([x, y]);
       draw();
     } else if (drag.type === 'erase') eraseAt(x, y);
-    else if (drag.type === 'node') {
+    else if (drag.type === 'resize') {
+      const w = Math.max(70, Math.round(drag.w0 + (x - drag.sx)));
+      const h = Math.max(36, Math.round(drag.h0 + (y - drag.sy)));
+      drag.n.w = w;
+      drag.n.h = h;
+      // Giữ cạnh trái – trên cố định (tâm dời theo).
+      drag.n.x = Math.round(drag.cx + (w - drag.w0) / 2);
+      drag.n.y = Math.round(drag.cy + (h - drag.h0) / 2);
+      drag.moved = true;
+      draw();
+    } else if (drag.type === 'node') {
       drag.n.x = Math.round(x - drag.dx);
       drag.n.y = Math.round(y - drag.dy);
       drag.moved = true;
@@ -408,7 +633,11 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       applyView();
     }
   });
-  const end = () => {
+  const end = (ev) => {
+    if (ev?.pointerType === 'touch') {
+      touches.delete(ev.pointerId);
+      if (touches.size < 2) pinch = null;
+    }
     if (!drag) return;
     const g = drag;
     drag = null;
@@ -418,6 +647,12 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       mutate(() => d.strokes.push(s));
     } else if (g.type === 'erase') commit(g.before);
     else if (g.type === 'node' && g.moved) commit(g.before);
+    else if (g.type === 'resize' && g.moved) {
+      relayout();
+      commit(g.before);
+      draw();
+      drawProps();
+    }
   };
   svg.addEventListener('pointerup', end);
   svg.addEventListener('pointercancel', end);
@@ -431,6 +666,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     'wheel',
     (ev) => {
       if (!(ev.ctrlKey || ev.metaKey || isFull())) return;
+      if (!pop.hidden) closeIdeas();
       ev.preventDefault();
       const [x, y] = pt(ev);
       zoom(ev.deltaY > 0 ? 1.12 : 1 / 1.12, x, y);
@@ -457,7 +693,22 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       return restore(redo.pop());
     }
     if (t.closest('[data-dg-layout]')) {
-      mutate(() => autoLayout(d));
+      mutate(() => layoutDiagram(d));
+      return fit();
+    }
+    if (t.closest('[data-dg-cross]')) {
+      mutate(() => (d.hideCross = !d.hideCross));
+      return toast(d.hideCross ? 'Đã ẩn quan hệ chéo — chỉ còn các nhánh' : 'Đã hiện quan hệ chéo giữa các nhánh');
+    }
+    const cb = t.closest('[data-dg-collapse]');
+    if (cb) {
+      const tr = treeOf(d);
+      mutate(() => {
+        // Thu gọn: chỉ còn chủ đề và nhánh cấp 1; mở hết: bỏ mọi thu gọn.
+        d.nodes.forEach((n) => (n.collapsed = cb.dataset.dgCollapse === 'all' ? (tr.depth.get(n.id) || 0) >= 1 && (tr.children.get(n.id) || []).length > 0 : false));
+        if (!isTree() && cb.dataset.dgCollapse === 'all') d.layout = 'mindmap';
+        layoutDiagram(d);
+      });
       return fit();
     }
     const z = t.closest('[data-dg-zoom]');
@@ -488,6 +739,11 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     }
   });
   root.addEventListener('change', (ev) => {
+    if (ev.target.matches('[data-dg-lmode]')) {
+      mutate(() => ((d.layout = ev.target.value), layoutDiagram(d)));
+      fit();
+      return toast(`Đã chuyển sang kiểu “${LAYOUTS[d.layout]}”`);
+    }
     if (ev.target.matches('[data-dg-nkind]')) nodeKind = ev.target.value;
     if (ev.target.matches('[data-dg-ekind]')) edgeKind = ev.target.value;
     if (ev.target.matches('[data-dg-width]')) pen.width = +ev.target.value;
@@ -514,7 +770,14 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       }
       return;
     }
+    const cur = sel?.type === 'node' ? d.nodes.find((x) => x.id === sel.id) : null;
+    if (cur && (ev.key === 'Tab' || ev.key === 'Enter' || ev.key === 'F2')) {
+      ev.preventDefault();
+      if (ev.key === 'F2') return drawProps(true);
+      return addChild(cur, '', { edit: true, sibling: ev.key === 'Enter' && cur.kind !== 'root' });
+    }
     if (k === 'escape') {
+      if (!pop.hidden) return closeIdeas();
       if (fallbackFull) return toggleFull();
       sel = null;
       setMode('select');
@@ -606,6 +869,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       fit();
     },
     destroy() {
+      popCtl?.abort();
       document.removeEventListener('fullscreenchange', onFs);
       if (document.fullscreenElement === root) document.exitFullscreen?.();
       document.body.classList.remove('dg-lock');

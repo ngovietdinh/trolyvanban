@@ -7,7 +7,9 @@ import { buildCaseMap, caseMapPrompt, caseMapRefinePrompt, relevantText, mergeAi
 import { diagramFromCaseMap, syncFromCaseMap, emptyDiagram } from '../legal/diagram.js';
 import { mountDiagram } from './diagram-editor.js';
 import { refineHtml, bindRefine } from './ai-refine.js';
-import { streamClaude } from '../lib/ai.js';
+import { streamClaude, extractJson } from '../lib/ai.js';
+import { withCache } from '../lib/cache-mark.js';
+import { findCrime } from '../legal/engine.js';
 import { focusText, splitText, runChunks, chunkSizeFor, concurrencyFor, ctxFor } from '../lib/ai-chunk.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { renderDocumentHtml } from '../lib/render-html.js';
@@ -221,7 +223,7 @@ export function render(ctx, params = []) {
     } else if (st.tab === 've') {
       let d = loadDiagram();
       if (!d) {
-        d = diagramFromCaseMap(m);
+        d = diagramFromCaseMap(m, { title: st.title });
         saveDiagram(d);
       }
       dgCtl = mountDiagram(body, {
@@ -229,7 +231,9 @@ export function render(ctx, params = []) {
         title: st.title,
         map: m,
         onChange: saveDiagram,
-        onRebuild: st.sources.length ? () => syncFromCaseMap(dgCtl.get(), st.map) : null,
+        onRebuild: st.sources.length ? () => syncFromCaseMap(dgCtl.get(), st.map, { title: st.title }) : null,
+        crimeOf: findCrime,
+        aiIdeas: ctx.hasAI('legal') ? (node, o) => aiIdeas(node, o) : null,
       });
     } else {
       body.innerHTML = m.timeline.length ? `<ol class="cm-time">${m.timeline.map((t, i) => `<li style="--i:${i}"><time>${escapeHtml(t.thoiGian)}</time><p>${escapeHtml(t.suKien)}</p>${t.src ? `<small>${escapeHtml(t.src)}</small>` : ''}</li>`).join('')}</ol>` : '<p class="muted">Không tìm thấy mốc thời gian (ngày/tháng/năm) trong nội dung.</p>';
@@ -371,7 +375,7 @@ export function render(ctx, params = []) {
         st.map = { ...next, aiProgress: '' };
         // Sơ đồ tự vẽ (nếu đã có) cập nhật theo, giữ vị trí, nhãn đã sửa và phần tự thêm.
         const d = loadDiagram();
-        if (d) saveDiagram(syncFromCaseMap(d, st.map));
+        if (d) saveDiagram(syncFromCaseMap(d, st.map, { title: st.title }));
         drawResult();
         const diff = (a, b, label) => (b - a ? `${b - a > 0 ? '+' : ''}${b - a} ${label}` : '');
         const acts = (m) => m.crimes.reduce((n, c) => n + c.items.length, 0);
@@ -385,13 +389,34 @@ export function render(ctx, params = []) {
   /** Sơ đồ tự vẽ đã lưu của hồ sơ này: cập nhật phần tự sinh theo sơ đồ vụ việc mới (giữ phần đã sửa / tự thêm). */
   function syncSaved() {
     const d = loadDiagram();
-    if (d) saveDiagram(syncFromCaseMap(d, st.map));
+    if (d) saveDiagram(syncFromCaseMap(d, st.map, { title: st.title }));
+  }
+
+  /** AI gợi ý nhánh con cho một hình của sơ đồ (phần tóm tắt vụ việc cố định → đọc lại từ cache giữa các lần hỏi). */
+  async function aiIdeas(node, { path, children, signal }) {
+    const ai = ctx.ai('legal');
+    const m = st.map || {};
+    const brief = [m.tomTat, ...(m.banChat || []).slice(0, 8).map((x) => `- ${x}`)].filter(Boolean).join('\n').slice(0, ctxFor(ai, 3000, 1500));
+    const out = await streamClaude({
+      provider: ai.provider,
+      apiKey: ai.apiKey,
+      model: ai.model,
+      system: CASE_MAP_SYSTEM,
+      effort: 'low',
+      maxTokens: 700,
+      cache: true,
+      signal,
+      messages: [{ role: 'user', content: withCache(`Đang lập sơ đồ tư duy để làm rõ vụ việc "${st.title}".${brief ? `\nTÓM TẮT VỤ VIỆC:\n${brief}` : ''}\nNhiệm vụ: gợi ý 5–8 nhánh con cho một ý trên sơ đồ — mỗi nhánh là một đầu mục ngắn (≤ 12 từ) cần làm rõ, phát triển hoặc kiểm chứng; không trùng nhánh đã có; không suy diễn ngoài vụ việc. Chỉ trả về JSON: {"nhanh":["…"]}\n`, `\nÝ ĐANG XÉT: ${path.filter(Boolean).join(' → ')}${node.sub ? ` (${node.sub})` : ''}\nNHÁNH ĐÃ CÓ: ${children.filter(Boolean).join('; ') || '(chưa có)'}`) }],
+    });
+    const j = extractJson(out);
+    return (j?.nhanh || j?.y || []).map((x) => String(typeof x === 'string' ? x : x?.ten || x?.text || '').trim()).filter(Boolean).slice(0, 10);
   }
 
   function startBlank() {
     Object.assign(st, { sources: [], known: [], primary: null, title: 'Sơ đồ tự vẽ', dkey: 'blank', tab: 've' });
     st.map = { tomTat: '', banChat: [], crimes: [], people: [], edges: [], timeline: [], amounts: [] };
-    if (!loadDiagram()) saveDiagram(emptyDiagram());
+    // Sơ đồ trống: bắt đầu bằng chủ đề trung tâm, kiểu sơ đồ tư duy.
+    if (!loadDiagram()) saveDiagram({ ...emptyDiagram(), layout: 'mindmap', nodes: [{ id: 'root', kind: 'root', label: 'Chủ đề trung tâm', sub: '', x: 0, y: 0, origin: 'user' }] });
     drawResult();
     drawRefine();
     $('[data-result]', v).scrollIntoView({ behavior: 'smooth', block: 'start' });

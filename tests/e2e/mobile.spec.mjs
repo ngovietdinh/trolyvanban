@@ -140,9 +140,19 @@ test.describe('Điều hướng và bố cục điện thoại', () => {
     expect(await noHorizontalScroll(page)).toBe(true);
     await page.locator('[data-dg-mode="node"]').click();
     await page.locator('[data-dg-canvas]').click({ position: { x: 120, y: 120 } });
-    await expect(dg.locator('.dg-node')).toHaveCount(1);
+    await expect(dg.locator('.dg-node')).toHaveCount(2);
     await page.locator('[data-dg-label]').fill('Nguyễn Văn An');
-    await expect(dg.locator('.dg-node')).toContainText('Nguyễn Văn An');
+    await expect(dg.locator('.dg-node', { hasText: 'Nguyễn Văn An' })).toHaveCount(1);
+    // Gợi ý trên hình: bảng gợi ý nằm gọn trong màn hình.
+    await dg.locator('.dg-k-root [data-ideas]').click();
+    const pop = dg.locator('[data-dg-pop]');
+    await expect(pop).toBeVisible();
+    const pb = await pop.boundingBox();
+    expect(pb.x).toBeGreaterThanOrEqual(0);
+    expect(pb.x + pb.width).toBeLessThanOrEqual(page.viewportSize().width + 1);
+    await pop.locator('[data-idea]').first().click();
+    await expect(dg.locator('.dg-node')).toHaveCount(3);
+    await pop.locator('[data-pop-x]').click();
     await page.locator('[data-dg-full]').click();
     await expect(dg).toHaveClass(/is-full/);
     const box = await dg.boundingBox();
