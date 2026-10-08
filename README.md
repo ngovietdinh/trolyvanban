@@ -84,6 +84,10 @@ Phân tích tài liệu (Thêm hành vi từ tài liệu, Phân tích vụ việ
 - **Gợi ý đầu mục khi nhập** (`assets/js/lib/suggest.js`): hàng gợi ý dưới ô thêm / sửa câu hỏi, ô Hỏi khi ghi lời khai, tóm tắt hồ sơ, yêu cầu AI, nhãn sơ đồ — dựa vào nội dung đang gõ và hồ sơ (người liên quan, dấu hiệu định tội, hành vi, số tiền).
 - **Thu gọn thanh menu**: nút cạnh tên màn hình hoặc `Ctrl B`, nhớ lựa chọn.
 
+## Groq gói miễn phí (v2.24.1)
+
+`assets/js/lib/groq-quota.js` canh hạn mức theo từng mô hình (mặc định 30 yêu cầu/phút, 1.000/ngày, 8.000 token/phút, 200.000 token/ngày — sửa ở Cài đặt → Groq): ước lượng token gửi đi (~3,2 ký tự/token tiếng Việt), `max_tokens` không quá 4.096 và không vượt phần còn lại của hạn mức phút; chờ khi phút đã dùng gần hết; 429 thì chờ đúng `Retry-After`; tài liệu chia phần ~4.000 ký tự, gửi lần lượt; ngữ cảnh gửi kèm gọn như AI trên máy; tóm tắt văn bản dài theo từng phần; trợ lý chỉ gửi đoạn hội thoại gần nhất; hết hạn mức ngày → mô hình dự phòng / nhà cung cấp khác. Thống kê token đã dùng trong ngày lấy từ `x_groq.usage`.
+
 ## Bản cài đặt trên máy tính (Windows, macOS)
 
 Ngoài bản web, ứng dụng có **bộ cài đặt** chạy như phần mềm riêng (Electron, thư mục `desktop/`), dùng được khi không có mạng.

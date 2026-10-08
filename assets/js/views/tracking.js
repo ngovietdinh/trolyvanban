@@ -6,6 +6,7 @@ import { findCrime } from '../legal/engine.js';
 import { qaToText } from '../legal/record.js';
 import { INVESTIGATOR_SYSTEM } from '../legal/assist.js';
 import { streamClaude } from '../lib/ai.js';
+import { ctxFor } from '../lib/ai-chunk.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { renderDocumentHtml } from '../lib/render-html.js';
 import { relativeTime } from '../lib/vn-date.js';
@@ -262,7 +263,7 @@ function renderCase(ctx, id) {
 function concludeContext(ai, c, r) {
   const recs = recordsRepo.list((x) => x.caseId === c.id);
   const crimes = r.analysis.crimes.map((x) => `Điều ${x.crime.dieu} — ${x.crime.ten}\n  Dấu hiệu: ${x.crime.dauHieu.join('; ')}`).join('\n');
-  const qa = recs.map((x) => `--- Biên bản ${x.nguoiKhai?.hoTen || ''} (lần ${x.lan || 1}):\n${qaToText(x)}`).join('\n').slice(0, ai.local ? 6000 : 16000);
+  const qa = recs.map((x) => `--- Biên bản ${x.nguoiKhai?.hoTen || ''} (lần ${x.lan || 1}):\n${qaToText(x)}`).join('\n').slice(0, ctxFor(ai, 16000, 6000));
   return `Hồ sơ: ${c.ten}\nTội danh và dấu hiệu định tội:\n${crimes || '(chưa xác định)'}\n\nTỔNG HỢP TIẾN ĐỘ:\n${r.conclusions.join('\n')}\n\nNỘI DUNG CÁC BIÊN BẢN:\n${qa}`;
 }
 

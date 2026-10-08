@@ -1,7 +1,7 @@
 // Thêm hành vi từ tài liệu (trong một điều cụ thể): tải đơn tố giác, báo cáo, kết luận thanh tra, biên bản… → đọc,
 // tóm tắt, liệt kê hành vi có dấu hiệu tội phạm theo điều luật trong hệ thống (một vụ việc có thể liên quan nhiều điều).
 // Người dùng chọn / bỏ chọn, sửa tên, đổi điều luật, xem câu hỏi sẽ sinh → bấm “Thêm hành vi”.
-import { chunkSizeFor } from '../lib/ai-chunk.js';
+import { chunkSizeFor, concurrencyFor } from '../lib/ai-chunk.js';
 import { $, $$, icon, toast, escapeHtml } from '../ui.js';
 import { findCrime } from '../legal/engine.js';
 import { getRole } from '../legal/roles.js';
@@ -53,7 +53,7 @@ export async function runMethod(ctx, method, { text, base, extraBase = null, pri
         role,
         signal,
         chunkSize: chunkSizeFor(ai),
-        concurrency: ai.local ? 1 : 2,
+        concurrency: concurrencyFor(ai),
         onProgress: (i, n) => say?.(n > 1 ? `${who} đang phân tích phần ${i}/${n} — tài liệu dài được chia nhỏ, phần nào lỗi tự chia nhỏ hơn và gửi lại để kết quả về đủ…` : `${who} đang phân tích…`),
       });
       if (r.aiParts?.failed) toast(`AI không trả lời ${r.aiParts.failed}/${r.aiParts.total} phần của tài liệu — các phần đó dùng kết quả đối chiếu Bộ luật.`, { type: 'info', timeout: 6000 });

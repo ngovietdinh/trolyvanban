@@ -21,10 +21,10 @@ const ls = typeof window !== 'undefined' ? backend() : null;
 export const SCOPED_KEYS = [
   'docs', 'chat', 'settings', 'compose-draft', 'usage', 'spell-text', 'summary-text', 'summary-ratio',
   'number-history', 'number-last', 'number-opts', 'cases', 'records', 'plans', 'legal-custom',
-  'legal-selection', 'legal-open', 'zoom', 'legal-custom-acts', 'tpl-custom', 'legal-learned', 'ai-cache', 'ai-log', 'legal-docs', 'forms-open', 'kho-sel', 'kho-case', 'kho-app', 'help-seen', 'help-opened', 'help-hint-off', 'spell-dict', 'chat-threads', 'chat-current', 'kho-chat', 'kho-threads', 'kho-current', 'pdf-opts', 'legal-wizard', 'feature-notes', 'case-map-case', 'diagrams',
+  'legal-selection', 'legal-open', 'zoom', 'legal-custom-acts', 'tpl-custom', 'legal-learned', 'ai-cache', 'ai-log', 'legal-docs', 'forms-open', 'kho-sel', 'kho-case', 'kho-app', 'help-seen', 'help-opened', 'help-hint-off', 'spell-dict', 'chat-threads', 'chat-current', 'kho-chat', 'kho-threads', 'kho-current', 'pdf-opts', 'legal-wizard', 'feature-notes', 'case-map-case', 'diagrams', 'groq-usage', 'groq-limits',
 ];
 /** Dữ liệu bị xóa khi “Xóa toàn bộ dữ liệu” (giữ lại tài khoản, API key, cài đặt). */
-export const WIPE_KEYS = SCOPED_KEYS.filter((k) => k !== 'settings' && k !== 'zoom');
+export const WIPE_KEYS = SCOPED_KEYS.filter((k) => k !== 'settings' && k !== 'zoom' && k !== 'groq-limits');
 const SCOPED = new Set(SCOPED_KEYS);
 let scope = null;
 

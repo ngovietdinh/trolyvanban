@@ -3479,3 +3479,13 @@ mark.err-mark.is-ai {
     transform: translateY(-3px);
   }
 }
+
+/* ================= Hạn mức Groq (v2.24.1) ================= */
+.groq-quota { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 12px; margin: 4px 0 10px; display: grid; gap: 8px; }
+.groq-quota legend { padding: 0 6px; font-weight: 700; font-size: 13px; }
+.groq-quota .hint { margin: 0; }
+.groq-limits { gap: 8px 12px; }
+.groq-use { display: grid; gap: 4px; }
+.groq-bar { height: 8px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+.groq-bar i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.groq-quota [data-groq-reset] { justify-self: start; }

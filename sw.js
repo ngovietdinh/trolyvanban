@@ -1,7 +1,7 @@
 // Service worker: cho phép dùng ngoại tuyến và cập nhật phiên bản mới.
 // Khi phát hành bản mới, VERSION thay đổi → trình duyệt cài service worker mới → ứng dụng báo "Có bản cập nhật".
 // Dữ liệu người dùng nằm trong localStorage, không bị ảnh hưởng khi cập nhật.
-const VERSION = '2.24.0';
+const VERSION = '2.24.1';
 const CACHE = `tlvb-${VERSION}`;
 const CORE = [
   './',

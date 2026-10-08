@@ -8,7 +8,7 @@ import { diagramFromCaseMap, syncFromCaseMap, emptyDiagram } from '../legal/diag
 import { mountDiagram } from './diagram-editor.js';
 import { refineHtml, bindRefine } from './ai-refine.js';
 import { streamClaude } from '../lib/ai.js';
-import { focusText, splitText, runChunks, chunkSizeFor } from '../lib/ai-chunk.js';
+import { focusText, splitText, runChunks, chunkSizeFor, concurrencyFor, ctxFor } from '../lib/ai-chunk.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { renderDocumentHtml } from '../lib/render-html.js';
 import { store } from '../lib/store.js';
@@ -320,7 +320,7 @@ export function render(ctx, params = []) {
           st.map = { ...acc, aiProgress: n > 1 ? `${i + 1}/${n}` : '' };
           drawResult();
         },
-        { signal: ctl.signal, concurrency: ai.local ? 1 : 2, minSize: Math.round(size / 4), onProgress: (i, n) => say(n > 1 ? `${who} đang bổ sung phần ${i}/${n} (nội dung dài được chia nhỏ để không bị hết thời gian chờ) — sơ đồ trên máy đã hiện ở dưới.` : `${who} đang phân tích sâu — sơ đồ trên máy đã hiện ở dưới.`) },
+        { signal: ctl.signal, concurrency: concurrencyFor(ai), minSize: Math.round(size / 4), onProgress: (i, n) => say(n > 1 ? `${who} đang bổ sung phần ${i}/${n} (nội dung dài được chia nhỏ để không bị hết thời gian chờ) — sơ đồ trên máy đã hiện ở dưới.` : `${who} đang phân tích sâu — sơ đồ trên máy đã hiện ở dưới.`) },
       );
       if (run.errors.length) toast(`AI không trả lời ${run.errors.length}/${run.total} phần — sơ đồ dùng kết quả trên máy cho các phần đó.`, { type: 'info', timeout: 6000 });
       if (ctl.signal.aborted && done) toast(`Đã dừng AI sau ${done}/${chunks.length} phần — giữ kết quả đã có.`, { type: 'info' });
@@ -362,7 +362,7 @@ export function render(ctx, params = []) {
       },
       run: async (request, { signal, say }) => {
         const who = ai.local ? 'AI trên máy' : ai.label;
-        const max = ai.local ? 5000 : 12000;
+        const max = ctxFor(ai, 12000, 5000);
         const full = st.sources.map((x) => `${x.speaker ? `[Lời khai của ${x.speaker} — ${x.label}]` : `[${x.label}]`}\n${x.text}`).join('\n\n');
         say(`${who} đang thực hiện yêu cầu trên sơ đồ hiện tại…`);
         const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, maxTokens: 5000, signal, messages: [{ role: 'user', content: caseMapRefinePrompt(st.map, request, { source: relevantText(full, request, max), primary: st.primary, max }) }] });

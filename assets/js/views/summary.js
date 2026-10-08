@@ -4,6 +4,7 @@ import { summarize, textStats } from '../lib/summarize.js';
 import { docxToText } from '../lib/docx.js';
 import { store, usage } from '../lib/store.js';
 import { streamClaude } from '../lib/ai.js';
+import { isTight, chunkSizeFor, splitText } from '../lib/ai-chunk.js';
 import { openMakeDoc } from './make-doc.js';
 
 const SAMPLE = `Thực hiện Kế hoạch số 45/KH-UBND ngày 12/02/2026 của Ủy ban nhân dân phường về triển khai chuyển đổi số năm 2026, trong quý III, Ủy ban nhân dân phường đã tập trung chỉ đạo quyết liệt các nhiệm vụ trọng tâm. Bộ phận Một cửa tiếp nhận 1.245 hồ sơ thủ tục hành chính, giải quyết đúng hạn 1.240 hồ sơ, đạt tỷ lệ 99,6%. Tỷ lệ hồ sơ trực tuyến toàn trình đạt 78%, tăng 12% so với quý II. Phường đã tổ chức 06 đợt hướng dẫn người dân cài đặt và kích hoạt tài khoản định danh điện tử mức độ 2 với hơn 2.000 lượt người tham gia. Hệ thống camera an ninh được lắp đặt bổ sung tại 15 tuyến phố, góp phần giữ gìn trật tự an toàn xã hội.
@@ -104,13 +105,25 @@ export function render(ctx) {
     const target = $('[data-ai-out]', result);
     usage.track('ai');
     try {
+      // Groq (gói miễn phí ~8K token/phút) / AI trên máy: văn bản dài tóm tắt từng phần trước, rồi tổng hợp.
+      let source = text;
+      const limit = isTight(ctx.ai()) ? chunkSizeFor(ctx.ai()) * 3 : Infinity;
+      if (text.length > limit) {
+        const parts = splitText(text, chunkSizeFor(ctx.ai()) * 2);
+        const sums = [];
+        for (let i = 0; i < parts.length; i++) {
+          target.innerHTML = `<p class="hint">${icon('refresh', 'ic-sm spin')}Văn bản dài — đang tóm tắt phần ${i + 1}/${parts.length}…</p>`;
+          sums.push(await streamClaude({ provider, apiKey, model, signal: controller.signal, cache: true, maxTokens: 900, messages: [{ role: 'user', content: `Đây là phần ${i + 1}/${parts.length} của một văn bản dài. Tóm tắt ngắn gọn các ý chính của phần này (gạch đầu dòng, giữ số liệu, tên, ngày tháng), không thêm thông tin ngoài văn bản.\n\n---\n${parts[i]}` }] }));
+        }
+        source = sums.map((x, i) => `[Phần ${i + 1}/${parts.length}]\n${x}`).join('\n\n');
+      }
       const all = await streamClaude({
         provider,
         apiKey,
         model,
         signal: controller.signal,
         cache: true,
-        messages: [{ role: 'user', content: `Tóm tắt văn bản sau thành khoảng ${Math.max(3, Math.round(+ratio.value / 8))} ý chính (gạch đầu dòng), sau đó nêu "Kết luận/kiến nghị" (nếu có) và "Từ khóa". Viết tiếng Việt chuẩn mực, không thêm thông tin ngoài văn bản.\n\n---\n${text}` }],
+        messages: [{ role: 'user', content: `Tóm tắt văn bản sau thành khoảng ${Math.max(3, Math.round(+ratio.value / 8))} ý chính (gạch đầu dòng), sau đó nêu "Kết luận/kiến nghị" (nếu có) và "Từ khóa". Viết tiếng Việt chuẩn mực, không thêm thông tin ngoài văn bản.${source !== text ? ' (Nội dung dưới đây là bản tóm tắt từng phần của văn bản dài.)' : ''}\n\n---\n${source}` }],
         onText: (_, s) => (target.innerHTML = renderMarkdown(s)),
       });
       target.innerHTML = renderMarkdown(all);

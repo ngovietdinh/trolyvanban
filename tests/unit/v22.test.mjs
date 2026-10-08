@@ -206,7 +206,8 @@ test('Groq: gọi API tương thích OpenAI tại api.groq.com, giới hạn max
     assert.equal(req.url, 'https://api.groq.com/openai/v1/chat/completions');
     assert.equal(req.auth, 'Bearer gsk_1');
     assert.equal(req.body.model, 'llama-3.3-70b-versatile');
-    assert.equal(req.body.max_tokens, 8192);
+    // Gói miễn phí ~8K token/phút: xin trả lời tối đa 4.096 token (dài hơn thì tự viết tiếp).
+    assert.equal(req.body.max_tokens, 4096);
   } finally {
     globalThis.fetch = origFetch;
   }

@@ -2,6 +2,7 @@
 import { $, $$, icon, toast, escapeHtml, setTheme, downloadBlob } from '../ui.js';
 import { store, docsRepo, WIPE_KEYS } from '../lib/store.js';
 import { PROVIDERS, MODELS, LOCAL_PRESETS, testApiKey, listModels, normalizeLocalBase, isPrivateEndpoint } from '../lib/ai.js';
+import { groqLimits, setGroqLimits, groqUsageToday, GROQ_DEFAULT_LIMITS } from '../lib/groq-quota.js';
 import { learnedBank } from '../legal/repo.js';
 import { khoDb } from '../lib/kho-db.js';
 import { relativeTime } from '../lib/vn-date.js';
@@ -175,6 +176,26 @@ export function render(ctx) {
     });
   };
 
+  /** Hạn mức Groq: sửa được (mặc định gói miễn phí) + thống kê đã dùng hôm nay trên máy này. */
+  function groqQuotaHtml() {
+    const l = groqLimits();
+    const u = groqUsageToday();
+    const pct = Math.min(100, Math.round((u.tokens / l.tpd) * 100));
+    const n = (x) => Number(x).toLocaleString('vi-VN');
+    const models = Object.entries(u.models).filter(([, x]) => x.requests);
+    return `<fieldset class="groq-quota"><legend>Hạn mức Groq (theo từng mô hình)</legend>
+      <p class="hint">Phần mềm tự canh hạn mức: chia tài liệu thành phần nhỏ (~4.000 ký tự), gửi lần lượt, chọn độ dài trả lời vừa đủ, tự chờ khi hết hạn mức phút; hết hạn mức ngày thì chuyển mô hình dự phòng / nhà cung cấp khác. Mặc định gói miễn phí — sửa nếu tài khoản của bạn khác (xem console.groq.com → Limits).</p>
+      <div class="grid-2 groq-limits" data-groq-limits>
+        <div class="field"><label for="gq-rpm">Yêu cầu / phút</label><input class="input" id="gq-rpm" name="rpm" inputmode="numeric" value="${l.rpm}" /></div>
+        <div class="field"><label for="gq-rpd">Yêu cầu / ngày</label><input class="input" id="gq-rpd" name="rpd" inputmode="numeric" value="${l.rpd}" /></div>
+        <div class="field"><label for="gq-tpm">Token / phút</label><input class="input" id="gq-tpm" name="tpm" inputmode="numeric" value="${l.tpm}" /></div>
+        <div class="field"><label for="gq-tpd">Token / ngày</label><input class="input" id="gq-tpd" name="tpd" inputmode="numeric" value="${l.tpd}" /></div>
+      </div>
+      <div class="groq-use" data-groq-use><div class="groq-bar"><i style="width:${pct}%"></i></div><small>Hôm nay đã dùng khoảng <strong>${n(u.tokens)}</strong> token, <strong>${n(u.requests)}</strong> yêu cầu${models.length > 1 ? ` (${models.map(([m, x]) => `${escapeHtml(m)}: ${n(x.tokens)}`).join(' · ')})` : ''} — mỗi mô hình tối đa ${n(l.tpd)} token/ngày. Ước lượng trên máy này.</small></div>
+      <button type="button" class="btn btn-ghost btn-sm" data-groq-reset>Đặt lại theo gói miễn phí</button>
+    </fieldset>`;
+  }
+
   function renderProvForm() {
     const host = $('[data-prov-form]', root);
     if (!host) return;
@@ -196,11 +217,24 @@ export function render(ctx) {
         </div>
         <input class="input" id="ai-model" data-model value="${escapeHtml(curModel)}" placeholder="Tên mô hình, vd: ${escapeHtml(p.defaultModel)}" autocomplete="off" spellcheck="false" ${custom ? '' : 'hidden'} aria-label="Tên mô hình tự nhập" />
         <span class="hint" data-model-hint>${cur.models?.length ? `${cur.models.length} mô hình lấy từ tài khoản ${p.vendor}.` : `Bấm “Tải danh sách” để lấy đúng các mô hình tài khoản ${p.vendor} của bạn được dùng.`}${cur.key ? ' Đổi mô hình được lưu ngay.' : ''}</span></div>
+      ${activeTab === 'groq' ? groqQuotaHtml() : ''}
       <div class="inline">
         <button class="btn btn-primary btn-sm" type="button" data-save-key>${icon('save', 'ic-sm')}Lưu</button>
         <button class="btn btn-sm" type="button" data-test-key>${icon('zap', 'ic-sm')}Kiểm tra kết nối</button>
         ${cur.key ? `<button class="btn btn-ghost btn-sm" type="button" data-remove-key>${icon('trash', 'ic-sm')}Gỡ khóa</button>` : ''}
       </div>`;
+    $('[data-groq-limits]', host)?.addEventListener('change', (e) => {
+      const f = e.currentTarget;
+      const v = Object.fromEntries(['rpm', 'rpd', 'tpm', 'tpd'].map((k) => [k, Math.max(1, parseInt(String(f.querySelector(`[name="${k}"]`).value).replace(/\D/g, ''), 10) || GROQ_DEFAULT_LIMITS[k])]));
+      setGroqLimits(v);
+      toast('Đã lưu hạn mức Groq');
+      renderProvForm();
+    });
+    $('[data-groq-reset]', host)?.addEventListener('click', () => {
+      setGroqLimits({ ...GROQ_DEFAULT_LIMITS });
+      toast('Đã đặt lại hạn mức gói miễn phí');
+      renderProvForm();
+    });
     const keyInput = $('[data-key]', host);
     keyInput.addEventListener('focus', () => {
       if (keyInput.dataset.masked) {

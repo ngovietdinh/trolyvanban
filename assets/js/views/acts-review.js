@@ -6,6 +6,7 @@ import { findCrime, crimeWithCustomActs } from '../legal/engine.js';
 import { customActs } from '../legal/repo.js';
 import { questionsForAct, taiLieuForAct, aiItems, analyzeRefinePrompt, ANALYZE_SYSTEM } from '../legal/analyze.js';
 import { extractJson, streamAI } from '../lib/ai.js';
+import { ctxFor } from '../lib/ai-chunk.js';
 import { refineHtml, bindRefine } from './ai-refine.js';
 import { extractText } from '../lib/extract.js';
 
@@ -263,7 +264,7 @@ export function mountRowsRefine(host, ctx, { text, primary, role, candidates, ro
     },
     onDone: rerender,
     run: async (request, { signal, say }) => {
-      const max = ai.local ? 5000 : 12000;
+      const max = ctxFor(ai, 12000, 5000);
       say(`${ai.local ? 'AI trên máy' : ai.label} đang thực hiện yêu cầu…`);
       const out = await streamAI({ ...ai, system: ANALYZE_SYSTEM, cache: true, maxTokens: 4000, signal, messages: [{ role: 'user', content: analyzeRefinePrompt(text, request, { primary, candidates, role, current: rows.filter((r) => r.ten.trim()), max }) }] });
       const r = refineRows(rows, out, primary);

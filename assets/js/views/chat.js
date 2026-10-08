@@ -2,6 +2,7 @@
 import { $, $$, icon, toast, escapeHtml, copyText, renderMarkdown, debounce } from '../ui.js';
 import { store, usage, uid } from '../lib/store.js';
 import { streamClaude, localChat, composePrompt, extractJson, localCompose } from '../lib/ai.js';
+import { isTight, chunkSizeFor } from '../lib/ai-chunk.js';
 import { DOC_TYPES, getDocType } from '../lib/doc-types.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { deleteWithUndo } from '../lib/undo-delete.js';
@@ -255,10 +256,21 @@ export function render(ctx) {
         bot.content = `Tôi đã soạn bản nháp **${type.name}** với trích yếu: *${draft.trichYeu || ''}*.\n\n${Array.isArray(draft.noiDung) ? draft.noiDung.join('\n') : draft.noiDung}\n\nNhấn **Mở trong trình soạn thảo** để hoàn thiện thể thức và xuất Word.`;
         bot.action = { tool: 'compose', typeId: type.id, draft };
       } else {
-        const history = t.messages
+        let history = t.messages
           .filter((m) => !m.pending && m.content)
           .slice(-20)
           .map((m) => ({ role: m.role, content: m.content }));
+        // Groq / AI trên máy: chỉ gửi phần lịch sử gần nhất vừa hạn mức (Groq miễn phí ~8K token/phút).
+        if (isTight(ctx.ai())) {
+          const budget = chunkSizeFor(ctx.ai()) * 3;
+          let used = 0;
+          let keep = history.length;
+          while (keep > 0 && used + history[keep - 1].content.length <= budget) used += history[--keep].content.length;
+          history = history.slice(Math.min(keep, history.length - 1));
+          if (history[0]?.role === 'assistant') history = history.slice(1);
+          const last = history[history.length - 1];
+          if (last && last.content.length > budget) history = [{ ...last, content: last.content.slice(0, budget) }];
+        }
         await streamClaude({
           provider,
           apiKey,

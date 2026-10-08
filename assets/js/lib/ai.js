@@ -5,6 +5,7 @@ import { moneyToWords, formatNumberVi, parseNumberInput } from './number-words.j
 import { summarize } from './summarize.js';
 import { checkText, fixAll, ISSUE_LABELS } from './spellcheck.js';
 import { DOC_TYPES, getDocType } from './doc-types.js';
+import { planGroq, groqAdmit, groqReserve, estTokens } from './groq-quota.js';
 
 export const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 — chất lượng cao nhất' },
@@ -159,6 +160,8 @@ async function streamWithTimeout(opts, timeout = opts.timeout || (opts.provider 
     return await streamOnce({
       ...opts,
       signal: ctl.signal,
+      // Đang xếp hàng chờ hạn mức (Groq): chưa tính giờ chờ phản hồi.
+      onQueue: () => arm(timeout.first),
       onText: (d, all) => {
         arm(timeout.idle);
         opts.onText?.(d, all);
@@ -317,8 +320,11 @@ async function tryWithRetry(opts) {
       // Hết giờ chờ với yêu cầu lớn: gửi lại nguyên khối chỉ làm chờ lâu thêm — phần gọi đã chia nhỏ tự xử lý.
       const transient = [429, 500, 502, 503, 504, ...(opts.timeoutRetry === false ? [] : [-2]), ...(opts.quickNetFail ? [] : [-1])].includes(err?.status);
       if (!transient || gotText || attempt === AI_RETRY.delays.length) break;
-      hooks.event?.({ type: 'retry', provider: opts.provider, message: `${err.message} — thử lại lần ${attempt + 1}` });
-      await sleep(AI_RETRY.delays[attempt], opts.signal);
+      // Máy chủ báo phải chờ bao lâu (Retry-After, vd Groq hết hạn mức phút): chờ đúng chừng đó, quá 65 giây thì thôi.
+      if (err?.retryAfter > 65) break;
+      const wait = err?.retryAfter ? Math.ceil(err.retryAfter * 1000) + 300 : AI_RETRY.delays[attempt];
+      hooks.event?.({ type: 'retry', provider: opts.provider, message: `${err.message} — thử lại lần ${attempt + 1}${err?.retryAfter ? ` sau ${Math.ceil(err.retryAfter)} giây` : ''}` });
+      await sleep(wait, opts.signal);
     }
   }
   return { ok: false, err: lastErr };
@@ -392,6 +398,11 @@ function httpError(status, provider, bodyText = '') {
   if (status === 503 || /UNAVAILABLE|overloaded/i.test(bodyText)) return `${label} đang quá tải (503 — máy chủ tạm thời không phục vụ). Hệ thống sẽ tự thử lại hoặc chuyển mô hình.`;
   if (status === 401 || status === 403 || /API_KEY_INVALID|invalid api key|incorrect api key/i.test(bodyText)) return `API key ${label} không hợp lệ hoặc không có quyền. Vui lòng kiểm tra trong Cài đặt.`;
   if (status === 404) return `Không tìm thấy mô hình ${label} đã chọn. Kiểm tra lại tên mô hình trong Cài đặt.`;
+  if (provider === 'groq' && (status === 413 || /tokens per (minute|day)|TPM|TPD|rate_limit|too large/i.test(bodyText))) {
+    if (/per day|TPD|RPD|requests per day/i.test(bodyText)) return 'Groq: đã hết hạn mức sử dụng trong ngày của gói hiện tại. Dùng nhà cung cấp khác hoặc chờ sang ngày mới.';
+    if (status === 413 || /too large/i.test(bodyText)) return 'Groq: nội dung gửi đi lớn hơn hạn mức token mỗi phút — cần chia nhỏ hơn.';
+    return 'Groq: vượt hạn mức token / yêu cầu mỗi phút — đang chờ rồi gửi lại.';
+  }
   if (status === 429) return `${label} đang quá tải hoặc vượt hạn mức sử dụng. Vui lòng thử lại sau.`;
   if (status === 400) return `Yêu cầu tới ${label} không hợp lệ (400). ${bodyText.slice(0, 160)}`;
   return `Lỗi từ máy chủ ${label} (${status}). Vui lòng thử lại.`;
@@ -427,23 +438,53 @@ async function doFetch(url, init, provider, signal) {
   }
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw aiError(httpError(res.status, provider, body), res.status);
+    const err = aiError(httpError(res.status, provider, body), res.status);
+    const ra = parseFloat(res.headers?.get?.('retry-after'));
+    if (Number.isFinite(ra)) err.retryAfter = ra;
+    throw err;
   }
   return res;
 }
 
-async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, out = null }) {
+async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, out = null, onQueue }) {
   const cfg = PROVIDERS[provider];
-  const res = await doFetch(
-    `${cfg.base}/chat/completions`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...(apiKey && apiKey !== 'local' ? { authorization: `Bearer ${apiKey}` } : {}) },
-      body: JSON.stringify({ model: model || cfg.defaultModel, stream: true, max_tokens: Math.min(maxTokens, cfg.maxTokens || 16000), messages: [{ role: 'system', content: system }, ...toOpenAI(messages)] }),
-    },
-    provider,
-    signal,
-  );
+  // Groq: canh hạn mức token / yêu cầu mỗi phút, mỗi ngày (gói miễn phí rất chặt) — xem groq-quota.js.
+  let settle = null;
+  if (provider === 'groq') {
+    model = model || cfg.defaultModel;
+    const plan = planGroq({ system, messages, model, maxTokens: Math.min(maxTokens, 4096) });
+    maxTokens = plan.maxTokens;
+    await groqAdmit(plan.input + maxTokens, {
+      model,
+      signal,
+      onWait: (sec) => {
+        onQueue?.();
+        hooks.event?.({ type: 'retry', provider, message: `chờ ${sec} giây cho đủ hạn mức token mỗi phút` });
+      },
+    });
+    if (signal?.aborted) throw new Error('Đã dừng tạo nội dung.');
+    onQueue?.();
+    settle = groqReserve(plan.input + maxTokens, model);
+    settle.input = plan.input;
+  }
+  let usage = 0;
+  let res;
+  try {
+    res = await doFetch(
+      `${cfg.base}/chat/completions`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(apiKey && apiKey !== 'local' ? { authorization: `Bearer ${apiKey}` } : {}) },
+        body: JSON.stringify({ model: model || cfg.defaultModel, stream: true, max_tokens: Math.min(maxTokens, cfg.maxTokens || 16000), messages: [{ role: 'system', content: system }, ...toOpenAI(messages)] }),
+      },
+      provider,
+      signal,
+    );
+  } catch (err) {
+    // Bị từ chối (vd 429 hết hạn mức): không tính vào hạn mức phút; ngày vẫn ghi 1 yêu cầu.
+    settle?.(0);
+    throw err;
+  }
   let text = '';
   try {
     await readSSE(res, (data) => {
@@ -451,6 +492,8 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
       const j = JSON.parse(data);
       if (j.error) throw aiError(httpError(+j.error.code || +j.error.status || 500, provider, JSON.stringify(j.error)), +j.error.code || 500);
       if (j.choices?.[0]?.finish_reason === 'length' && out) out.truncated = true;
+      const u = j.x_groq?.usage || j.usage;
+      if (u?.total_tokens) usage = u.total_tokens;
       const d = j.choices?.[0]?.delta?.content;
       if (d) {
         text += d;
@@ -458,9 +501,11 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
       }
     });
   } catch (err) {
+    settle?.(settle.input + estTokens(text));
     if (err?.name === 'AbortError') throw new Error('Đã dừng tạo nội dung.');
     throw err;
   }
+  settle?.(usage || settle.input + estTokens(text));
   return text;
 }
 

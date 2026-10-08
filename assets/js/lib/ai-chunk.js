@@ -4,8 +4,14 @@
 //    trả lời ngắn; phần nào lỗi / hết giờ thì bỏ qua, vẫn giữ kết quả các phần khác.
 
 /** Kích thước mỗi phần (ký tự): dịch vụ trực tuyến ~8 nghìn, AI trên máy ~3,5 nghìn (ngữ cảnh mặc định nhỏ, chạy CPU chậm). */
-export const CHUNK = { online: 8000, local: 3500 };
-export const chunkSizeFor = (ai) => (ai?.local || ai?.provider === 'local' ? CHUNK.local : CHUNK.online);
+export const CHUNK = { online: 8000, local: 3500, groq: 4000 };
+/** Nhà cung cấp “chật”: AI trên máy (ngữ cảnh nhỏ, chậm) và Groq (gói miễn phí ~8K token/phút). */
+export const isTight = (ai) => !!(ai?.local || ai?.provider === 'local' || ai?.provider === 'groq');
+export const chunkSizeFor = (ai) => (ai?.local || ai?.provider === 'local' ? CHUNK.local : ai?.provider === 'groq' ? CHUNK.groq : CHUNK.online);
+/** Số phần gửi song song: nhà cung cấp chật gửi lần lượt từng phần. */
+export const concurrencyFor = (ai) => (isTight(ai) ? 1 : 2);
+/** Độ dài ngữ cảnh gửi kèm: lớn với dịch vụ thường, nhỏ với nhà cung cấp chật. */
+export const ctxFor = (ai, big, small) => (isTight(ai) ? small : big);
 
 const SIGNAL = /(chiếm đoạt|chiếm giữ|lừa|gian dối|giả mạo|làm giả|nhận|đưa|chuyển|chi |chi khống|lập|ký|duyệt|thông đồng|chỉ đạo|giao|rút|nộp|vay|trả|mua|bán|tham ô|lạm quyền|lợi dụng|vi phạm|thiếu trách nhiệm|trộm|cướp|đe dọa|đánh|đâm|gây thương tích|tàng trữ|vận chuyển|buôn lậu|trốn thuế|hóa đơn|đánh bạc|tiêu thụ|hủy hoại|thiệt hại|hậu quả|hưởng lợi|khai|thừa nhận|không biết|không nhớ|Điều\s+\d|\d[\d.,]*\s*(?:nghìn|ngàn|triệu|tỷ|tỉ|đồng|USD)|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|ngày\s+\d|tháng\s+\d|năm\s+\d{4}|(?:ông|bà|anh|chị|giám đốc|kế toán|thủ quỹ|chủ tịch|trưởng phòng)\s+\p{Lu})/iu;
 const BOILER = /^(cộng hòa xã hội|độc lập\s*[-–]|căn cứ\s|người tiến hành|người ghi biên bản|người khai đã được giải thích|biên bản này|việc (ghi lời khai|hỏi cung)[^.]*kết thúc|nơi nhận|mẫu số|ban hành kèm|họ tên:|sinh ngày|quốc tịch|nghề nghiệp|nơi (thường trú|ở hiện tại|cấp)|thẻ cccd|số điện thoại)/i;

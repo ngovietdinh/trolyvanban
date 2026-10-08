@@ -1,7 +1,7 @@
 {
-  "version": "2.24.0",
+  "version": "2.24.1",
   "date": "2026-10-08",
   "notes": [
-    "Câu hỏi sinh ra là gợi ý — tự chọn Thêm / sửa / bỏ vào kế hoạch; yêu cầu AI làm tiếp trên sơ đồ, danh sách hành vi, nhận định; sơ đồ logic tùy chỉnh (kéo thả, thêm / sửa / xóa nút – mũi tên, bút vẽ, ghi chú, hoàn tác, toàn màn hình, xuất PNG/SVG); gợi ý đầu mục khi nhập; thu gọn thanh menu"
+    "Groq gói miễn phí: tự canh hạn mức token/yêu cầu theo phút và ngày, gửi lần lượt từng phần nhỏ, độ dài trả lời vừa đủ, tự chờ khi hết hạn mức phút (Retry-After), tóm tắt văn bản dài theo từng phần, thống kê token đã dùng hôm nay, sửa được hạn mức trong Cài đặt"
   ]
 }
