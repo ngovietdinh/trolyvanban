@@ -153,6 +153,7 @@ function renderCase(ctx, id) {
       </div>
       <div class="inline tk-actions">
         <a class="btn btn-sm btn-ghost" href="#cases/${c.id}">${icon('folder', 'ic-sm')}Mở hồ sơ</a>
+        <a class="btn btn-sm btn-ghost" href="#so-do/${c.id}">${icon('chart', 'ic-sm')}Sơ đồ vụ việc</a>
         <button class="btn btn-sm" type="button" data-upload>${icon('upload', 'ic-sm')}Tải biên bản lên</button>
         <button class="btn btn-sm btn-ghost" type="button" data-preview>${icon('eye', 'ic-sm')}Xem bản in</button>
         <button class="btn btn-sm btn-primary" type="button" data-export>${icon('download', 'ic-sm')}Báo cáo Word</button>

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GUIDES, GROUPS, findGuide, guideForRoute, visibleGuides, searchGuides, inline } from '../../assets/js/guide/guides.js';
 
-const ROUTES = ['dashboard', 'compose', 'legal', 'interview', 'cases', 'forms', 'kho', 'chat', 'spell', 'summary', 'number', 'templates', 'tpl', 'docs', 'admin', 'settings', 'theo-doi'];
+const ROUTES = ['dashboard', 'compose', 'legal', 'interview', 'cases', 'forms', 'kho', 'chat', 'spell', 'summary', 'number', 'templates', 'tpl', 'docs', 'admin', 'settings', 'theo-doi', 'so-do'];
 
 test('mỗi màn hình đều có hướng dẫn theo ngữ cảnh', () => {
   for (const r of ROUTES) assert.ok(guideForRoute(r), `thiếu hướng dẫn cho #${r}`);

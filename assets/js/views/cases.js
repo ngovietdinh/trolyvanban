@@ -179,6 +179,7 @@ export function render(ctx, params = []) {
         </div>
         <div class="inline" style="align-self:flex-start">
           <a class="btn btn-sm btn-primary" href="#theo-doi/${c.id}">${icon('activity', 'ic-sm')}Theo dõi tiến độ</a>
+          <a class="btn btn-sm" href="#so-do/${c.id}">${icon('chart', 'ic-sm')}Sơ đồ vụ việc</a>
           <button class="btn btn-sm" type="button" data-edit>${icon('wand', 'ic-sm')}Sửa</button>
           <button class="btn btn-sm btn-ghost" type="button" data-del>${icon('trash', 'ic-sm')}Xóa</button>
         </div>

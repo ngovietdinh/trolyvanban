@@ -1,8 +1,7 @@
 {
-  "version": "2.20.0",
+  "version": "2.21.0",
   "date": "2026-10-08",
   "notes": [
-    "Câu hỏi lần đầu bài bản theo trình tự điều tra: tự trình bày → cụ thể hóa → kiểm chứng → đối chiếu → chốt lại",
-    "Lời khai lần tiếp theo: câu hỏi làm rõ điểm chưa rõ, mâu thuẫn từ các biên bản trước, có lý do từng câu"
+    "Sơ đồ vụ việc: bản chất, sơ đồ cây hành vi, quan hệ – dòng tiền, dòng thời gian từ biên bản đã chọn hoặc tài liệu tải lên"
   ]
 }

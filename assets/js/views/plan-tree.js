@@ -56,7 +56,7 @@ export function planToTree(plan, track = null) {
   };
 }
 
-const KIND_ICON = { root: 'user', crime: 'gavel', 'crime-rel': 'layers', group: 'folder', act: 'zap', issue: 'help', common: 'shield', docs: 'clipboard', doc: 'file' };
+const KIND_ICON = { person: 'user', money: 'hash', time: 'clock', root: 'user', crime: 'gavel', 'crime-rel': 'layers', group: 'folder', act: 'zap', issue: 'help', common: 'shield', docs: 'clipboard', doc: 'file' };
 
 function nodeHtml(n, depth, open, idx) {
   const kids = n.children || [];
@@ -78,7 +78,22 @@ function nodeHtml(n, depth, open, idx) {
  * Gắn sơ đồ vào host. Trả về { destroy }. onJump(issueKey) khi bấm vào vấn đề / câu hỏi (chuyển sang tab câu hỏi).
  */
 export function mountPlanTree(host, plan, { onJump, initialOpen, track } = {}) {
-  const tree = planToTree(plan, track);
+  return mountTree(host, planToTree(plan, track), {
+    onJump,
+    initialOpen,
+    title: `Kế hoạch hỏi — ${plan.role.ten.split('/')[0].trim()}`,
+    subtitle: [plan.crime, ...(plan.lienQuan || []).map((r) => r.crime)].map((c) => `Điều ${c.dieu} — ${c.ten.replace(/^Tội /, '')}`).join(' · '),
+    legendHtml: `<span class="lg-k pt-k-crime">Điều chính</span><span class="lg-k pt-k-rel">Điều liên quan</span><span class="lg-k pt-k-act">Hành vi</span><span class="lg-k pt-k-issue">Vấn đề</span><span class="lg-k pt-k-q">Câu hỏi <i class="pt-dot hi"></i> quan trọng</span>
+      ${track ? `<span class="pt-legend-st">${Q_STATUS_ORDER.map((k) => `<span><i class="tk-dot tk-st-${k}"></i>${Q_STATUS[k].short}</span>`).join('')}</span>` : ''}
+      <small>Bấm vào nút để mở / thu gọn · bấm câu hỏi để đến bộ câu hỏi</small>`,
+  });
+}
+
+/**
+ * Sơ đồ cây dùng chung (kế hoạch hỏi, sơ đồ vụ việc): mở / thu gọn có hiệu ứng, tìm, phóng to, toàn màn hình.
+ * tree: { id: 'root', kind, label, sub, count, children: [...] }. Trả về { destroy, open }.
+ */
+export function mountTree(host, tree, { onJump, initialOpen, title = '', subtitle = '', legendHtml = '' } = {}) {
   const byId = new Map();
   const parent = new Map();
   (function index(n, p) {
@@ -101,16 +116,12 @@ export function mountPlanTree(host, plan, { onJump, initialOpen, track } = {}) {
       <button class="btn btn-sm btn-primary pt-full-btn" type="button" data-pt-full title="Hiển thị sơ đồ toàn màn hình để phân tích, trình bày (phím F)">${icon('panel', 'ic-sm')}Toàn màn hình · Trình bày</button>
     </div>
     <div class="pt-present-head">
-      <div class="pt-present-title"><strong>Kế hoạch hỏi — ${escapeHtml(plan.role.ten.split('/')[0].trim())}</strong><small>${[plan.crime, ...(plan.lienQuan || []).map((r) => r.crime)].map((c) => `Điều ${c.dieu} — ${escapeHtml(c.ten.replace(/^Tội /, ''))}`).join(' · ')}</small></div>
+      <div class="pt-present-title"><strong>${escapeHtml(title)}</strong><small>${escapeHtml(subtitle)}</small></div>
       <label class="check pt-spot" title="Bấm vào một nhánh để làm nổi nhánh đó, làm mờ phần còn lại"><input type="checkbox" data-pt-spot />Làm nổi nhánh đang trình bày</label>
       <span class="pt-keys">Phím: <kbd>+</kbd><kbd>−</kbd> phóng to/thu nhỏ · <kbd>E</kbd> mở hết · <kbd>C</kbd> thu gọn · <kbd>Esc</kbd> thoát</span>
       <button class="btn btn-sm" type="button" data-pt-exit>${icon('x', 'ic-sm')}Thoát</button>
     </div>
-    <div class="pt-legend">
-      <span class="lg-k pt-k-crime">Điều chính</span><span class="lg-k pt-k-rel">Điều liên quan</span><span class="lg-k pt-k-act">Hành vi</span><span class="lg-k pt-k-issue">Vấn đề</span><span class="lg-k pt-k-q">Câu hỏi <i class="pt-dot hi"></i> quan trọng</span>
-      ${track ? `<span class="pt-legend-st">${Q_STATUS_ORDER.map((k) => `<span><i class="tk-dot tk-st-${k}"></i>${Q_STATUS[k].short}</span>`).join('')}</span>` : ''}
-      <small>Bấm vào nút để mở / thu gọn · bấm câu hỏi để đến bộ câu hỏi</small>
-    </div>
+    <div class="pt-legend">${legendHtml}</div>
     <div class="pt-viewport" data-pt-view><div class="pt-canvas" data-pt-canvas><ul class="pt-tree" data-pt-tree></ul></div></div>
   </div>`;
   const wrap = $('[data-pt]', host);
