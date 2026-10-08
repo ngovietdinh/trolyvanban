@@ -8,9 +8,12 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { buildManifest } from '../../scripts/web-manifest.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
+// Electron 44 tải tệp chạy khi được gọi lần đầu → lấy đường dẫn qua chính gói electron (tự tải nếu thiếu), chạy được trên Linux, macOS, Windows.
+const ELECTRON = createRequire(import.meta.url)(join(root, 'desktop/node_modules/electron'));
 const tmp = mkdtempSync(join(tmpdir(), 'tlvb-update-'));
 const profile = join(tmp, 'profile');
 const releases = new Map(); // commit → thư mục mã web
@@ -48,7 +51,7 @@ let app;
 let page;
 async function launch() {
   app = await electron.launch({
-    executablePath: join(root, 'desktop/node_modules/electron/dist', { darwin: 'Electron.app/Contents/MacOS/Electron', win32: 'electron.exe' }[process.platform] || 'electron'),
+    executablePath: ELECTRON,
     args: [join(root, 'desktop'), '--no-sandbox', `--user-data-dir=${profile}`],
     // Nguồn chính hỏng (404), nguồn dự phòng hoạt động → kiểm tra luôn cơ chế dự phòng.
     env: { ...process.env, TLVB_UPDATE_MANIFEST: `${base}/khong-co.json,${base}/manifest.json`, TLVB_UPDATE_RAW: `${base}/bi-chan/,${base}/raw/`, TLVB_UPDATE_WATCHDOG_MS: '6000' },
