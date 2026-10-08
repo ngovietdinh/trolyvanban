@@ -89,7 +89,7 @@ export function render(ctx) {
   async function runAI() {
     if (controller) return controller.abort();
     if (!ctx.hasAI()) {
-      toast(ctx.can('ai') ? 'Thêm API key (ChatGPT, Gemini, Grok, Groq hoặc Claude) trong Cài đặt để dùng tóm tắt bằng AI' : 'Tài khoản chưa được cấp quyền dùng AI trực tuyến', { type: 'info' });
+      toast(ctx.can('ai') ? 'Thêm API key (ChatGPT, Gemini, Grok, Groq, OpenRouter hoặc Claude) trong Cài đặt để dùng tóm tắt bằng AI' : 'Tài khoản chưa được cấp quyền dùng AI trực tuyến', { type: 'info' });
       return ctx.navigate('#settings');
     }
     const text = input.value.trim();

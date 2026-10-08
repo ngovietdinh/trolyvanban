@@ -257,6 +257,7 @@ test.describe('AI đa nhà cung cấp (API giả lập)', () => {
     ['gemini', 'AIza-gemini-test', 'Gemini', 'generativelanguage.googleapis.com'],
     ['grok', 'xai-grok-test', 'Grok', 'api.x.ai'],
     ['groq', 'gsk_groq-test', 'Groq', 'api.groq.com/openai/v1/chat/completions'],
+    ['openrouter', 'sk-or-v1-test', 'OpenRouter', 'openrouter.ai/api/v1/chat/completions'],
   ]) {
     test(`trò chuyện streaming với ${label}`, async ({ page }) => {
       const t = trackErrors(page);
@@ -279,7 +280,8 @@ test.describe('AI đa nhà cung cấp (API giả lập)', () => {
         expect(c.headers.authorization).toBe(`Bearer ${key}`);
         expect(c.body.stream).toBe(true);
         if (provider === 'groq') {
-          expect(c.body.model).toBe('llama-3.3-70b-versatile');
+          expect(c.body.model).toBe('openai/gpt-oss-120b');
+          expect(c.body.reasoning_effort).toBe('low');
           expect(c.body.max_tokens).toBeLessThanOrEqual(8192);
         }
         expect(c.body.messages[0].role).toBe('system');

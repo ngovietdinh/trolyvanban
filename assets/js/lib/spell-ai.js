@@ -1,5 +1,7 @@
 // Kiểm tra chính tả, từ ngữ, ngữ pháp bằng AI: dựng yêu cầu, tách đoạn dài, đọc kết quả JSON và định vị lỗi trong văn bản.
 
+import { CACHE_BREAK } from './cache-mark.js';
+
 export const SPELL_AI_SYSTEM = `Bạn là biên tập viên tiếng Việt chuyên rà soát văn bản hành chính, văn bản tố tụng theo Nghị định 30/2020/NĐ-CP.
 Nhiệm vụ: tìm lỗi chính tả, từ không có nghĩa/gõ nhầm, dùng từ sai nghĩa hoặc sai ngữ cảnh, từ thừa/lặp ý, lỗi ngữ pháp (câu thiếu thành phần, sai quan hệ từ), lỗi dấu câu, văn phong không phù hợp.
 Nguyên tắc:
@@ -14,7 +16,7 @@ export function spellAiPrompt(chunk) {
   return `Rà soát đoạn văn bản dưới đây. Trả về JSON đúng dạng:
 {"loi":[{"sai":"đoạn sai nguyên văn","sua":"đoạn đúng","loai":"chinh-ta|tu-ngu|ngu-phap|dau-cau|van-phong|the-thuc","giaiThich":"lý do ngắn gọn"}],"nhanXet":"1–2 câu nhận xét chung về chất lượng ngôn ngữ"}
 Tối đa 40 lỗi, xếp theo thứ tự xuất hiện. Nếu không có lỗi, trả về "loi": [].
-
+${CACHE_BREAK}
 ---
 ${chunk}
 ---`;

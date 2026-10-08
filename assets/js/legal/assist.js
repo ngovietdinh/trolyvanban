@@ -3,6 +3,7 @@
 import { streamClaude, extractJson } from '../lib/ai.js';
 import { fixAll } from '../lib/spellcheck.js';
 import { qaToText } from './record.js';
+import { withCache } from '../lib/cache-mark.js';
 
 export const INVESTIGATOR_SYSTEM = `Bạn là chuyên gia cấp cao kiêm điều tra viên cao cấp của Cơ quan điều tra Công an nhân dân Việt Nam, am hiểu Bộ luật Hình sự 2015 (sửa đổi 2017, 2025), Bộ luật Tố tụng hình sự 2015 và kiến thức chuyên ngành kinh tế, tài chính, đấu thầu, xây dựng, môi trường, y tế.
 Nguyên tắc:
@@ -24,7 +25,7 @@ ${qaToText(rec) || '(chưa có)'}`;
 }
 
 async function askJson({ provider, apiKey, model, prompt, signal }) {
-  const out = await streamClaude({ provider, apiKey, model, system: INVESTIGATOR_SYSTEM, signal, cache: true, messages: [{ role: 'user', content: prompt }] });
+  const out = await streamClaude({ provider, apiKey, model, system: INVESTIGATOR_SYSTEM, effort: 'medium', signal, cache: true, messages: [{ role: 'user', content: prompt }] });
   const json = extractJson(out);
   if (!json) throw new Error('Không đọc được kết quả phân tích từ AI');
   return json;
@@ -38,10 +39,10 @@ export async function aiSuggest({ provider, apiKey, model, rec, crime, signal })
     apiKey,
     model,
     signal,
-    prompt: `${context(rec, crime)}
+    prompt: withCache(context(rec, crime), `
 
 Dựa trên câu trả lời gần nhất và toàn bộ lời khai, đề xuất 5–8 câu hỏi truy tiếp để đào sâu, làm rõ chi tiết còn mơ hồ, kiểm tra tính xác thực và lấp các vấn đề chưa được làm rõ.
-Chỉ trả về JSON: {"cauHoi": [{"text": "câu hỏi", "lyDo": "vì sao cần hỏi", "issueId": "id vấn đề liên quan hoặc null"}]}`,
+Chỉ trả về JSON: {"cauHoi": [{"text": "câu hỏi", "lyDo": "vì sao cần hỏi", "issueId": "id vấn đề liên quan hoặc null"}]}`),
   });
   return (j.cauHoi || []).filter((x) => x?.text);
 }
@@ -53,10 +54,10 @@ export async function aiContradictions({ provider, apiKey, model, rec, crime, ot
     apiKey,
     model,
     signal,
-    prompt: `${context(rec, crime)}${prev}
+    prompt: withCache(context(rec, crime), `${prev}
 
 Phát hiện các mâu thuẫn, bất hợp lý, thiếu logic trong lời khai (về thời gian, địa điểm, số tiền, người tham gia, diễn biến) và giữa lời khai này với các lời khai khác (nếu có).
-Chỉ trả về JSON: {"mauThuan": [{"moTa": "mô tả mâu thuẫn", "trichDan": ["trích dẫn ngắn kèm số câu [n]"], "mucDo": "cao|trung-binh|thap", "cauHoiLamRo": "câu hỏi để làm rõ"}]}. Nếu không có, trả về {"mauThuan": []}.`,
+Chỉ trả về JSON: {"mauThuan": [{"moTa": "mô tả mâu thuẫn", "trichDan": ["trích dẫn ngắn kèm số câu [n]"], "mucDo": "cao|trung-binh|thap", "cauHoiLamRo": "câu hỏi để làm rõ"}]}. Nếu không có, trả về {"mauThuan": []}.`),
   });
   return j.mauThuan || [];
 }
@@ -67,10 +68,10 @@ export async function aiCoverage({ provider, apiKey, model, rec, crime, signal }
     apiKey,
     model,
     signal,
-    prompt: `${context(rec, crime)}
+    prompt: withCache(context(rec, crime), `
 
 Đánh giá từng vấn đề cần làm rõ đã được lời khai làm rõ đến mức nào.
-Chỉ trả về JSON: {"tongQuan": "nhận xét chung 2-3 câu", "danhGia": [{"issueId": "id", "mucDo": "ro|mot-phan|chua", "nhanXet": "ngắn gọn", "conThieu": "nội dung còn thiếu"}]}`,
+Chỉ trả về JSON: {"tongQuan": "nhận xét chung 2-3 câu", "danhGia": [{"issueId": "id", "mucDo": "ro|mot-phan|chua", "nhanXet": "ngắn gọn", "conThieu": "nội dung còn thiếu"}]}`),
   });
   return { tongQuan: j.tongQuan || '', danhGia: j.danhGia || [] };
 }

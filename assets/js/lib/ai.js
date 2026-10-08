@@ -6,6 +6,7 @@ import { summarize } from './summarize.js';
 import { checkText, fixAll, ISSUE_LABELS } from './spellcheck.js';
 import { DOC_TYPES, getDocType } from './doc-types.js';
 import { planGroq, groqAdmit, groqReserve, estTokens } from './groq-quota.js';
+import { splitCache, stripCache } from './cache-mark.js';
 
 export const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 — chất lượng cao nhất' },
@@ -21,7 +22,10 @@ export const PROVIDERS = {
   gemini: { label: 'Gemini', vendor: 'Google', keyHint: 'AIza…', keyPrefix: /^AIza/, console: 'aistudio.google.com', defaultModel: 'gemini-2.5-flash', models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'], backup: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash-lite'], base: 'https://generativelanguage.googleapis.com/v1beta' },
   grok: { label: 'Grok', vendor: 'xAI', keyHint: 'xai-…', keyPrefix: /^xai-/, console: 'console.x.ai', backup: ['grok-3-mini'], defaultModel: 'grok-3', models: ['grok-3', 'grok-3-mini', 'grok-4'], base: 'https://api.x.ai/v1' },
   // Groq: hạ tầng suy luận rất nhanh cho các mô hình mở (Llama, GPT-OSS, Qwen, Kimi…), giao thức tương thích OpenAI.
-  groq: { label: 'Groq', vendor: 'Groq', keyHint: 'gsk_…', keyPrefix: /^gsk_/, console: 'console.groq.com', backup: ['openai/gpt-oss-120b', 'llama-3.1-8b-instant'], defaultModel: 'llama-3.3-70b-versatile', models: ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3-32b', 'moonshotai/kimi-k2-instruct', 'llama-3.1-8b-instant'], base: 'https://api.groq.com/openai/v1', maxTokens: 8192 },
+  groq: { label: 'Groq', vendor: 'Groq', keyHint: 'gsk_…', keyPrefix: /^gsk_/, console: 'console.groq.com', backup: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'], defaultModel: 'openai/gpt-oss-120b', models: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'qwen/qwen3-32b', 'moonshotai/kimi-k2-instruct', 'llama-3.1-8b-instant'], base: 'https://api.groq.com/openai/v1', maxTokens: 8192 },
+  // OpenRouter: một API key dùng hàng trăm mô hình (GPT-OSS, Claude, Gemini, Llama, DeepSeek, Qwen…), có mô hình miễn phí
+  // (đuôi “:free”), giao thức tương thích OpenAI.
+  openrouter: { label: 'OpenRouter', vendor: 'OpenRouter', keyHint: 'sk-or-…', keyPrefix: /^sk-or-/, console: 'openrouter.ai/keys', backup: ['meta-llama/llama-3.3-70b-instruct', 'openai/gpt-oss-20b'], defaultModel: 'openai/gpt-oss-120b', models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'openai/gpt-oss-20b:free', 'google/gemini-2.5-flash', 'anthropic/claude-sonnet-4.5', 'meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-chat-v3.1', 'qwen/qwen3-235b-a22b-2507'], base: 'https://openrouter.ai/api/v1', maxTokens: 16000 },
   // AI chạy trên máy hoặc máy chủ nội bộ (Ollama, LM Studio, llama.cpp, Jan, vLLM…) — giao thức tương thích OpenAI.
   // Không cần API key; dữ liệu không rời khỏi máy / mạng nội bộ.
   local: { label: 'AI trên máy', vendor: 'Ollama, LM Studio…', local: true, keyHint: '(không bắt buộc)', keyPrefix: /.*/, console: 'ollama.com', defaultModel: '', models: [], backup: [], base: 'http://localhost:11434/v1', maxTokens: 8192 },
@@ -104,7 +108,7 @@ export function friendlyError(err, Anthropic) {
  */
 function streamOnce(opts) {
   const provider = opts.provider || 'anthropic';
-  if (provider === 'openai' || provider === 'grok' || provider === 'groq' || provider === 'local') return streamOpenAICompatible({ ...opts, provider });
+  if (provider === 'openai' || provider === 'grok' || provider === 'groq' || provider === 'openrouter' || provider === 'local') return streamOpenAICompatible({ ...opts, provider });
   if (provider === 'gemini') return streamGemini(opts);
   return streamAnthropic(opts);
 }
@@ -338,19 +342,57 @@ export const streamAI = streamClaude;
  * Mỗi nhà cung cấp có cách biểu diễn riêng — chuyển đổi tại đây.
  */
 const parts = (content) => (Array.isArray(content) ? content : [{ type: 'text', text: String(content ?? '') }]);
-function toAnthropic(messages) {
-  return messages.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.map((p) => (p.type === 'image' ? { type: 'image', source: { type: 'base64', media_type: p.mime || 'image/jpeg', data: p.data } } : { type: 'text', text: p.text })) } : m));
+/*
+ * Prompt caching: lời nhắc có dấu CACHE_BREAK (cache-mark.js) → phần cố định gắn cache_control (Claude; OpenRouter với
+ * mô hình Claude / Gemini). Hội thoại nhiều lượt (cacheHistory): gắn thêm ở lượt trả lời gần nhất để lần hỏi sau đọc
+ * lại toàn bộ lịch sử từ cache. Nhà cung cấp tự cache theo phần đầu (Groq, OpenAI, Gemini…): bỏ dấu, giữ thứ tự.
+ */
+const EPHEMERAL = { type: 'ephemeral' };
+function cachedText(text) {
+  const sp = splitCache(text);
+  if (!sp) return null;
+  return [{ type: 'text', text: sp[0], cache_control: EPHEMERAL }, ...(sp[1] ? [{ type: 'text', text: sp[1] }] : [])];
 }
-function toOpenAI(messages) {
-  return messages.map((m) => (Array.isArray(m.content) ? { ...m, content: m.content.map((p) => (p.type === 'image' ? { type: 'image_url', image_url: { url: `data:${p.mime || 'image/jpeg'};base64,${p.data}` } } : { type: 'text', text: p.text })) } : m));
+function markHistory(list) {
+  // Lượt áp chót (trả lời gần nhất của AI): đánh dấu khối cuối để cache cả lịch sử phía trước.
+  const i = list.length - 2;
+  if (i < 1 || list.some((m) => Array.isArray(m.content) && m.content.some((p) => p.cache_control))) return list;
+  const m = list[i];
+  const content = Array.isArray(m.content) ? m.content.map((p) => ({ ...p })) : [{ type: 'text', text: String(m.content ?? '') }];
+  const last = content[content.length - 1];
+  if (last && (last.type !== 'text' || last.text)) last.cache_control = EPHEMERAL;
+  return list.map((x, k) => (k === i ? { ...m, content } : x));
 }
-const toGeminiParts = (content) => parts(content).map((p) => (p.type === 'image' ? { inline_data: { mime_type: p.mime || 'image/jpeg', data: p.data } } : { text: p.text }));
+function toAnthropic(messages, { cacheHistory = false } = {}) {
+  const list = messages.map((m) => {
+    if (!Array.isArray(m.content)) return cachedText(m.content) ? { ...m, content: cachedText(m.content) } : m;
+    return { ...m, content: m.content.map((p) => (p.type === 'image' ? { type: 'image', source: { type: 'base64', media_type: p.mime || 'image/jpeg', data: p.data } } : { type: 'text', text: stripCache(p.text) })) };
+  });
+  return cacheHistory ? markHistory(list) : list;
+}
+function toOpenAI(messages, { cacheControl = false, cacheHistory = false } = {}) {
+  const list = messages.map((m) => {
+    if (!Array.isArray(m.content)) return { ...m, content: (cacheControl && cachedText(m.content)) || stripCache(m.content) };
+    // Chỉ có chữ → một chuỗi (mô hình chỉ đọc chữ không nhận mảng nội dung).
+    if (m.content.every((p) => p.type !== 'image')) return { ...m, content: m.content.map((p) => stripCache(p.text)).join('\n') };
+    return { ...m, content: m.content.map((p) => (p.type === 'image' ? { type: 'image_url', image_url: { url: `data:${p.mime || 'image/jpeg'};base64,${p.data}` } } : { type: 'text', text: stripCache(p.text) })) };
+  });
+  return cacheControl && cacheHistory ? markHistory(list) : list;
+}
+const toGeminiParts = (content) => parts(content).map((p) => (p.type === 'image' ? { inline_data: { mime_type: p.mime || 'image/jpeg', data: p.data } } : { text: stripCache(p.text) }));
 
-async function streamAnthropic({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, quickNetFail = false, out = null }) {
+/** Mô hình suy luận nhận tham số mức suy nghĩ (token suy nghĩ tính như token trả lời — mức thấp tiết kiệm nhiều). */
+export const isReasoningModel = (provider, model = '') => /gpt-oss/i.test(model) || (provider === 'openai' && /^(o\d|gpt-5)/i.test(model));
+/** OpenRouter: mô hình Claude / Gemini cần cache_control tường minh (các mô hình khác tự cache). */
+const openRouterCacheControl = (model = '') => /^(anthropic|google)\//i.test(model);
+
+async function streamAnthropic({ apiKey, model = DEFAULT_MODEL, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, quickNetFail = false, out = null, cacheHistory = false, effort = 'low' }) {
   const Anthropic = await loadSdk();
   // quickNetFail: có AI trên máy dự phòng → không để thư viện tự thử lại khi mất mạng.
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true, ...(quickNetFail ? { maxRetries: 0 } : {}) });
-  const params = { model, max_tokens: maxTokens, system, messages: toAnthropic(messages) };
+  const params = { model, max_tokens: maxTokens, system, messages: toAnthropic(messages, { cacheHistory }) };
+  // Mức suy nghĩ (effort): việc thường để thấp cho tiết kiệm, phân tích tố tụng truyền 'medium'.
+  if (effort && /^claude-(opus-5|sonnet-5|haiku-5|fable-5|opus-4-[5-8])/.test(model)) params.output_config = { effort };
   // Opus 5.5 / Sonnet 5.5: bật cơ chế dự phòng phía máy chủ khi yêu cầu bị bộ lọc an toàn từ chối.
   const withFallback = model === 'claude-opus-5-5' || model === 'claude-sonnet-5-5';
   let stream;
@@ -446,7 +488,7 @@ async function doFetch(url, init, provider, signal) {
   return res;
 }
 
-async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, out = null, onQueue }) {
+async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, out = null, onQueue, effort = 'low', cacheHistory = false }) {
   const cfg = PROVIDERS[provider];
   // Groq: canh hạn mức token / yêu cầu mỗi phút, mỗi ngày (gói miễn phí rất chặt) — xem groq-quota.js.
   let settle = null;
@@ -474,8 +516,8 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
       `${cfg.base}/chat/completions`,
       {
         method: 'POST',
-        headers: { 'content-type': 'application/json', ...(apiKey && apiKey !== 'local' ? { authorization: `Bearer ${apiKey}` } : {}) },
-        body: JSON.stringify({ model: model || cfg.defaultModel, stream: true, max_tokens: Math.min(maxTokens, cfg.maxTokens || 16000), messages: [{ role: 'system', content: system }, ...toOpenAI(messages)] }),
+        headers: { 'content-type': 'application/json', ...(apiKey && apiKey !== 'local' ? { authorization: `Bearer ${apiKey}` } : {}), ...(provider === 'openrouter' ? { 'X-Title': 'Tro Ly Van Ban AI' } : {}) },
+        body: JSON.stringify(openAIBody({ provider, cfg, model: model || cfg.defaultModel, system, messages, maxTokens, effort, cacheHistory })),
       },
       provider,
       signal,
@@ -493,7 +535,8 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
       if (j.error) throw aiError(httpError(+j.error.code || +j.error.status || 500, provider, JSON.stringify(j.error)), +j.error.code || 500);
       if (j.choices?.[0]?.finish_reason === 'length' && out) out.truncated = true;
       const u = j.x_groq?.usage || j.usage;
-      if (u?.total_tokens) usage = u.total_tokens;
+      // Token đọc từ cache không tính vào hạn mức của Groq.
+      if (u?.total_tokens) usage = { total: u.total_tokens, cached: u.prompt_tokens_details?.cached_tokens || 0 };
       const d = j.choices?.[0]?.delta?.content;
       if (d) {
         text += d;
@@ -505,8 +548,21 @@ async function streamOpenAICompatible({ provider, apiKey, model, system = SYSTEM
     if (err?.name === 'AbortError') throw new Error('Đã dừng tạo nội dung.');
     throw err;
   }
-  settle?.(usage || settle.input + estTokens(text));
+  if (settle) usage ? settle(Math.max(0, usage.total - usage.cached), usage.cached) : settle(settle.input + estTokens(text));
   return text;
+}
+
+/** Thân yêu cầu kiểu OpenAI: mức suy nghĩ cho mô hình suy luận, cache_control cho OpenRouter (Claude / Gemini). */
+function openAIBody({ provider, cfg, model, system, messages, maxTokens, effort, cacheHistory }) {
+  const cacheControl = provider === 'openrouter' && openRouterCacheControl(model);
+  const sys = cacheControl && system ? [{ type: 'text', text: system, cache_control: EPHEMERAL }] : system;
+  const body = { model, stream: true, max_tokens: Math.min(maxTokens, cfg.maxTokens || 16000), messages: [{ role: 'system', content: sys }, ...toOpenAI(messages, { cacheControl, cacheHistory })] };
+  if (effort && isReasoningModel(provider, model)) {
+    if (provider === 'openrouter') body.reasoning = { effort };
+    else if (provider === 'groq' || provider === 'openai') body.reasoning_effort = effort;
+  }
+  if (provider === 'openrouter') body.usage = { include: true };
+  return body;
 }
 
 async function streamGemini({ apiKey, model, system = SYSTEM_PROMPT, messages, onText, signal, maxTokens = 16000, out = null }) {

@@ -39,17 +39,17 @@ function dayAll(now = Date.now()) {
 function dayStat(model, now = Date.now()) {
   return dayAll(now).models[model || '?'] || { tokens: 0, requests: 0 };
 }
-function addDay(model, tokens, requests, now = Date.now()) {
+function addDay(model, tokens, requests, now = Date.now(), cached = 0) {
   const all = dayAll(now);
   const cur = all.models[model || '?'] || { tokens: 0, requests: 0 };
-  all.models[model || '?'] = { tokens: Math.max(0, cur.tokens + tokens), requests: cur.requests + requests };
+  all.models[model || '?'] = { tokens: Math.max(0, cur.tokens + tokens), requests: cur.requests + requests, cached: (cur.cached || 0) + cached };
   store.set('groq-usage', all);
 }
 /** Thống kê hôm nay: { tokens, requests, models: { [mô hình]: { tokens, requests } } }. */
 export function groqUsageToday() {
   const all = dayAll();
   const v = Object.values(all.models);
-  return { tokens: v.reduce((s, x) => s + x.tokens, 0), requests: v.reduce((s, x) => s + x.requests, 0), models: all.models };
+  return { tokens: v.reduce((s, x) => s + x.tokens, 0), requests: v.reduce((s, x) => s + x.requests, 0), cached: v.reduce((s, x) => s + (x.cached || 0), 0), models: all.models };
 }
 
 function windowUse(model, now) {
@@ -97,14 +97,17 @@ export function groqWaitMs(need, model, limits = groqLimits(), now = Date.now())
   return 60250;
 }
 
-/** Ghi nhận một yêu cầu (đặt chỗ ngay khi gửi, cập nhật số thật khi xong). Trả về hàm cập nhật. */
+/**
+ * Ghi nhận một yêu cầu (đặt chỗ ngay khi gửi, cập nhật số thật khi xong). Trả về hàm cập nhật(actual, cached):
+ * actual = token tính vào hạn mức (đã trừ phần đọc từ cache), cached = token đọc từ cache (tiết kiệm được).
+ */
 export function groqReserve(tokens, model, now = Date.now()) {
   const entry = { t: now, tokens, model };
   minute.push(entry);
   addDay(model, tokens, 1, now);
-  return (actual) => {
-    if (actual == null || actual === entry.tokens) return;
-    addDay(model, actual - entry.tokens, 0);
+  return (actual, cached = 0) => {
+    if (actual == null) return;
+    addDay(model, actual - entry.tokens, 0, Date.now(), cached);
     entry.tokens = actual;
   };
 }

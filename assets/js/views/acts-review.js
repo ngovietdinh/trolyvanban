@@ -266,7 +266,7 @@ export function mountRowsRefine(host, ctx, { text, primary, role, candidates, ro
     run: async (request, { signal, say }) => {
       const max = ctxFor(ai, 12000, 5000);
       say(`${ai.local ? 'AI trên máy' : ai.label} đang thực hiện yêu cầu…`);
-      const out = await streamAI({ ...ai, system: ANALYZE_SYSTEM, cache: true, maxTokens: 4000, signal, messages: [{ role: 'user', content: analyzeRefinePrompt(text, request, { primary, candidates, role, current: rows.filter((r) => r.ten.trim()), max }) }] });
+      const out = await streamAI({ ...ai, system: ANALYZE_SYSTEM, cache: true, effort: 'medium', maxTokens: 4000, signal, messages: [{ role: 'user', content: analyzeRefinePrompt(text, request, { primary, candidates, role, current: rows.filter((r) => r.ten.trim()), max }) }] });
       const r = refineRows(rows, out, primary);
       if (r.tomTat) result.tomTat = r.tomTat;
       const parts = [r.added && `thêm ${r.added}`, r.updated && `sửa ${r.updated}`, r.removed && `bỏ chọn ${r.removed}`].filter(Boolean);

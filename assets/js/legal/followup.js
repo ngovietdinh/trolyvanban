@@ -8,6 +8,7 @@ import { getRole } from './roles.js';
 import { extractFacts, localContradictions } from './assist.js';
 import { signCoverage } from './analyze.js';
 import { trackPlan, similar, qKey, answerQuality } from './tracking.js';
+import { withCache } from '../lib/cache-mark.js';
 
 const vnDate = (d) => (d ? String(d).split('-').reverse().join('/') : '');
 const short = (s, n = 140) => {
@@ -181,8 +182,9 @@ ${others.length ? `\nLỜI KHAI CỦA NGƯỜI KHÁC TRONG VỤ (để đối ch
 
 CÂU HỎI ĐÃ CHUẨN BỊ (không lặp lại):
 ${plan.issues.flatMap((i) => i.cauHoi.map((c) => `- ${c.text}`)).join('\n').slice(0, 6000)}`;
-  return `${body.slice(0, max)}
+  // Hướng dẫn cố định đặt trước (đọc lại từ cache), nội dung biên bản đặt sau.
+  return withCache(`Với tư duy của điều tra viên cao cấp, đề xuất 8–15 câu hỏi BỔ SUNG cho lần khai tới, bám sát những điểm còn chưa rõ, chưa hợp lý, mâu thuẫn, né tránh trong các biên bản bên dưới; câu hỏi phải dẫn chiếu cụ thể nội dung đã khai (“Tại lời khai ngày…, anh/chị khai…”), đi từ cụ thể hóa → kiểm chứng → đối chiếu, không mớm cung, không trùng câu hỏi đã chuẩn bị.
+Chỉ trả về JSON: {"cauHoi":[{"text":"câu hỏi","lyDo":"vì sao cần hỏi","buoc":"cu-the|kiem-chung|doi-chieu"}]}
 
-Với tư duy của điều tra viên cao cấp, đề xuất 8–15 câu hỏi BỔ SUNG cho lần khai tới, bám sát những điểm còn chưa rõ, chưa hợp lý, mâu thuẫn, né tránh trong các biên bản trên; câu hỏi phải dẫn chiếu cụ thể nội dung đã khai (“Tại lời khai ngày…, anh/chị khai…”), đi từ cụ thể hóa → kiểm chứng → đối chiếu, không mớm cung, không trùng câu hỏi đã chuẩn bị.
-Chỉ trả về JSON: {"cauHoi":[{"text":"câu hỏi","lyDo":"vì sao cần hỏi","buoc":"cu-the|kiem-chung|doi-chieu"}]}`;
+`, body.slice(0, max));
 }

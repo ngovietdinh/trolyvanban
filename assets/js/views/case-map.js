@@ -313,7 +313,7 @@ export function render(ctx, params = []) {
       const run = await runChunks(
         chunks,
         async (chunk, i, n) => {
-          const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, maxTokens: n > 1 ? 2500 : 4000, cache: true, signal: ctl.signal, timeoutRetry: n > 1 ? false : undefined, messages: [{ role: 'user', content: caseMapPrompt(chunk, { known, primary, part: n > 1 ? [i + 1, n] : null }) }] });
+          const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, effort: 'medium', maxTokens: n > 1 ? 2500 : 4000, cache: true, signal: ctl.signal, timeoutRetry: n > 1 ? false : undefined, messages: [{ role: 'user', content: caseMapPrompt(chunk, { known, primary, part: n > 1 ? [i + 1, n] : null }) }] });
           acc = mergeAiCaseMap(acc, out, { append: done > 0 });
           done++;
           // Vẽ lại ngay sau mỗi phần để người dùng thấy sơ đồ đầy dần.
@@ -365,7 +365,7 @@ export function render(ctx, params = []) {
         const max = ctxFor(ai, 12000, 5000);
         const full = st.sources.map((x) => `${x.speaker ? `[Lời khai của ${x.speaker} — ${x.label}]` : `[${x.label}]`}\n${x.text}`).join('\n\n');
         say(`${who} đang thực hiện yêu cầu trên sơ đồ hiện tại…`);
-        const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, maxTokens: 5000, signal, messages: [{ role: 'user', content: caseMapRefinePrompt(st.map, request, { source: relevantText(full, request, max), primary: st.primary, max }) }] });
+        const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, effort: 'medium', maxTokens: 5000, signal, messages: [{ role: 'user', content: caseMapRefinePrompt(st.map, request, { source: relevantText(full, request, max), primary: st.primary, max }) }] });
         const next = mergeAiCaseMap(st.map, out, { replace: true });
         const before = st.map;
         st.map = { ...next, aiProgress: '' };

@@ -4,6 +4,7 @@
 import { findCrime } from './engine.js';
 import { analyzeOffline, amountsIn } from './analyze.js';
 import { extractJson } from '../lib/ai.js';
+import { withCache } from '../lib/cache-mark.js';
 
 const short = (s, n = 160) => {
   const t = String(s || '').replace(/\s+/g, ' ').trim();
@@ -190,19 +191,20 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
 export const CASE_MAP_SYSTEM = 'Bạn là điều tra viên cao cấp. Đọc tài liệu, lời khai và dựng sơ đồ bản chất vụ việc: ai làm gì, với ai, khi nào, bao nhiêu tiền, thuộc điều luật nào. Chỉ dựa trên nội dung được cung cấp, không suy diễn. Chỉ trả về JSON hợp lệ.';
 
 export function caseMapPrompt(text, { known = [], primary = null, part = null } = {}) {
-  return `${part ? `ĐÂY LÀ PHẦN ${part[0]}/${part[1]} CỦA NỘI DUNG — chỉ trích xuất những gì có trong phần này, trả lời ngắn gọn.\n` : ''}${primary ? `Điều luật đang xem xét: Điều ${primary} BLHS.\n` : ''}${known.length ? `Người trong hồ sơ: ${known.map((p) => `${p.ten}${p.vaiTro ? ` (${p.vaiTro})` : ''}`).join('; ')}\n` : ''}
-NỘI DUNG:
-"""
-${String(text).slice(0, 18000)}
-"""
-
-Trả về JSON:
+  // Phần cố định trước (giống nhau giữa các phần của cùng tài liệu → đọc lại từ cache), nội dung đặt cuối.
+  const stable = `${primary ? `Điều luật đang xem xét: Điều ${primary} BLHS.\n` : ''}${known.length ? `Người trong hồ sơ: ${known.map((p) => `${p.ten}${p.vaiTro ? ` (${p.vaiTro})` : ''}`).join('; ')}\n` : ''}Đọc NỘI DUNG ở cuối, trả về JSON:
 {"tomTat":"bản chất vụ việc 3–5 câu",
  "banChat":["các ý then chốt, mỗi ý một câu ngắn"],
  "nguoi":[{"ten":"họ tên","vaiTro":"vai trò trong vụ việc"}],
  "hanhVi":[{"ten":"hành vi","dieu":"số điều BLHS","nguoi":["ai thực hiện"],"soTien":"nếu có","trich":"trích nguyên văn ngắn"}],
  "quanHe":[{"tu":"người A","den":"người B","loai":"tien|chi-dao|khac","noiDung":"A làm gì với B","soTien":"nếu có"}],
- "moc":[{"thoiGian":"dd/mm/yyyy hoặc mô tả","suKien":"sự kiện"}]}`;
+ "moc":[{"thoiGian":"dd/mm/yyyy hoặc mô tả","suKien":"sự kiện"}]}
+`;
+  return withCache(stable, `${part ? `\nĐÂY LÀ PHẦN ${part[0]}/${part[1]} CỦA NỘI DUNG — chỉ trích xuất những gì có trong phần này, trả lời ngắn gọn.\n` : ''}
+NỘI DUNG:
+"""
+${String(text).slice(0, 18000)}
+"""`);
 }
 
 /** Sơ đồ hiện tại → JSON cùng định dạng AI trả về (gửi kèm khi yêu cầu AI làm tiếp). */
@@ -223,17 +225,18 @@ export function caseMapToAiJson(m) {
  */
 export function caseMapRefinePrompt(m, request, { source = '', primary = null, max = 12000 } = {}) {
   const cur = JSON.stringify(caseMapToAiJson(m));
-  return `${primary ? `Điều luật đang xem xét: Điều ${primary} BLHS.\n` : ''}SƠ ĐỒ VỤ VIỆC HIỆN TẠI (JSON):
+  const stable = `${primary ? `Điều luật đang xem xét: Điều ${primary} BLHS.\n` : ''}Nhiệm vụ: thực hiện YÊU CẦU CỦA ĐIỀU TRA VIÊN (ở cuối) trên SƠ ĐỒ VỤ VIỆC HIỆN TẠI: giữ nguyên những gì đúng, sửa / bổ sung / bỏ theo yêu cầu, không suy diễn ngoài tài liệu.
+Trả về TOÀN BỘ sơ đồ sau khi sửa, cùng định dạng JSON:
+{"tomTat":"…","banChat":["…"],"nguoi":[{"ten":"…","vaiTro":"…"}],"hanhVi":[{"ten":"…","dieu":"…","nguoi":["…"],"soTien":"…","trich":"…"}],"quanHe":[{"tu":"…","den":"…","loai":"tien|chi-dao|khac","noiDung":"…","soTien":"…"}],"moc":[{"thoiGian":"…","suKien":"…"}],"ghiChu":"1 câu: đã thay đổi gì"}
+`;
+  return withCache(stable, `
+SƠ ĐỒ VỤ VIỆC HIỆN TẠI (JSON):
 ${cur.slice(0, 14000)}
-
+${source ? `\nTÀI LIỆU, LỜI KHAI GỐC (để đối chiếu, bổ sung — chỉ dùng nội dung có trong này):\n"""\n${String(source).slice(0, max)}\n"""\n` : ''}
 YÊU CẦU CỦA ĐIỀU TRA VIÊN:
 """
 ${String(request).slice(0, 2000)}
-"""
-${source ? `\nTÀI LIỆU, LỜI KHAI GỐC (để đối chiếu, bổ sung — chỉ dùng nội dung có trong này):\n"""\n${String(source).slice(0, max)}\n"""\n` : ''}
-Thực hiện yêu cầu trên sơ đồ hiện tại: giữ nguyên những gì đúng, sửa / bổ sung / bỏ theo yêu cầu, không suy diễn ngoài tài liệu.
-Trả về TOÀN BỘ sơ đồ sau khi sửa, cùng định dạng JSON:
-{"tomTat":"…","banChat":["…"],"nguoi":[{"ten":"…","vaiTro":"…"}],"hanhVi":[{"ten":"…","dieu":"…","nguoi":["…"],"soTien":"…","trich":"…"}],"quanHe":[{"tu":"…","den":"…","loai":"tien|chi-dao|khac","noiDung":"…","soTien":"…"}],"moc":[{"thoiGian":"…","suKien":"…"}],"ghiChu":"1 câu: đã thay đổi gì"}`;
+"""`);
 }
 
 /**

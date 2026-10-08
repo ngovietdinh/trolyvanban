@@ -191,7 +191,7 @@ export function render(ctx) {
         <div class="field"><label for="gq-tpm">Token / phút</label><input class="input" id="gq-tpm" name="tpm" inputmode="numeric" value="${l.tpm}" /></div>
         <div class="field"><label for="gq-tpd">Token / ngày</label><input class="input" id="gq-tpd" name="tpd" inputmode="numeric" value="${l.tpd}" /></div>
       </div>
-      <div class="groq-use" data-groq-use><div class="groq-bar"><i style="width:${pct}%"></i></div><small>Hôm nay đã dùng khoảng <strong>${n(u.tokens)}</strong> token, <strong>${n(u.requests)}</strong> yêu cầu${models.length > 1 ? ` (${models.map(([m, x]) => `${escapeHtml(m)}: ${n(x.tokens)}`).join(' · ')})` : ''} — mỗi mô hình tối đa ${n(l.tpd)} token/ngày. Ước lượng trên máy này.</small></div>
+      <div class="groq-use" data-groq-use><div class="groq-bar"><i style="width:${pct}%"></i></div><small>Hôm nay đã dùng khoảng <strong>${n(u.tokens)}</strong> token, <strong>${n(u.requests)}</strong> yêu cầu${models.length > 1 ? ` (${models.map(([m, x]) => `${escapeHtml(m)}: ${n(x.tokens)}`).join(' · ')})` : ''} — mỗi mô hình tối đa ${n(l.tpd)} token/ngày.${u.cached ? ` Đọc lại từ cache <strong>${n(u.cached)}</strong> token (không tính vào hạn mức).` : ''} Ước lượng trên máy này.</small></div>
       <button type="button" class="btn btn-ghost btn-sm" data-groq-reset>Đặt lại theo gói miễn phí</button>
     </fieldset>`;
   }

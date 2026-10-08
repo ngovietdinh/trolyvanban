@@ -6,7 +6,7 @@
 /** Kích thước mỗi phần (ký tự): dịch vụ trực tuyến ~8 nghìn, AI trên máy ~3,5 nghìn (ngữ cảnh mặc định nhỏ, chạy CPU chậm). */
 export const CHUNK = { online: 8000, local: 3500, groq: 4000 };
 /** Nhà cung cấp “chật”: AI trên máy (ngữ cảnh nhỏ, chậm) và Groq (gói miễn phí ~8K token/phút). */
-export const isTight = (ai) => !!(ai?.local || ai?.provider === 'local' || ai?.provider === 'groq');
+export const isTight = (ai) => !!(ai?.local || ai?.provider === 'local' || ai?.provider === 'groq' || (ai?.provider === 'openrouter' && /:free$/.test(ai?.model || '')));
 export const chunkSizeFor = (ai) => (ai?.local || ai?.provider === 'local' ? CHUNK.local : ai?.provider === 'groq' ? CHUNK.groq : CHUNK.online);
 /** Số phần gửi song song: nhà cung cấp chật gửi lần lượt từng phần. */
 export const concurrencyFor = (ai) => (isTight(ai) ? 1 : 2);

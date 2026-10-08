@@ -17,8 +17,10 @@ export async function mockClaude(page, replyFor) {
   await page.route('https://api.anthropic.com/**', async (route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors() });
-    const body = JSON.parse(req.postData() || '{}');
-    calls.push({ url: req.url(), headers: req.headers(), body });
+    const raw = JSON.parse(req.postData() || '{}');
+    // body: nội dung tin nhắn dạng chuỗi cho dễ kiểm tra (khối có cache_control được ghép lại); raw: nguyên bản.
+    const body = { ...raw, messages: (raw.messages || []).map((m) => (Array.isArray(m.content) && m.content.every((p) => p.type === 'text') ? { ...m, content: m.content.map((p) => p.text).join('') } : m)) };
+    calls.push({ url: req.url(), headers: req.headers(), body, raw });
     if (req.headers()['x-api-key'] === 'sk-ant-bad') {
       return route.fulfill({ status: 401, headers: { ...cors(), 'content-type': 'application/json' }, body: JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }) });
     }
@@ -119,6 +121,7 @@ export async function mockProviders(page, reply = () => 'Xin chào từ AI') {
   await page.route('https://api.openai.com/**', handler('openai'));
   await page.route('https://api.x.ai/**', handler('grok'));
   await page.route('https://api.groq.com/**', handler('groq'));
+  await page.route('https://openrouter.ai/**', handler('openrouter'));
   await page.route('https://generativelanguage.googleapis.com/**', handler('gemini'));
   return calls;
 }

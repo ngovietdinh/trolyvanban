@@ -93,7 +93,7 @@ export function openNextStatement(ctx, target) {
           btn.disabled = true;
           btn.innerHTML = `${icon('refresh', 'ic-sm spin')}AI đang đọc các biên bản…`;
           try {
-            const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: INVESTIGATOR_SYSTEM, maxTokens: 4000, messages: [{ role: 'user', content: followUpPrompt({ prev, others, crime: result.plan.crime, role: getRole(roleId), plan: result.plan, max: ctxFor(ai, 22000, 8000) }) }] });
+            const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: INVESTIGATOR_SYSTEM, effort: 'medium', maxTokens: 4000, messages: [{ role: 'user', content: followUpPrompt({ prev, others, crime: result.plan.crime, role: getRole(roleId), plan: result.plan, max: ctxFor(ai, 22000, 8000) }) }] });
             const list = (extractJson(out)?.cauHoi || []).map((x) => (typeof x === 'string' ? { text: x } : x)).filter((x) => x?.text?.trim());
             if (!list.length) throw new Error('AI không trả về câu hỏi đúng định dạng');
             extra = list.map((x) => ({ text: x.text.trim(), lyDo: x.lyDo ? `AI: ${x.lyDo}` : 'AI đề xuất.', buoc: BUOC[x.buoc] ? x.buoc : 'cu-the', src: 'ai' }));

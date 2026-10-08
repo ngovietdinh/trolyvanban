@@ -88,6 +88,13 @@ Phân tích tài liệu (Thêm hành vi từ tài liệu, Phân tích vụ việ
 
 `assets/js/lib/groq-quota.js` canh hạn mức theo từng mô hình (mặc định 30 yêu cầu/phút, 1.000/ngày, 8.000 token/phút, 200.000 token/ngày — sửa ở Cài đặt → Groq): ước lượng token gửi đi (~3,2 ký tự/token tiếng Việt), `max_tokens` không quá 4.096 và không vượt phần còn lại của hạn mức phút; chờ khi phút đã dùng gần hết; 429 thì chờ đúng `Retry-After`; tài liệu chia phần ~4.000 ký tự, gửi lần lượt; ngữ cảnh gửi kèm gọn như AI trên máy; tóm tắt văn bản dài theo từng phần; trợ lý chỉ gửi đoạn hội thoại gần nhất; hết hạn mức ngày → mô hình dự phòng / nhà cung cấp khác. Thống kê token đã dùng trong ngày lấy từ `x_groq.usage`.
 
+## Tiết kiệm token (v2.24.2)
+
+- **Prompt caching** (`assets/js/lib/cache-mark.js`): lời nhắc dài ghép bằng `withCache(phần cố định, phần thay đổi)`. Phần cố định (danh mục điều luật, hướng dẫn định dạng JSON, nội dung biên bản dùng cho nhiều lần phân tích) đứng trước và giữ nguyên từng ký tự; phần i/n của tài liệu, yêu cầu mới đứng sau. Claude: phần cố định gắn `cache_control` (hội thoại nhiều lượt: gắn ở lượt trả lời gần nhất); OpenRouter: gắn `cache_control` với mô hình `anthropic/*`, `google/*`; Groq, OpenAI, Gemini…: tự cache phần đầu giống nhau, dấu được bỏ trước khi gửi.
+- **Mức suy nghĩ**: mô hình suy luận (gpt-oss trên Groq / OpenRouter, OpenAI o-series / gpt-5, Claude 5) mặc định `low`; phân tích tố tụng (phân tích tài liệu, sơ đồ vụ việc, AI làm tiếp, trợ lý lời khai, nhận định, lời khai lần tiếp theo) dùng `medium`.
+- **Groq**: mặc định `openai/gpt-oss-120b`; token đọc từ cache (`prompt_tokens_details.cached_tokens`) không tính vào hạn mức phút / ngày, thống kê trong Cài đặt.
+- **OpenRouter** (`https://openrouter.ai/api/v1`, key `sk-or-…`): một key dùng nhiều mô hình; mô hình `:free` được coi như nhà cung cấp “chật” (gửi lần lượt, ngữ cảnh gọn).
+
 ## Bản cài đặt trên máy tính (Windows, macOS)
 
 Ngoài bản web, ứng dụng có **bộ cài đặt** chạy như phần mềm riêng (Electron, thư mục `desktop/`), dùng được khi không có mạng.
@@ -159,7 +166,7 @@ Có thể triển khai thẳng lên GitHub Pages, Netlify, Vercel hoặc bất k
 
 ### Bật AI
 
-Vào **Cài đặt → Trí tuệ nhân tạo**, chọn nhà cung cấp (Claude, ChatGPT, Gemini, Grok, Groq), dán API key và chọn mô hình (có thể nhập tên mô hình tự do). Claude mặc định dùng `claude-opus-5-5`.
+Vào **Cài đặt → Trí tuệ nhân tạo**, chọn nhà cung cấp (Claude, ChatGPT, Gemini, Grok, Groq, OpenRouter), dán API key và chọn mô hình (có thể nhập tên mô hình tự do). Claude mặc định dùng `claude-opus-5-5`.
 
 > Khi triển khai cho nhiều người dùng, nên đặt một máy chủ trung gian giữ API key thay vì để mỗi người tự nhập khóa.
 

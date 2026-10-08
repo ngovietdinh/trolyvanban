@@ -276,6 +276,8 @@ export function render(ctx) {
           apiKey,
           model,
           signal: controller.signal,
+          // Hội thoại nhiều lượt: lịch sử trước đó đọc lại từ cache (Claude, OpenRouter–Claude/Gemini; nhà cung cấp khác tự cache).
+          cacheHistory: true,
           messages: history,
           onText: (_, all) => {
             bot.content = all;

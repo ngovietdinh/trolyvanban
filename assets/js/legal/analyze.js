@@ -5,6 +5,7 @@ import { ALL_CRIMES, findCrime, crimeWithCustomActs } from './engine.js';
 import { summarize, splitSentences } from '../lib/summarize.js';
 import { extractJson } from '../lib/ai.js';
 import { focusText, splitText, runChunks, CHUNK } from '../lib/ai-chunk.js';
+import { withCache } from '../lib/cache-mark.js';
 
 const STOP = new Set(
   `và của là các có được cho với trong những một này đã để không theo về khi đến tại như do thì mà còn cũng nên vì nếu đó sẽ đang bị ra vào lại trên dưới hay hoặc rằng nhưng tuy nhiều ít rất làm người năm ngày tháng số nhằm đối qua sau trước giữa cùng chỉ đều đây ấy thế nào gì ai sự phải cần đồng thời bao gồm khác hành vi tội việc rồi đó sau khi`.split(/\s+/),
@@ -328,19 +329,21 @@ export function catalogForAi(dieus) {
 
 export function analyzePrompt(text, { primary, candidates, role, part = null }) {
   const body = String(text).slice(0, 14000);
-  return `${part ? `ĐÂY LÀ PHẦN ${part[0]}/${part[1]} CỦA TÀI LIỆU — chỉ liệt kê hành vi có trong phần này; "tomTat" chỉ 1–2 câu.
-` : ''}Điều đang làm việc: Điều ${primary}. Người sẽ lấy lời khai: ${role}.
+  // Phần cố định (giống nhau giữa các phần của cùng tài liệu) đặt trước để AI đọc lại từ cache; tài liệu đặt cuối.
+  const stable = `Điều đang làm việc: Điều ${primary}. Người sẽ lấy lời khai: ${role}.
 DANH MỤC ĐIỀU LUẬT TRONG HỆ THỐNG (ưu tiên dùng; "hanhViId" lấy trong ngoặc vuông nếu hành vi trùng):
 ${catalogForAi(candidates)}
 
+Đọc TÀI LIỆU VỤ VIỆC ở cuối, trả về JSON:
+{"tomTat":"tóm tắt vụ việc 3–5 câu",
+ "hanhVi":[{"ten":"tên hành vi ngắn gọn","dieu":"số điều BLHS","hanhViId":"id trong danh mục hoặc null nếu hành vi mới","trich":"đoạn trích nguyên văn trong tài liệu","lyDo":"vì sao thỏa mãn dấu hiệu của điều này","cauHoi":["3–6 câu hỏi đặc thù bám dấu hiệu cấu thành — chỉ khi hanhViId null"],"taiLieu":["tài liệu cần thu thập"]}]}
+`;
+  const variable = `${part ? `\nĐÂY LÀ PHẦN ${part[0]}/${part[1]} CỦA TÀI LIỆU — chỉ liệt kê hành vi có trong phần này; "tomTat" chỉ 1–2 câu.\n` : ''}
 TÀI LIỆU VỤ VIỆC${String(text).length > 14000 ? ' (đã cắt bớt phần cuối)' : ''}:
 """
 ${body}
-"""
-
-Trả về JSON:
-{"tomTat":"tóm tắt vụ việc 3–5 câu",
- "hanhVi":[{"ten":"tên hành vi ngắn gọn","dieu":"số điều BLHS","hanhViId":"id trong danh mục hoặc null nếu hành vi mới","trich":"đoạn trích nguyên văn trong tài liệu","lyDo":"vì sao thỏa mãn dấu hiệu của điều này","cauHoi":["3–6 câu hỏi đặc thù bám dấu hiệu cấu thành — chỉ khi hanhViId null"],"taiLieu":["tài liệu cần thu thập"]}]}`;
+"""`;
+  return withCache(stable, variable);
 }
 
 /**
@@ -354,7 +357,7 @@ export async function analyzeWithAi(call, text, { primary, offline, role = 'ngư
   const run = await runChunks(
     chunks,
     async (chunk, i, n) => {
-      const out = await call({ system: ANALYZE_SYSTEM, cache: true, maxTokens: n > 1 ? 3000 : 5000, signal, timeoutRetry: n === 1 ? undefined : false, messages: [{ role: 'user', content: analyzePrompt(chunk, { primary, candidates, role, part: n > 1 ? [i + 1, n] : null }) }] });
+      const out = await call({ system: ANALYZE_SYSTEM, cache: true, effort: 'medium', maxTokens: n > 1 ? 3000 : 5000, signal, timeoutRetry: n === 1 ? undefined : false, messages: [{ role: 'user', content: analyzePrompt(chunk, { primary, candidates, role, part: n > 1 ? [i + 1, n] : null }) }] });
       const part = extractJson(out);
       if (!part || !Array.isArray(part.hanhVi)) throw new Error('AI trả về kết quả không đúng định dạng — đang dùng kết quả phân tích trên máy.');
       return part;
@@ -410,25 +413,26 @@ export function aiItems(hanhVi, primary) {
  */
 export function analyzeRefinePrompt(text, request, { primary, candidates, role, current = [], max = 12000 }) {
   const cur = current.map((r, i) => `${i + 1}. [Điều ${r.dieu || '?'}] ${r.ten}${r.trich ? ` — “${String(r.trich).slice(0, 160)}”` : ''}`).join('\n');
-  return `Điều đang làm việc: Điều ${primary}. Người sẽ lấy lời khai: ${role}.
+  const stable = `Điều đang làm việc: Điều ${primary}. Người sẽ lấy lời khai: ${role}.
 DANH MỤC ĐIỀU LUẬT TRONG HỆ THỐNG (ưu tiên dùng; "hanhViId" lấy trong ngoặc vuông nếu hành vi trùng):
 ${catalogForAi(candidates)}
 
-CÁC HÀNH VI ĐÃ XÁC ĐỊNH:
-${cur || '(chưa có)'}
-
-YÊU CẦU CỦA ĐIỀU TRA VIÊN: ${String(request).slice(0, 2000)}
+Nhiệm vụ: thực hiện YÊU CẦU CỦA ĐIỀU TRA VIÊN (ở cuối) trên danh sách hành vi đã xác định, chỉ dựa trên tài liệu. Trả về JSON:
+{"hanhVi":[{"ten":"hành vi cần thêm, hoặc hành vi đã có nhưng sửa (giữ nguyên tên cũ trong \"tenCu\")","tenCu":"tên cũ nếu là sửa, không thì null","dieu":"số điều","hanhViId":"id hoặc null","trich":"trích nguyên văn","lyDo":"vì sao","cauHoi":["3–6 câu hỏi nếu hanhViId null"],"taiLieu":["…"]}],
+ "bo":["tên hành vi nên bỏ (nếu yêu cầu)"],
+ "tomTat":"tóm tắt mới nếu yêu cầu liên quan, không thì null",
+ "ghiChu":"1 câu: đã làm gì"}
 
 TÀI LIỆU VỤ VIỆC:
 """
 ${String(text).slice(0, max)}
 """
+`;
+  return withCache(stable, `
+CÁC HÀNH VI ĐÃ XÁC ĐỊNH:
+${cur || '(chưa có)'}
 
-Thực hiện yêu cầu, chỉ dựa trên tài liệu. Trả về JSON:
-{"hanhVi":[{"ten":"hành vi cần thêm, hoặc hành vi đã có nhưng sửa (giữ nguyên tên cũ trong \"tenCu\")","tenCu":"tên cũ nếu là sửa, không thì null","dieu":"số điều","hanhViId":"id hoặc null","trich":"trích nguyên văn","lyDo":"vì sao","cauHoi":["3–6 câu hỏi nếu hanhViId null"],"taiLieu":["…"]}],
- "bo":["tên hành vi nên bỏ (nếu yêu cầu)"],
- "tomTat":"tóm tắt mới nếu yêu cầu liên quan, không thì null",
- "ghiChu":"1 câu: đã làm gì"}`;
+YÊU CẦU CỦA ĐIỀU TRA VIÊN: ${String(request).slice(0, 2000)}`);
 }
 
 /* ---------------- Câu hỏi cho hành vi mới ---------------- */

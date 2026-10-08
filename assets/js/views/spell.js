@@ -212,7 +212,7 @@ export function render(ctx) {
   async function runAI() {
     if (aiController) return aiController.abort();
     if (!aiOk()) {
-      toast(ctx.can('ai') ? 'Thêm API key (ChatGPT, Gemini, Grok, Groq hoặc Claude) trong Cài đặt để kiểm tra bằng AI' : 'Tài khoản chưa được cấp quyền dùng AI trực tuyến — liên hệ quản trị viên', { type: 'info' });
+      toast(ctx.can('ai') ? 'Thêm API key (ChatGPT, Gemini, Grok, Groq, OpenRouter hoặc Claude) trong Cài đặt để kiểm tra bằng AI' : 'Tài khoản chưa được cấp quyền dùng AI trực tuyến — liên hệ quản trị viên', { type: 'info' });
       if (ctx.can('ai')) ctx.navigate('#settings');
       return;
     }

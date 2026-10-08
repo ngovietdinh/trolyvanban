@@ -7,6 +7,7 @@ import { qaToText } from '../legal/record.js';
 import { INVESTIGATOR_SYSTEM } from '../legal/assist.js';
 import { streamClaude } from '../lib/ai.js';
 import { ctxFor } from '../lib/ai-chunk.js';
+import { withCache } from '../lib/cache-mark.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { renderDocumentHtml } from '../lib/render-html.js';
 import { relativeTime } from '../lib/vn-date.js';
@@ -245,9 +246,10 @@ function renderCase(ctx, id) {
             apiKey: ai.apiKey,
             model: ai.model,
             system: INVESTIGATOR_SYSTEM,
+            effort: 'medium',
             maxTokens: 3500,
             signal,
-            messages: [{ role: 'user', content: `${concludeContext(ai, c, r)}\n\nNHẬN ĐỊNH ĐÃ CÓ:\n${prev?.text || ''}\n\nYÊU CẦU BỔ SUNG CỦA ĐIỀU TRA VIÊN: ${request}\n\nViết lại TOÀN BỘ nhận định (Markdown, tiếng Việt) đã hoàn thiện theo yêu cầu: giữ các phần còn đúng, bổ sung / sửa theo yêu cầu. Chỉ dựa trên nội dung biên bản, không suy diễn.` }],
+            messages: [{ role: 'user', content: withCache(concludeContext(ai, c, r), `\n\nNHẬN ĐỊNH ĐÃ CÓ:\n${prev?.text || ''}\n\nYÊU CẦU BỔ SUNG CỦA ĐIỀU TRA VIÊN: ${request}\n\nViết lại TOÀN BỘ nhận định (Markdown, tiếng Việt) đã hoàn thiện theo yêu cầu: giữ các phần còn đúng, bổ sung / sửa theo yêu cầu. Chỉ dựa trên nội dung biên bản, không suy diễn.`) }],
             onText: (d, all) => out && (out.innerHTML = `<div class="md">${renderMarkdown(all)}</div>`),
           });
           casesRepo.save({ ...casesRepo.get(c.id), aiConclusion: { text, at: Date.now(), model: ai.model, requests: [...(prev?.requests || []), request].slice(-12) } });
@@ -372,8 +374,9 @@ async function aiConclude(ctx, c, r, btn, redraw) {
       apiKey: ai.apiKey,
       model: ai.model,
       system: INVESTIGATOR_SYSTEM,
+      effort: 'medium',
       maxTokens: 3000,
-      messages: [{ role: 'user', content: `${concludeContext(ai, c, r)}\n\nViết nhận định ngắn gọn (Markdown, tiếng Việt) gồm các mục: 1) Kết quả đã làm rõ; 2) Dấu hiệu cấu thành đã/chưa có căn cứ; 3) Mâu thuẫn, điểm nghi vấn; 4) Việc cần làm tiếp (câu hỏi, đối chất, tài liệu, giám định). Chỉ dựa trên nội dung biên bản, không suy diễn.` }],
+      messages: [{ role: 'user', content: withCache(concludeContext(ai, c, r), `\n\nViết nhận định ngắn gọn (Markdown, tiếng Việt) gồm các mục: 1) Kết quả đã làm rõ; 2) Dấu hiệu cấu thành đã/chưa có căn cứ; 3) Mâu thuẫn, điểm nghi vấn; 4) Việc cần làm tiếp (câu hỏi, đối chất, tài liệu, giám định). Chỉ dựa trên nội dung biên bản, không suy diễn.`) }],
       onText: (d, all) => out && (out.innerHTML = `<div class="md">${renderMarkdown(all)}</div>`),
     });
     casesRepo.save({ ...casesRepo.get(c.id), aiConclusion: { text, at: Date.now(), model: ai.model } });

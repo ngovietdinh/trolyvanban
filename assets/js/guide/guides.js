@@ -26,7 +26,7 @@ export const GUIDES = [
       { t: 'Nhìn thanh bên trái', d: 'Các chức năng được chia nhóm: **Không gian** (soạn văn bản, trợ lý), **Tố tụng hình sự** (chỉ hiện khi được cấp quyền), **Công cụ**, **Lưu trữ**. Cần thêm chỗ làm việc: bấm nút biểu tượng bảng cạnh tên màn hình (hoặc `Ctrl B`) để thu gọn thanh bên thành dải biểu tượng, bấm lại để mở rộng. Trên điện thoại, bấm biểu tượng ☰ ở góc trên để mở.' },
       { t: 'Tìm nhanh bằng bảng lệnh', d: 'Bấm `Ctrl K` (hoặc ô [[Tìm chức năng, tài liệu…]] trên cùng) rồi gõ vài chữ không cần dấu, ví dụ “bblk”, “kham xet”, “dieu 353”. Dùng phím ↑ ↓ để chọn, `Enter` để mở.', tip: 'Gõ số điều luật để mở thẳng tội danh trong cây hỏi đáp.' },
       { t: 'Điền thông tin đơn vị một lần', d: 'Vào [[Cài đặt]] → **Thông tin đơn vị mặc định** (cơ quan, địa danh, người ký) và **Cơ quan điều tra** (tên cơ quan, mẫu số biên bản). Mọi văn bản sau đó tự điền sẵn.' },
-      { t: 'Bật AI nếu cần', d: 'Trong [[Cài đặt]] → **Trí tuệ nhân tạo**, dán API key của ChatGPT, Gemini, Groq, Grok hoặc Claude. Key được mã hóa theo mật khẩu tài khoản của bạn. Không có key, phần mềm vẫn chạy chế độ cơ bản trên máy.' },
+      { t: 'Bật AI nếu cần', d: 'Trong [[Cài đặt]] → **Trí tuệ nhân tạo**, dán API key của ChatGPT, Gemini, Groq, Grok, OpenRouter hoặc Claude. Key được mã hóa theo mật khẩu tài khoản của bạn. Không có key, phần mềm vẫn chạy chế độ cơ bản trên máy.' },
       { t: 'Mở hướng dẫn ở bất kỳ đâu', d: 'Bấm nút [[?]] trên thanh trên cùng (hoặc phím `F1`) để xem hướng dẫn của đúng màn hình đang mở.' },
     ],
     examples: [
@@ -587,7 +587,7 @@ export const GUIDES = [
     time: '4 phút',
     when: ['Lần đầu bật AI', 'AI báo lỗi, cần đổi mô hình', 'Chuyển sang máy khác'],
     steps: [
-      { t: 'Thêm API key', d: 'Mục **Trí tuệ nhân tạo** → **API key của tôi**: dán key của ChatGPT (sk-…), Gemini (AIza…), Groq (gsk_…), Grok (xai-…) hoặc Claude (sk-ant-…). Key được mã hóa bằng mật khẩu của bạn; quản trị viên cũng không xem được.', tip: 'Groq và Gemini có gói dùng miễn phí — phù hợp để bắt đầu.' },
+      { t: 'Thêm API key', d: 'Mục **Trí tuệ nhân tạo** → **API key của tôi**: dán key của ChatGPT (sk-…), Gemini (AIza…), Groq (gsk_…), Grok (xai-…), OpenRouter (sk-or-…) hoặc Claude (sk-ant-…). Key được mã hóa bằng mật khẩu của bạn; quản trị viên cũng không xem được.', tip: 'Groq và Gemini có gói dùng miễn phí — phù hợp để bắt đầu.' },
       { t: 'Hoặc dùng AI chạy trên máy', d: 'Mục **AI chạy trên máy**: chọn [[Ollama]] (hoặc LM Studio, llama.cpp, Jan) → [[Tải danh sách]] → chọn mô hình → [[Kiểm tra kết nối]]. Không cần API key, không mất phí, dữ liệu không rời khỏi máy — dùng được cả trong phân hệ Tố tụng.', tip: 'Cài Ollama tại ollama.com rồi chạy “ollama pull qwen2.5:7b” (máy RAM 8 GB). Máy mạnh hơn: qwen2.5:14b.' },
       { t: 'Chọn mô hình và kiểm tra', d: 'Bấm [[Tải danh sách]] để lấy các mô hình key của bạn được dùng, chọn mô hình, rồi [[Kiểm tra kết nối]]. Chọn [[Khác — tự nhập tên mô hình…]] để gõ tên mô hình tùy ý.' },
       { t: 'Bật tự chuyển AI và ghi nhớ', d: 'Khi một dịch vụ lỗi (503, quá tải, hết hạn mức), phần mềm tự thử lại, đổi mô hình dự phòng, rồi chuyển sang dịch vụ khác có key. Kết quả AI đã hỏi được **ghi nhớ trên máy** để lần sau trả lời ngay, không tốn lượt.' },

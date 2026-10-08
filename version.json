@@ -1,7 +1,7 @@
 {
-  "version": "2.24.1",
+  "version": "2.24.2",
   "date": "2026-10-08",
   "notes": [
-    "Groq gói miễn phí: tự canh hạn mức token/yêu cầu theo phút và ngày, gửi lần lượt từng phần nhỏ, độ dài trả lời vừa đủ, tự chờ khi hết hạn mức phút (Retry-After), tóm tắt văn bản dài theo từng phần, thống kê token đã dùng hôm nay, sửa được hạn mức trong Cài đặt"
+    "Tiết kiệm token: lời nhắc xếp phần cố định trước để đọc lại từ cache (Claude, OpenRouter gắn cache_control; Groq, OpenAI, Gemini tự cache), mô hình suy luận chạy mức suy nghĩ thấp cho việc thường; Groq mặc định gpt-oss-120b, token cache không tính hạn mức; thêm OpenRouter"
   ]
 }
