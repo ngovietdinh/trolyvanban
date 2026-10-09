@@ -26,7 +26,7 @@ const HOTKEY = { v: 'select', n: 'node', c: 'connect', p: 'pen', t: 'text', e: '
  * - aiIdeas(node, { path, children, signal }) → Promise<string[]>: AI gợi ý nhánh con cho một hình (nếu có AI);
  * - crimeOf(dieu): tra điều luật (gợi ý dấu hiệu định tội trên hình điều luật).
  */
-export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, onChange = () => {}, onRebuild = null, aiIdeas = null, crimeOf = null }) {
+export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, onChange = () => {}, onRebuild = null, aiIdeas = null, crimeOf = null, profileHtml = null }) {
   let d = diagram;
   let mode = 'select';
   let sel = null; // { type: 'node'|'edge', id }
@@ -240,7 +240,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
         <div class="dg-f"><span>Màu viền</span><div class="dg-colors">${['', ...PEN_COLORS].map((c) => `<button type="button" class="dg-color ${c === (n.color || '') ? 'on' : ''}" data-dg-ncolor="${c}" style="--c:${c || 'var(--line-strong)'}" aria-label="${c ? `Màu ${c}` : 'Màu mặc định'}"></button>`).join('')}</div></div>
         <div class="dg-f"><span>Cỡ chữ, kích thước</span><div class="dg-fs"><button type="button" class="btn btn-sm" data-dg-fs="-1" aria-label="Chữ nhỏ hơn">A−</button><strong>${Math.round(fontScale(n) * 100)}%</strong><button type="button" class="btn btn-sm" data-dg-fs="1" aria-label="Chữ to hơn">A+</button>${n.w || n.h ? `<button type="button" class="btn btn-sm btn-ghost" data-dg-autosize>Tự co theo chữ</button>` : ''}</div></div>
         <div class="dg-actions"><button type="button" class="btn btn-sm btn-primary" data-dg-child>${icon('plus', 'ic-sm')}Thêm nhánh con</button><button type="button" class="btn btn-sm" data-dg-ideas>✦ Gợi ý</button></div>
-        <div class="dg-actions"><button type="button" class="btn btn-sm" data-dg-from>${icon('link', 'ic-sm')}Nối từ nút này</button><button type="button" class="btn btn-sm btn-ghost" data-dg-dup>${icon('copy', 'ic-sm')}Nhân bản</button><button type="button" class="btn btn-sm btn-ghost dg-del" data-dg-del>${icon('trash', 'ic-sm')}Xóa</button></div>`;
+        <div class="dg-actions"><button type="button" class="btn btn-sm" data-dg-from>${icon('link', 'ic-sm')}Nối từ nút này</button><button type="button" class="btn btn-sm btn-ghost" data-dg-dup>${icon('copy', 'ic-sm')}Nhân bản</button><button type="button" class="btn btn-sm btn-ghost dg-del" data-dg-del>${icon('trash', 'ic-sm')}Xóa</button></div>${(n.kind === 'person' && profileHtml && profileHtml(n.label)) ? `<details class="dg-prof" open><summary>${icon('user', 'ic-sm')}Hồ sơ người này (từ lời khai)</summary>${profileHtml(n.label)}</details>` : ''}`;
       const ta = $('[data-dg-label]', props);
       detachSg.push(attachSuggest(ta, (t) => labelSuggestions(t, { kind: 'node', map, d })));
       if (focus) {

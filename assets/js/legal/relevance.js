@@ -117,7 +117,7 @@ export function keywordEvidence(dieu, text, { sentences = null, primary = null, 
  * Trả về { dieu, ten, nguon ('bo-nhan-dien' | 'tu-khoa'), muc ('cao' | 'vua' | 'thap' | 'khong'), show, candidate, ev,
  * yeuTo[], thieu[], trich, why, vs, isCited, isPrimary }.
  */
-export function assessCrime(dieu, text, { sentences = null, primary = null, cited = null, ctxText = null } = {}) {
+export function assessCrime(dieu, text, { sentences = null, primary = null, cited = null, ctxText = null, jobNames: extraJob = [] } = {}) {
   const d = String(dieu);
   const crime = findCrime(d);
   if (!crime) return null;
@@ -129,15 +129,15 @@ export function assessCrime(dieu, text, { sentences = null, primary = null, cite
   if (rec) {
     const sents = (sentences || sentencesOf(text)).map((x) => ({ t: x.t, src: x.src }));
     const ctx = ctxText != null ? sentencesOf(ctxText).map((x) => ({ t: x.t })) : sents;
-    const r = recognize(rec, sents, ctx);
+    const r = recognize(rec, sents, ctx, extraJob);
     // Bộ nhận diện đã mô tả đúng tình tiết của từng điều → không áp quy tắc “biến thể” (chỉ dành cho điều khớp từ khóa).
     const qualOk = true;
     const ok = !!r?.ok;
     const show = isCited || isPrimary || ok;
     const seed = seedHit(d, text || '');
-    // Gần đủ: hành vi đã có nhưng chỉ thiếu CHỦ THỂ (chưa rõ người đó có chức vụ, quyền hạn) → không đưa vào sơ đồ, báo cần làm rõ.
+    // Gần đủ: hành vi đã có nhưng chỉ thiếu CHỦ THỂ (chưa rõ người đó có chức vụ, quyền hạn) hoặc MỤC ĐÍCH nhận / đưa lợi ích → không đưa vào sơ đồ, báo cần làm rõ.
     const reqMissing = (r?.yeuTo || []).filter((y) => y.req && !y.ok);
-    const gan = !show && !!r && reqMissing.length === 1 && reqMissing[0].id === 'chu-the' && (r.yeuTo || []).some((y) => y.req && y.ok && y.w >= 3);
+    const gan = !show && !!r && reqMissing.length === 1 && ['chu-the', 'vi-viec', 'nguoi-nhan'].includes(reqMissing[0].id) && (r.yeuTo || []).some((y) => y.req && y.ok && y.w >= 3);
     return {
       ...base,
       nguon: 'bo-nhan-dien',

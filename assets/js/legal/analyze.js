@@ -66,7 +66,7 @@ export function mentionedArticles(text) {
  * Phân tích ngoại tuyến. primary: điều đang mở trên cây hỏi đáp.
  * Trả về { tomTat, crimes: [{ dieu, ten, score, reasons }], items: [{ ten, dieu, hanhViId, trich, score, checked, nguon }] }.
  */
-export function analyzeOffline(text, { primary } = {}) {
+export function analyzeOffline(text, { primary, jobNames = [] } = {}) {
   const src = String(text || '');
   const sentences = splitSentences(src)
     .map((s) => s.replace(/\s+/g, ' ').trim())
@@ -80,7 +80,7 @@ export function analyzeOffline(text, { primary } = {}) {
   // chủ thể phù hợp) — xem relevance.js. Không còn “lấy tạm vài điều điểm cao nhất”.
   const evSents = sentences.map((t, i) => ({ t, bi: sentT[i].bi }));
   const cited = new Set(mentioned.keys());
-  const evs = ALL_CRIMES.map((c) => assessCrime(c.dieu, src, { sentences: evSents, primary, cited })).filter(Boolean);
+  const evs = ALL_CRIMES.map((c) => assessCrime(c.dieu, src, { sentences: evSents, primary, cited, jobNames })).filter(Boolean);
   const top = pickShown(evs).map((e) => ({ dieu: e.dieu, ten: e.ten, score: Math.max(e.ev, e.isCited || e.isPrimary ? 1 : 0), reasons: [e.why, e.trich && !e.isCited && !e.isPrimary ? `Câu căn cứ: “${short(e.trich, 140)}”` : ''].filter(Boolean), strong: true, can: { nguon: e.nguon, muc: e.muc, yeuTo: e.yeuTo, thieu: e.thieu, vs: e.vs } }));
   const keep = new Set(top.map((c) => c.dieu));
   if (primary) keep.add(String(primary));

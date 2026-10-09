@@ -34,14 +34,14 @@ test.describe('v2.31 — bộ nhận diện điều khoản, lý do và trích d
     const box = page.locator('[data-stmt]').first();
     await box.locator('[data-lk-name]').fill('Trần Văn Bình');
     await box.locator('[data-lk-role]').fill('Giám đốc');
-    await box.locator('[data-lk-text]').fill('Tôi là Giám đốc Ban QLDA. Tôi nhận tiền của Công ty Hoàng Long.');
+    await box.locator('[data-lk-text]').fill('Tôi là Giám đốc Ban QLDA. Tôi nhận tiền của Công ty Hoàng Long để ký duyệt thanh toán.');
     const issue = page.locator('.lk-issue', { hasText: 'Thiếu yếu tố cấu thành' });
     await expect(issue).toContainText('Điều 354');
-    await expect(issue.locator('.lk-ask')).toContainText('việc gì');
+    await expect(issue.locator('.lk-ask')).toContainText('Giá trị lợi ích');
     await page.click('[data-lk-tab="dieu-luat"]');
     const c = page.locator('.cm-law .lr').filter({ has: page.locator('.lr-h strong', { hasText: 'Điều 354' }) });
     await expect(c.locator('.lr-more[open] .lr-el li.no').first()).toContainText('chưa có trong lời khai');
-    await expect(c.locator('.lr-el li.ok').first()).toContainText('Tôi nhận tiền của Công ty Hoàng Long');
+    await expect(c.locator('.lr-el li.ok').first()).toContainText('Tôi nhận tiền của Công ty Hoàng Long để ký duyệt');
     // Bổ sung lời khai → yếu tố được lấp, điểm biến mất.
     await box.locator('[data-lk-text]').fill('Tôi là Giám đốc Ban QLDA. Tôi nhận 200 triệu đồng của Công ty Hoàng Long để ký duyệt thanh toán.');
     await expect(page.locator('.lk-issue', { hasText: 'Thiếu yếu tố cấu thành' })).toHaveCount(0);

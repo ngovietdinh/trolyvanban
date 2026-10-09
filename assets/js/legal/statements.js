@@ -30,14 +30,14 @@ const idOf = (...xs) => xs.map((x) => key(x).replace(/ /g, '-')).join('_').slice
  * statements: [{ speaker, label?, role?, text }] — mỗi phần tử là lời khai của một người (một lần khai).
  * Trả về { map (sơ đồ vụ việc), speakers, claims, issues }.
  */
-export function analyzeStatements(statements = [], { known = [], primary = null, confirmed = [] } = {}) {
+export function analyzeStatements(statements = [], { known = [], primary = null, confirmed = [], learn = null } = {}) {
   const t0 = Date.now();
   const sources = statements
     .filter((s) => String(s.text || '').trim())
     .map((s, i) => ({ label: s.label || (s.speaker ? `Lời khai của ${s.speaker}` : `Lời khai ${i + 1}`), speaker: String(s.speaker || '').trim(), text: s.text }));
   // confirmed: họ tên đầy đủ do người dùng xác nhận (chỉ những tên này mới được gộp / coi là rõ khi lời khai chỉ nêu tên gọi).
   const knownAll = [...known, ...confirmed.filter(isFullName).map((ten) => ({ ten: stripTitle(ten), vaiTro: '' })), ...statements.filter((s) => s.speaker && s.role).map((s) => ({ ten: s.speaker, vaiTro: s.role }))];
-  const map = buildCaseMap({ sources, known: knownAll, primary });
+  const map = buildCaseMap({ sources, known: knownAll, primary, learn });
   const sents = sentences(sources);
   const all = classifyPeople(sents, knownAll);
   const people = all.filter((p) => p.clear);

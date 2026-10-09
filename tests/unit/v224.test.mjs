@@ -228,9 +228,14 @@ test('v2.26 sơ đồ hành vi, quan hệ, dòng tiền: dựng sẵn từ phân
   const dt = diagramFromCaseMap(m, { preset: 'dong-tien' });
   assert.equal(dt.layout, 'dong');
   assert.ok(dt.edges.every((e) => e.kind === 'tien'));
-  const giver = dt.nodes.find((n) => dt.edges.some((e) => e.from === n.id));
-  const taker = dt.nodes.find((n) => dt.edges.some((e) => e.to === n.id));
+  const pe = dt.edges.find((e) => e.from.startsWith('p:') && e.to.startsWith('p:'));
+  const giver = dt.nodes.find((n) => n.id === pe.from);
+  const taker = dt.nodes.find((n) => n.id === pe.to);
   assert.ok(giver.x < taker.x, 'dòng tiền chảy trái → phải');
+  // Nguồn tiền (số tiền rút nguyên văn) nằm bên trái người rút.
+  const src = dt.nodes.find((n) => n.kind === 'money');
+  assert.ok(src && /300 triệu/.test(src.label), 'nút nguồn tiền kèm số tiền nguyên văn');
+  assert.ok(src.x < dt.nodes.find((n) => dt.edges.some((e) => e.from === src.id && e.to === n.id)).x);
   assert.ok(!/Nhận|Đưa/.test(taker.sub || ''), 'không ghi tổng tiền tự cộng lên hình');
   for (const d of [qh, dt])
     for (const a of d.nodes)

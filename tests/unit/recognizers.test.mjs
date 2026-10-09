@@ -70,10 +70,15 @@ test('chủ thể phải là chính người thực hiện hành vi (đứng tr�
 
 test('lời phủ nhận không phải căn cứ; yếu tố còn thiếu được nêu kèm câu hỏi', () => {
   assert.equal(assessCrime('354', 'Ông Bình, Giám đốc Ban QLDA, khai: tôi không hề nhận 200 triệu đồng của Công ty X.').show, false);
-  const a = assessCrime('354', 'Ông Trần Văn Bình, Giám đốc Ban QLDA nhận tiền của Công ty X.');
+  const a = assessCrime('354', 'Ông Trần Văn Bình, Giám đốc Ban QLDA nhận tiền của Công ty X để ký duyệt thanh toán.');
   assert.equal(a.show, true);
-  assert.equal(a.muc, 'vua');
-  assert.deepEqual(a.thieu.map((y) => y.id).sort(), ['gia-tri', 'vi-viec']);
+  assert.equal(a.muc, 'cao');
+  assert.deepEqual(a.thieu.map((y) => y.id), ['gia-tri']);
+  // Thiếu mục đích (bắt buộc) → chưa kết luận, chỉ báo cần làm rõ.
+  const b = assessCrime('354', 'Ông Trần Văn Bình, Giám đốc Ban QLDA nhận tiền của Công ty X.');
+  assert.equal(b.show, false);
+  assert.equal(b.muc, 'gan');
+  assert.ok(b.thieu.some((y) => y.id === 'vi-viec' && y.hoi));
   assert.ok(a.thieu.every((y) => y.hoi));
   assert.match(a.why, /chưa rõ/);
   assert.ok(assessCrime('354', 'Ông Trần Văn Bình, Giám đốc Ban QLDA nhận của Công ty X 200 triệu đồng để ký duyệt thanh toán.').muc === 'cao');
@@ -100,12 +105,17 @@ test('phân tích trên máy: điều luật kèm yếu tố cấu thành, tríc
 });
 
 test('Phân tích lời khai: điều luật đủ yếu tố bắt buộc nhưng thiếu yếu tố → điểm cần làm rõ kèm câu hỏi', () => {
-  const r = analyzeStatements([{ speaker: 'Trần Văn Bình', role: 'Giám đốc', text: 'Tôi là Giám đốc Ban QLDA. Tôi nhận tiền của Công ty Hoàng Long.' }]);
+  const r = analyzeStatements([{ speaker: 'Trần Văn Bình', role: 'Giám đốc', text: 'Tôi là Giám đốc Ban QLDA. Tôi nhận tiền của Công ty Hoàng Long để ký duyệt thanh toán.' }]);
   const c = r.map.crimes.find((x) => x.dieu === '354');
   assert.ok(c, 'nhận diện 354');
   const is = r.issues.find((x) => x.kind === 'thieu-yeu-to' && /354/.test(x.title));
   assert.ok(is, 'có điểm thiếu yếu tố');
-  assert.match(is.title, /lợi ích từ 2 triệu|để làm hoặc không làm/);
+  assert.match(is.title, /lợi ích từ 2 triệu/);
+  // Chưa nêu mục đích → chưa kết luận 354, báo cần làm rõ ngay.
+  const r2 = analyzeStatements([{ speaker: 'Trần Văn Bình', role: 'Giám đốc', text: 'Tôi là Giám đốc Ban QLDA. Tôi nhận 200 triệu đồng của Công ty Hoàng Long.' }]);
+  assert.ok(!r2.map.crimes.some((x) => x.dieu === '354'));
+  const is2 = r2.issues.find((x) => x.kind === 'thieu-yeu-to' && /354/.test(x.title));
+  assert.ok(is2 && is2.level === 'cao' && /để làm hoặc không làm/.test(is2.title));
   assert.ok(is.ask.length >= 1);
   assert.ok(questionsByPerson([is]).some((g) => /Điều 354/.test(g.ai)));
 });

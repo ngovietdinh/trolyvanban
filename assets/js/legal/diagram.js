@@ -183,10 +183,23 @@ function relationFromCaseMap(m, { money = false } = {}) {
     if (!e.tu || !e.den || (money && e.loai !== 'tien')) continue;
     const a = person(e.tu);
     const b = person(e.den);
-    const label = money ? `${e.soTien || e.noiDung || ''}` : `${e.noiDung || ''}${e.soTien ? ` ${e.soTien}` : ''}`.trim();
+    // Dòng tiền: số tiền nguyên văn kèm thời điểm (nếu câu nêu); nét đứt = chưa được cả người đưa lẫn người nhận khai.
+    const label = money ? `${e.soTien || e.noiDung || ''}${e.thoiGian ? ` · ${e.thoiGian}` : ''}` : `${e.noiDung || ''}${e.soTien ? ` ${e.soTien}` : ''}`.trim();
     const kind = ['tien', 'chi-dao'].includes(e.loai) ? e.loai : 'khac';
     const id = `e:${a}>${b}:${key(label).slice(0, 40)}:${kind}`;
-    if (a !== b && !edges.some((x) => x.id === id)) edges.push({ id, from: a, to: b, label, kind, origin: 'auto' });
+    const weak = money && !!e.khai && !(e.khai.dua && e.khai.nhan);
+    if (a !== b && !edges.some((x) => x.id === id)) edges.push({ id, from: a, to: b, label, kind, origin: 'auto', ...(weak ? { weak: true } : {}) });
+  }
+  // Nguồn tiền: số tiền một người rút / lấy (chưa nói đưa cho ai) → nút “tiền” nối vào người đó (số tiền nguyên văn).
+  if (money) {
+    for (const r of m.rut || []) {
+      const b = person(r.nguoi);
+      const id = `r:${key(r.nguoi)}:${r.v}`;
+      if (ids.has(id)) continue;
+      ids.add(id);
+      nodes.push({ id, kind: 'money', label: r.soTien, sub: 'rút / lấy (nguyên văn)', origin: 'auto', x: 0, y: 0 });
+      edges.push({ id: `e:${id}>${b}`, from: id, to: b, label: '', kind: 'tien', origin: 'auto' });
+    }
   }
   // Quan hệ: cả người chưa có quan hệ nào (để nối tay).
   if (!money) (m.people || []).forEach((p) => person(p.ten));
@@ -718,7 +731,7 @@ export function diagramSvgBody(d, { sel = null, ui = false, ideas = null } = {})
       const g = edgeGeom(d, e, tree ? { arc: (crossN++ % 2 ? -1 : 1) * Math.max(50, len * 0.28) } : {});
       if (!g) return '';
       const cross = tree ? ' dg-cross' : '';
-      return `<g class="dg-edge dg-e-${e.kind}${cross}${isSel ? ' sel' : ''}" data-edge="${esc(e.id)}"><path class="dg-hit" d="${g.path}" stroke="transparent" stroke-width="14" fill="none"/><path d="${g.path}" stroke="${isSel ? '#2563eb' : k.color}" stroke-width="${isSel ? 2.6 : e.kind === 'tien' && !tree ? 2.4 : 1.8}" fill="none" ${k.dash || tree ? 'stroke-dasharray="6 4"' : ''} marker-end="url(#dg-arr-${e.kind in EDGE_KINDS ? e.kind : 'khac'})"><title>${esc(e.label || k.label)}</title></path>${label(e.label, g.lx, g.ly, k.color)}</g>`;
+      return `<g class="dg-edge dg-e-${e.kind}${cross}${isSel ? ' sel' : ''}" data-edge="${esc(e.id)}"><path class="dg-hit" d="${g.path}" stroke="transparent" stroke-width="14" fill="none"/><path d="${g.path}" stroke="${isSel ? '#2563eb' : k.color}" stroke-width="${isSel ? 2.6 : e.kind === 'tien' && !tree ? 2.4 : 1.8}" fill="none" ${k.dash || tree || e.weak ? 'stroke-dasharray="6 4"' : ''} marker-end="url(#dg-arr-${e.kind in EDGE_KINDS ? e.kind : 'khac'})"><title>${esc(e.label || k.label)}${e.weak ? ' — chỉ một bên khai' : ''}</title></path>${label(e.label, g.lx, g.ly, k.color)}</g>`;
     })
     .join('');
   const nodes = d.nodes

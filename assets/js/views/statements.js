@@ -8,6 +8,9 @@ import { getRole } from '../legal/roles.js';
 import { isFullName, stripTitle, key as nameKey } from '../legal/case-map.js';
 import { analyzeStatements, splitByHeading, clarifyPrompt, parseClarify, withExtraEdges, questionsByPerson, CLARIFY_SYSTEM, LEVELS, KINDS } from '../legal/statements.js';
 import { lawReasonHtml } from './law-reason.js';
+import { kpiHtml, essenceHtml, moneyPanelHtml, personHtml, bindDrill } from './drill.js';
+import { applyFlowAction, edgeId } from '../legal/money-flow.js';
+import { emptyLearn, learnVerb, learnIgnore, forgetRule } from '../legal/learn.js';
 import { diagramFromCaseMap, syncFromCaseMap, PRESETS } from '../legal/diagram.js';
 import { findCrime } from '../legal/engine.js';
 import { mountDiagram } from './diagram-editor.js';
@@ -41,7 +44,9 @@ export function render(ctx) {
   let s = all().find((x) => x.id === store.get('statement-current', '')) || newSession();
   const st = { tab: 'quan-he', lv: 'all', res: null, map: null, sig: '', busy: new Set() };
   let dgCtl = null;
+  let drillCtl = null;
   let timer = 0;
+  const learnNow = () => store.get('cm-learned', null) || emptyLearn();
   const ai = () => (ctx.hasAI('legal') ? ctx.ai('legal') : null);
   const dkey = (preset) => (preset === 'tong-hop' ? s.id : `${s.id}#${preset}`);
   const loadD = (preset) => store.get('diagrams', {})[dkey(preset)] || null;
@@ -77,6 +82,7 @@ export function render(ctx) {
       <aside class="panel lk-issues" data-lk-issues></aside>
       <div class="lk-split" data-lk-split title="Kéo để đổi độ rộng khung Cần làm rõ · bấm đúp: mặc định" aria-label="Kéo để đổi độ rộng khung Cần làm rõ"></div>
       <div class="panel lk-main">
+        <div data-lk-kpi></div><div data-drill-host></div>
         <div class="lk-main-head"><input class="input lk-title" data-lk-title aria-label="Tên phiên phân tích" placeholder="Tên vụ việc / phiên phân tích" /><span class="spacer"></span><button class="btn btn-sm btn-ghost" type="button" data-lk-open-map title="Mở kết quả trong Sơ đồ vụ việc (bản chất, dòng thời gian, xuất Word, AI làm tiếp)">${icon('chart', 'ic-sm')}Mở trong Sơ đồ vụ việc</button><button class="btn btn-sm" type="button" data-lk-word>${icon('download', 'ic-sm')}Xuất Word</button></div>
         <div class="tabs lk-tabs" role="tablist" data-lk-tabs></div>
         <div class="lk-body" data-lk-body></div>
@@ -133,7 +139,7 @@ export function render(ctx) {
     const known = [];
     const c = s.caseId && casesRepo.get(s.caseId);
     if (c) (c.persons || []).forEach((p) => known.push({ ten: p.hoTen, vaiTro: getRole(p.roleId).ten.split('/')[0].trim() }));
-    st.res = analyzeStatements(items.map((x) => ({ speaker: x.speaker, role: x.role, text: x.text, label: x.speaker ? `Lời khai của ${x.speaker}` : '' })), { known, primary: c?.toiDanh?.[0] || null, confirmed: s.names || [] });
+    st.res = analyzeStatements(items.map((x) => ({ speaker: x.speaker, role: x.role, text: x.text, label: x.speaker ? `Lời khai của ${x.speaker}` : '' })), { known, primary: c?.toiDanh?.[0] || null, confirmed: s.names || [], learn: learnNow() });
     st.map = withExtraEdges(st.res.map, s.extra || []);
     const open = st.res.issues.filter((x) => !s.done[x.id]);
     const cao = open.filter((x) => x.level === 'cao').length;
@@ -202,6 +208,8 @@ export function render(ctx) {
     const m = st.map;
     const money = m.edges.filter((e) => e.loai === 'tien').length;
     const count = { 'dieu-luat': m.crimes.filter((c) => c.dieu).length, 'quan-he': m.edges.length, 'dong-tien': money, 'doi-chieu': st.res.speakers.length, 'cau-hoi': questionsByPerson(st.res.issues, s.answers, s.done).reduce((n, g) => n + g.list.length, 0) };
+    $('[data-lk-kpi]', v).innerHTML = kpiHtml(m, drillCtl?.state.kind);
+    if (drillCtl?.state.kind) drillCtl.open(drillCtl.state.kind, drillCtl.state.arg);
     $('[data-lk-title]', v).value = s.title || '';
     $('[data-lk-title]', v).placeholder = titleOf();
     $('[data-lk-tabs]', v).innerHTML = TABS.map(([k, l]) => `<button class="tab" role="tab" data-lk-tab="${k}" aria-selected="${st.tab === k}">${l}${count[k] != null ? ` (${count[k]})` : ''}</button>`).join('');
@@ -213,7 +221,7 @@ export function render(ctx) {
         d = diagramFromCaseMap(m, { title: titleOf(), preset });
         saveD(d, preset);
       }
-      body.innerHTML = `${(m.unclear || []).length ? `<p class="hint cm-dg-unclear">${icon('alert', 'ic-sm')}${m.unclear.length} tên chưa rõ nên chưa đưa vào sơ đồ: ${m.unclear.map((u) => `“${escapeHtml(u.ten)}”`).join(', ')} — làm rõ ở mục “Cần làm rõ”.</p>` : ''}<div data-lk-dg></div>`;
+      body.innerHTML = `${(m.unclear || []).length ? `<p class="hint cm-dg-unclear">${icon('alert', 'ic-sm')}${m.unclear.length} tên chưa rõ nên chưa đưa vào sơ đồ: ${m.unclear.map((u) => `“${escapeHtml(u.ten)}”`).join(', ')} — làm rõ ở mục “Cần làm rõ”.</p>` : ''}${preset === 'dong-tien' ? `<p class="hint cm-dg-intro">${icon('info', 'ic-sm')}Nét liền: cả người đưa lẫn người nhận cùng khai; nét đứt: chỉ một bên khai. Bấm tên người hoặc số tiền ở bảng bên dưới để xem chi tiết.</p>` : ''}<div data-lk-dg></div>${preset === 'dong-tien' ? `<div data-money>${moneyPanelHtml(m, { learn: learnNow() })}</div>` : ''}`;
       dgCtl = mountDiagram($('[data-lk-dg]', body), {
         diagram: d,
         title: `${PRESETS[preset].label} — ${titleOf()}`,
@@ -221,6 +229,7 @@ export function render(ctx) {
         onChange: (x) => saveD(x, preset),
         onRebuild: () => syncFromCaseMap(dgCtl.get(), st.map, { title: titleOf() }),
         crimeOf: findCrime,
+        profileHtml: (name) => (st.map.people.some((p) => nameKey(p.ten) === nameKey(name)) ? personHtml(st.map, name, { compact: true }) : ''),
       });
       if (st.hl) dgCtl.highlight(st.hl);
       return;
@@ -469,6 +478,43 @@ export function render(ctx) {
     if (t.closest('[data-lk-open-map]')) return openInMap();
   });
 
+  /** Khoản tiền sửa trực tiếp: máy ghi nhớ rồi phân tích lại (các khoản do AI bổ sung được sửa tại chỗ). */
+  function flowAction(id, action) {
+    const r = applyFlowAction(st.map, id, action);
+    if (!r) return;
+    let L = learnNow();
+    const vk = (r.verb || '').toLowerCase();
+    if (action === 'bo') L = learnIgnore(L, r.trich);
+    else if (vk) L = learnVerb(L, vk, action === 'dao' ? { dao: !L.verbs[nameKey(vk)]?.dao } : r.patch);
+    store.set('cm-learned', L);
+    const ex = (s.extra || []).findIndex((e) => edgeId(e) === id);
+    if (ex >= 0) {
+      const e = s.extra[ex];
+      const nx = action === 'bo' ? null : action === 'dao' ? { ...e, tu: e.den, den: e.tu } : action.startsWith('loai:') ? { ...e, loai: action.slice(5) } : e;
+      s.extra = s.extra.flatMap((x, i) => (i === ex ? (nx ? [nx] : []) : [x]));
+    }
+    st.sig = '';
+    analyze(true);
+    toast(action === 'bo' ? 'Đã bỏ khỏi dòng tiền — máy ghi nhớ câu này' : vk ? `Đã áp dụng — máy ghi nhớ cách hiểu “${vk}”` : 'Đã áp dụng');
+  }
+  drillCtl = bindDrill($('.lk-main', v), {
+    map: () => st.map,
+    learn: learnNow,
+    host: () => $('[data-drill-host]', v),
+    modal: (html) => ctx.modal(html, { label: 'Chi tiết' }),
+    show: (names) => {
+      st.hl = names;
+      st.tab = 'quan-he';
+      drawMain();
+    },
+    flow: flowAction,
+    forget: (kind, k) => {
+      store.set('cm-learned', forgetRule(learnNow(), kind, k));
+      st.sig = '';
+      analyze(true);
+      toast('Đã quên quy tắc — áp dụng cho lần phân tích sau');
+    },
+  });
   // Kéo thanh giữa để đổi độ rộng khung “Cần làm rõ” (nhớ trên máy).
   const out = $('[data-lk-out]', v);
   const split = makeResizable($('[data-lk-split]', v), { axis: 'x', min: 260, max: () => Math.max(300, out.clientWidth - 360), key: 'tlvb:lk-w', current: () => $('[data-lk-issues]', v).getBoundingClientRect().width, apply: (w) => out.style.setProperty('--lk-w', w == null ? '' : `${w}px`) });

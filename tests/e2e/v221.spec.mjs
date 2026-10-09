@@ -43,7 +43,7 @@ test.describe('Sơ đồ vụ việc', () => {
     await expect(res.locator('[data-dg] .dg-edge.dg-e-tien')).toHaveCount(2);
     await expect(res.locator('[data-dg-lmode]')).toHaveValue('vong');
     await page.click('[data-cm-tab="dong-tien"]');
-    await expect(res.locator('[data-dg] .dg-edge.dg-e-tien')).toHaveCount(2);
+    await expect(res.locator('[data-dg] .dg-edge.dg-e-tien')).toHaveCount(3); // 2 khoản đưa tiền + 1 mũi tên nguồn tiền (số rút nguyên văn)
     await expect(res.locator('[data-dg] .dg-edge:not(.dg-e-tien)')).toHaveCount(0);
 
     await page.click('[data-cm-tab="thoi-gian"]');

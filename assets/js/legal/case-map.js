@@ -7,6 +7,7 @@ import { extractJson } from '../lib/ai.js';
 import { withCache } from '../lib/cache-mark.js';
 import { lawGate, citedArticles, lawCandidates, lawCatalog } from './relevance.js';
 import { rules } from './ai-rules.js';
+import { sentKey } from './learn.js';
 import { key, similarText, sameText } from './text-sim.js';
 export { key, similarText, sameText };
 
@@ -235,16 +236,31 @@ export function classifySentence(s, people) {
  * Dựng sơ đồ vụ việc trên máy.
  * sources: [{ label, speaker, text }]; known: [{ ten, vaiTro }] (người trong hồ sơ); primary: điều chính (nếu có).
  */
-export function buildCaseMap({ sources = [], known = [], primary = null } = {}) {
+const RUT_V = /(rút|lấy|thu|chiếm đoạt|biển thủ|chi khống|bỏ túi|tham ô)/iu;
+
+export function buildCaseMap({ sources = [], known = [], primary = null, learn = null } = {}) {
   const sents = sentences(sources);
   const text = sents.map((s) => s.t).join('\n');
-  const an = text ? analyzeOffline(text, { primary }) : { tomTat: '', crimes: [], items: [] };
   const all = classifyPeople(sents, known);
+  // Người đã được nêu chức vụ (chữ cuối của tên): để bộ nhận diện điều khoản biết “tôi / ông Bình” có chức vụ dù lời khai nêu ở chỗ khác.
+  const jobNames = all.filter((p) => p.clear && (p.chucVu || p.vaiTro)).map((p) => p.ten.split(' ').at(-1));
+  const an = text ? analyzeOffline(text, { primary, jobNames }) : { tomTat: '', crimes: [], items: [] };
   const people = all.filter((p) => p.clear);
 
-  // Quan hệ, dòng tiền giữa các người.
+  // Quan hệ, dòng tiền giữa các người. Mỗi quan hệ ghi lại: ai nêu (nguon), người đưa / người nhận có tự khai không (khai),
+  // thời điểm, mục đích — đều lấy nguyên văn từ câu nói về khoản đó.
   const edges = [];
+  const rut = []; // tiền một người rút / lấy / thu (chưa nói đưa cho ai): nguồn của dòng tiền
+  const amountMap = new Map(); // giá trị → { raw, n, quotes } để xem “số tiền này nằm ở đâu”
+  const ignored = new Set(learn?.ignore || []);
   for (const s of sents) {
+    for (const a of amountsIn(s.t)) {
+      const e = amountMap.get(a.v) || { v: a.v, raw: a.raw, n: 0, quotes: [], nguoiKhai: new Set() };
+      e.n++;
+      if (e.quotes.length < 3 && !e.quotes.includes(short(s.t, 180))) e.quotes.push(short(s.t, 180));
+      if (s.speaker) e.nguoiKhai.add(s.speaker);
+      amountMap.set(a.v, e);
+    }
     const c = classifySentence(s, all);
     c.hits.forEach((p) => p.mentions++);
     // Người chưa rõ tên: ghi lại câu nguyên văn có nhắc (không đưa vào sơ đồ).
@@ -252,15 +268,29 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
       p.cau = p.cau || [];
       if (p.cau.length < 3) p.cau.push({ t: short(s.t, 200), speaker: s.speaker || '' });
     });
-    // Câu phủ nhận không dựng thành quan hệ (Phân tích lời khai nêu riêng thành điểm cần làm rõ).
+    // Câu đã được điều tra viên loại khỏi quan hệ / dòng tiền (máy đã học).
+    if (ignored.has(sentKey(s.t))) continue;
+    // Một người rút / lấy tiền (chưa nói đưa cho ai) → nguồn tiền để đối chiếu với các khoản đã chuyển đi.
+    if (c.hits.length === 1 && c.actors.length === 1 && c.money && RUT_V.test(s.t) && !c.deny) rut.push({ nguoi: c.actors[0].ten, soTien: c.money.raw, v: c.money.v, trich: short(s.t, 200), src: s.src });
     if (c.hits.length < 2 || !c.type || c.deny || !c.ok) continue;
-    const { from, to, type, verb, money } = c;
+    let { from, to, type, verb, money } = c;
+    // Quy tắc đã học theo động từ: đổi loại / đảo chiều / bỏ.
+    const L = learn?.verbs?.[key(verb)];
+    if (L?.loai) type = L.loai;
+    if (L?.dao) [from, to] = [to, from];
+    const sp = s.speaker && all.find((p) => p.keys?.has(key(s.speaker)) || p.key === key(s.speaker));
+    const khai = { dua: !!sp && sp === from, nhan: !!sp && sp === to };
+    const md = /\sđể\s+(.{4,100}?)(?:[.;,]|$)/iu.exec(s.t);
     const dup = edges.find((e) => e.from === from && e.to === to && e.type === type && (e.amount?.v || 0) === (money?.v || 0));
     if (dup) {
       dup.n++;
+      dup.nguon.add(s.speaker || s.src);
+      dup.khai = { dua: dup.khai.dua || khai.dua, nhan: dup.khai.nhan || khai.nhan };
+      if (!dup.thoiGian && c.date) dup.thoiGian = c.date.label;
+      if (!dup.mucDich && md) dup.mucDich = `để ${md[1].trim()}`;
       continue;
     }
-    edges.push({ from, to, type, verb, amount: money, trich: short(s.t, 200), src: s.src, n: 1 });
+    edges.push({ from, to, type, verb, amount: money, trich: short(s.t, 200), src: s.src, n: 1, nguon: new Set([s.speaker || s.src]), khai, thoiGian: c.date?.label || '', mucDich: md ? `để ${md[1].trim()}` : '', hoc: !!L });
   }
 
   // vaiTro: CHỈ chức vụ nguyên văn trong lời khai (hoặc tư cách trong hồ sơ). Vai trò suy ra từ quan hệ để riêng
@@ -331,7 +361,9 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
     crimes,
     people: people.filter((p) => p.mentions || p.known).map(({ ten, vaiTro, chucVu, chucVuTrich, suyRa, mentions, speaker, known: k }) => ({ ten, vaiTro, chucVu: chucVu || '', chucVuTrich: chucVuTrich || '', suyRa: suyRa || '', mentions, speaker: !!speaker, known: !!k })),
     unclear: all.filter((p) => !p.clear && (p.mentions || p.known || p.speaker)).map((p) => ({ ten: p.ten, lyDo: p.lyDo, cau: (p.cau || []).map((x) => x.t), nguoiKhai: [...new Set((p.cau || []).map((x) => x.speaker).filter(Boolean))] })),
-    edges: edges.map((e) => ({ tu: e.from.ten, den: e.to.ten, loai: e.type, noiDung: e.verb, soTien: e.amount?.raw || '', trich: e.trich, src: e.src, n: e.n })),
+    edges: edges.map((e) => ({ tu: e.from.ten, den: e.to.ten, loai: e.type, noiDung: e.verb, soTien: e.amount?.raw || '', trich: e.trich, src: e.src, n: e.n, nguon: [...e.nguon], khai: e.khai, thoiGian: e.thoiGian, mucDich: e.mucDich, ...(e.hoc ? { hoc: true } : {}) })),
+    rut,
+    soTien: [...amountMap.values()].sort((a, b) => b.v - a.v).map((a) => ({ v: a.v, raw: a.raw, n: a.n, quotes: a.quotes, nguoiKhai: [...a.nguoiKhai], loai: edges.some((e) => (e.amount?.v || 0) === a.v && e.type === 'tien') ? 'dong-tien' : rut.some((r) => r.v === a.v) ? 'rut' : 'khac' })),
     timeline,
     amounts: amounts.map((m) => m.raw),
     canLamRo: an.canLamRo || [],
@@ -462,7 +494,7 @@ export function mergeAiCaseMap(base, raw, { append = false, replace = false, sou
       verifyDropped.dongTien++;
       return;
     }
-    edges.push({ tu: e.tu, den: e.den, loai, noiDung: e.noiDung || b0?.noiDung || '', soTien: e.soTien || b0?.soTien || '', trich, src: b0 ? b0.src : 'AI', n: 1 });
+    edges.push({ tu: e.tu, den: e.den, loai, noiDung: e.noiDung || b0?.noiDung || '', soTien: e.soTien || b0?.soTien || '', trich, src: b0 ? b0.src : 'AI', n: 1, nguon: b0?.nguon || [], khai: b0?.khai || {}, thoiGian: b0?.thoiGian || '', mucDich: b0?.mucDich || '' });
   });
   const edgesU = uniq(edges, ek);
   edgesU.forEach((e) => [e.tu, e.den].forEach((t) => !people.has(key(t)) && people.set(key(t), { ten: t, vaiTro: '', mentions: 1 })));

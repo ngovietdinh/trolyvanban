@@ -31,7 +31,7 @@ export const RECOGNIZERS = [
     vs: 'Khác Điều 364 (người đưa) và 365 (người trung gian): ở đây người NHẬN có chức vụ, quyền hạn nhận lợi ích để làm / không làm việc cho người đưa.',
     el: [
       E('hanh-vi', 'Nhận (hoặc sẽ nhận) tiền, tài sản, lợi ích', [`nhận(?![\\p{L}]).{0,80}(?:${TIEN})`, 'đòi\\s+(?:tiền|hối lộ)|hối lộ|lại quả'], { req: true, w: 3, hoi: 'Người có chức vụ đã nhận gì (tiền, tài sản, lợi ích), của ai, vào thời điểm nào?' }),
-      E('vi-viec', 'Để làm hoặc không làm một việc vì lợi ích / theo yêu cầu của người đưa', VIECGI, { w: 2, hoi: 'Việc nhận tiền gắn với việc gì mà người đó đã làm hoặc không làm cho người đưa?' }),
+      E('vi-viec', 'Để làm hoặc không làm một việc vì lợi ích / theo yêu cầu của người đưa', VIECGI, { req: true, w: 2, hoi: 'Việc nhận tiền gắn với việc gì mà người đó đã làm hoặc không làm cho người đưa?' }),
       E('gia-tri', 'Lợi ích từ 2 triệu đồng trở lên', null, { w: 1, min: 2e6, hoi: 'Giá trị lợi ích đã nhận là bao nhiêu?' }),
       CHUCVU(),
     ],
@@ -40,9 +40,9 @@ export const RECOGNIZERS = [
     d: '364',
     vs: 'Khác Điều 354: ở đây người ĐƯA lợi ích cho người có chức vụ, quyền hạn để người đó làm / không làm việc vì lợi ích của mình.',
     el: [
-      E('hanh-vi', 'Đưa, biếu, tặng tiền, tài sản, lợi ích cho người khác', [`(?:đưa|biếu|tặng|gửi)(?![\\p{L}]).{0,80}(?:${TIEN})`, 'đưa hối lộ|hối lộ'], { req: true, w: 3, hoi: 'Người đưa đã đưa gì, cho ai, vào thời điểm nào?' }),
-      E('vi-viec', 'Để người nhận làm hoặc không làm một việc vì lợi ích của mình', VIECGI, { w: 2, hoi: 'Người đưa nhờ người nhận làm / không làm việc gì?' }),
-      E('nguoi-nhan', 'Người nhận là người có chức vụ, quyền hạn', null, { w: 2, ctx: true, job: true, hoi: 'Người nhận giữ chức vụ, quyền hạn gì?' }),
+      E('hanh-vi', 'Đưa, biếu, tặng tiền, tài sản, lợi ích cho người khác', [`(?:đưa|biếu|tặng|gửi|chuyển|trao)(?![\\p{L}]).{0,80}(?:${TIEN})`, 'đưa hối lộ|hối lộ'], { req: true, w: 3, hoi: 'Người đưa đã đưa gì, cho ai, vào thời điểm nào?' }),
+      E('vi-viec', 'Để người nhận làm hoặc không làm một việc vì lợi ích của mình', VIECGI, { req: true, w: 2, hoi: 'Người đưa nhờ người nhận làm / không làm việc gì?' }),
+      E('nguoi-nhan', 'Người nhận là người có chức vụ, quyền hạn', null, { req: true, w: 2, ctx: true, job: 'after', hoi: 'Người nhận giữ chức vụ, quyền hạn gì?' }),
       E('gia-tri', 'Lợi ích từ 2 triệu đồng trở lên', null, { w: 1, min: 2e6, hoi: 'Giá trị lợi ích đã đưa là bao nhiêu?' }),
     ],
   },
@@ -303,6 +303,14 @@ export function jobNames(text) {
   return out;
 }
 
+/** Người NHẬN có chức vụ (đứng SAU động từ: “đưa cho ông Bình, Giám đốc …”)? */
+function subjectAfter(sentence, idx, names) {
+  const after = sentence.slice(Math.max(0, idx));
+  if (JOB_CUE.test(after)) return true;
+  for (const n of names) if (new RegExp(`(?<![\\p{L}])${n}(?![\\p{L}])`, 'u').test(after)) return true;
+  return false;
+}
+
 /** Chủ thể có chức vụ đứng TRƯỚC vị trí hành vi trong câu? (hoặc “tôi” khi cảnh có nêu chức danh). */
 function subjectBefore(sentence, idx, win, names) {
   const before = sentence.slice(0, Math.max(0, idx));
@@ -338,16 +346,17 @@ function matchElement(e, win, all) {
  * Luôn trả về cảnh tốt nhất: { ok (đủ yếu tố bắt buộc), muc ('cao' | 'vua' | 'khong'), diem, toiDa, yeuTo[], thieu[], canh, trich };
  * null nếu không có câu nào.
  */
-export function recognize(rec, sents, ctxSents = sents) {
+export function recognize(rec, sents, ctxSents = sents, extraNames = []) {
   let best = null;
-  const names = jobNames(ctxSents.map((x) => x.t).join('\n'));
+  const names = new Set([...jobNames(ctxSents.map((x) => x.t).join('\n')), ...extraNames]);
   for (const win of scenes(sents, rec.win || 3)) {
-    const found = rec.el.map((e) => (e.job === 'anchor' ? null : matchElement(e, win, ctxSents)));
+    const found = rec.el.map((e) => (e.job === 'anchor' || e.job === 'after' ? null : matchElement(e, win, ctxSents)));
     // Mốc để xét chủ thể: yếu tố hành vi bắt buộc đầu tiên đã khớp.
-    const ai = rec.el.findIndex((e, i) => e.req && e.job !== 'anchor' && found[i]);
+    const ai = rec.el.findIndex((e, i) => e.req && e.job !== 'anchor' && e.job !== 'after' && found[i]);
     const anchor = ai >= 0 ? found[ai] : null;
     const yeuTo = rec.el.map((e, i) => {
       let m = found[i];
+      if (e.job === 'after') m = anchor && subjectAfter(anchor.quote, anchor.idx, names) ? { quote: anchor.quote } : null;
       if (e.job === 'anchor') {
         m = anchor && subjectBefore(anchor.quote, anchor.idx, win, names) ? { quote: anchor.quote } : null;
         // Chủ thể nêu ở câu khác của người đó (“Ông Bình, Giám đốc …”): câu hành vi có tên người đó trước động từ → đã xét ở subjectBefore.
