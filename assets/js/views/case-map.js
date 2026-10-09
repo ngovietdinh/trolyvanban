@@ -7,6 +7,7 @@ import { buildCaseMap, caseMapPrompt, caseMapRefinePrompt, relevantText, mergeAi
 import { diagramFromCaseMap, syncFromCaseMap, emptyDiagram, PRESETS, moneyValue, formatMoney } from '../legal/diagram.js';
 import { mountDiagram } from './diagram-editor.js';
 import { refineHtml, bindRefine } from './ai-refine.js';
+import { lawReasonHtml } from './law-reason.js';
 import { streamClaude, extractJson } from '../lib/ai.js';
 import { withCache } from '../lib/cache-mark.js';
 import { findCrime } from '../legal/engine.js';
@@ -99,6 +100,10 @@ function mapDoc(m, title, org = {}) {
   body.push(head('II. HÀNH VI THEO ĐIỀU LUẬT'));
   const acts = m.crimes.flatMap((c) => c.items.map((it) => [c.dieu ? `Điều ${c.dieu}` : '—', it.ten, it.nguoi.join(', '), it.soTien || '', it.trich || '']));
   body.push(acts.length ? { table: { widths: [0.1, 0.27, 0.18, 0.13, 0.32], header: ['Điều', 'Hành vi', 'Người thực hiện', 'Số tiền', 'Trích dẫn'], rows: acts } } : p('Chưa xác định được hành vi.'));
+  if (m.crimes.some((c) => c.dieu && c.can?.yeuTo?.length)) {
+    body.push(head('II-b. CĂN CỨ CHỌN ĐIỀU LUẬT'));
+    body.push({ table: { widths: [0.18, 0.4, 0.42], header: ['Điều luật', 'Yếu tố cấu thành', 'Câu trích làm căn cứ / còn thiếu'], rows: m.crimes.filter((c) => c.dieu && c.can?.yeuTo?.length).flatMap((c) => c.can.yeuTo.map((y, i) => [i ? '' : `Điều ${c.dieu} — ${c.ten.replace(/^Tội /, '')}`, `${y.ok ? '✓' : '✗'} ${y.label}`, y.ok ? `“${y.quote}”` : `Chưa có trong lời khai${y.hoi ? ` — cần hỏi: ${y.hoi}` : ''}`])) } });
+  }
   body.push(head('III. QUAN HỆ, DÒNG TIỀN'));
   body.push(m.edges.length ? { table: { widths: [0.2, 0.2, 0.16, 0.16, 0.28], header: ['Từ', 'Đến', 'Nội dung', 'Số tiền', 'Căn cứ'], rows: m.edges.map((e) => [e.tu, e.den, `${LOAI[e.loai]}: ${e.noiDung}`, e.soTien || '', e.trich || e.src || '']) } } : p('Chưa xác định được quan hệ giữa các người.'));
   body.push(head('IV. NGƯỜI LIÊN QUAN'));
@@ -229,7 +234,8 @@ export function render(ctx, params = []) {
         <div class="cm-kpis"><span><strong>${m.crimes.filter((c) => c.dieu).length}</strong>điều luật</span><span><strong>${total}</strong>hành vi</span><span><strong>${m.people.length}</strong>người liên quan</span><span><strong>${m.edges.filter((e) => e.loai === 'tien').length}</strong>dòng tiền</span><span><strong>${m.amounts?.[0] || '—'}</strong>số tiền lớn nhất</span></div>
         <ul class="cm-points">${m.banChat.map((t) => `<li>${escapeHtml(t)}</li>`).join('') || '<li class="muted">Chưa rút ra được nội dung then chốt — thử chọn thêm biên bản hoặc dùng AI.</li>'}</ul>
         ${m.people.length ? `<h3 class="tk-h">${icon('user', 'ic-sm')}Người liên quan</h3><div class="cm-people">${m.people.map((p) => `<span class="cm-chip"><strong>${escapeHtml(p.ten)}</strong><small>${p.vaiTro ? `<span title="${escapeHtml(p.chucVuTrich ? `Nguyên văn: “${p.chucVuTrich}”` : 'Chức vụ / tư cách')}">${escapeHtml(p.vaiTro)}</span>` : '<em>chưa có chức vụ trong lời khai</em>'}${p.suyRa ? ` · <span class="cm-infer" title="Suy ra từ quan hệ trong lời khai — không phải chức vụ">theo quan hệ: ${escapeHtml(p.suyRa.toLowerCase())}</span>` : ''}${p.mentions ? ` · ${p.mentions} lần` : ''}</small></span>`).join('')}</div><p class="hint">Họ tên, chức vụ, số tiền chỉ lấy đúng nguyên văn trong lời khai / tài liệu; vai trò “theo quan hệ” là máy suy ra, không phải chức vụ.</p>` : ''}
-        ${m.crimes.some((c) => c.dieu) ? `<h3 class="tk-h">${icon('gavel', 'ic-sm')}Điều luật liên quan <small class="hint">(chỉ điều có căn cứ trong nội dung)</small></h3><ul class="cm-law">${m.crimes.filter((c) => c.dieu).map((c) => `<li><strong>Điều ${escapeHtml(c.dieu)}</strong> ${escapeHtml(c.ten.replace(/^Tội /, ''))}${c.canCu ? `<small>${escapeHtml(c.canCu)}</small>` : ''}</li>`).join('')}</ul>` : '<p class="hint">Chưa có điều luật nào đủ căn cứ trong nội dung — hành vi được ghi là “chưa xác định điều luật”, không gán đại.</p>'}
+        ${m.crimes.some((c) => c.dieu) ? `<h3 class="tk-h">${icon('gavel', 'ic-sm')}Điều luật liên quan <small class="hint">(chỉ điều đủ yếu tố cấu thành trong nội dung — mở “Căn cứ” để xem từng yếu tố và câu trích)</small></h3><ul class="cm-law">${m.crimes.filter((c) => c.dieu).map((c) => lawReasonHtml(c)).join('')}</ul>` : '<p class="hint">Chưa có điều luật nào đủ căn cứ trong nội dung — hành vi được ghi là “chưa xác định điều luật”, không gán đại.</p>'}
+        ${(m.canLamRo || []).length ? `<h3 class="tk-h">${icon('alert', 'ic-sm')}Điều luật cần làm rõ thêm <small class="hint">(gần đủ yếu tố nhưng còn thiếu yếu tố bắt buộc — chưa đưa vào sơ đồ)</small></h3><ul class="cm-law">${m.canLamRo.map((c) => lawReasonHtml(c, { open: true })).join('')}</ul>` : ''}
         ${(m.chuaRo || []).length ? `<h3 class="tk-h">${icon('alert', 'ic-sm')}Điểm còn thiếu / mâu thuẫn <small class="hint">(AI nêu — cần làm rõ)</small></h3><ul class="cm-points">${m.chuaRo.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : ''}
         ${unclearHtml(m)}
       </div>`;

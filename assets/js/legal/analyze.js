@@ -8,8 +8,9 @@ import { focusText, splitText, runChunks, CHUNK } from '../lib/ai-chunk.js';
 import { withCache } from '../lib/cache-mark.js';
 
 import { termsOf, syl, norm } from './terms.js';
-import { crimeEvidence, pickShown, lawCandidates, lawGate, citedArticles, confusableHints } from './relevance.js';
+import { assessCrime, pickShown, lawCandidates, lawGate, citedArticles, confusableHints } from './relevance.js';
 import { rules } from './ai-rules.js';
+import { RECOGNIZER_OF } from './recognizers.js';
 import { key, sameText } from './text-sim.js';
 export { termsOf };
 
@@ -79,10 +80,16 @@ export function analyzeOffline(text, { primary } = {}) {
   // chủ thể phù hợp) — xem relevance.js. Không còn “lấy tạm vài điều điểm cao nhất”.
   const evSents = sentences.map((t, i) => ({ t, bi: sentT[i].bi }));
   const cited = new Set(mentioned.keys());
-  const evs = ALL_CRIMES.map((c) => crimeEvidence(c.dieu, src, { sentences: evSents, primary, cited })).filter(Boolean);
-  const top = pickShown(evs).map((e) => ({ dieu: e.dieu, ten: findCrime(e.dieu).ten, score: Math.max(e.ev, e.isCited || e.isPrimary ? 1 : 0), reasons: [e.why, e.trich && !e.isCited && !e.isPrimary ? `Câu căn cứ: “${short(e.trich, 140)}”` : ''].filter(Boolean), strong: true }));
+  const evs = ALL_CRIMES.map((c) => assessCrime(c.dieu, src, { sentences: evSents, primary, cited })).filter(Boolean);
+  const top = pickShown(evs).map((e) => ({ dieu: e.dieu, ten: e.ten, score: Math.max(e.ev, e.isCited || e.isPrimary ? 1 : 0), reasons: [e.why, e.trich && !e.isCited && !e.isPrimary ? `Câu căn cứ: “${short(e.trich, 140)}”` : ''].filter(Boolean), strong: true, can: { nguon: e.nguon, muc: e.muc, yeuTo: e.yeuTo, thieu: e.thieu, vs: e.vs } }));
   const keep = new Set(top.map((c) => c.dieu));
   if (primary) keep.add(String(primary));
+  // Điều gần đủ yếu tố (thiếu đúng một yếu tố bắt buộc, vd. chưa rõ chức vụ): không đưa vào kết quả, báo “cần làm rõ”.
+  const canLamRo = evs
+    .filter((e) => e.muc === 'gan' && !keep.has(e.dieu))
+    .sort((a, b) => b.yeuTo.filter((y) => y.ok).length - a.yeuTo.filter((y) => y.ok).length)
+    .slice(0, 3)
+    .map((e) => ({ dieu: e.dieu, ten: e.ten, canCu: e.why, can: { nguon: e.nguon, muc: 'gan', yeuTo: e.yeuTo, thieu: e.thieu, vs: e.vs } }));
   // Hành vi trong hệ thống khớp với nội dung (chỉ xét các điều được giữ).
   const best = new Map(); // `${dieu}|${hvId}` → item
   for (const base of ALL_CRIMES) {
@@ -103,7 +110,7 @@ export function analyzeOffline(text, { primary } = {}) {
   const items = [...best.values()]
     .filter((x) => keep.has(x.dieu))
     .sort((a, b) => b.score - a.score)
-    .map((x) => ({ ...x, checked: x.dieu === String(primary) || mentioned.has(x.dieu) ? x.score >= 0.3 : x.score >= 0.6 }));
+    .map((x) => ({ ...x, checked: x.dieu === String(primary) || mentioned.has(x.dieu) ? x.score >= 0.3 : x.score >= 0.6, canCu: top.find((c) => c.dieu === x.dieu)?.reasons?.[0] || '', can: top.find((c) => c.dieu === x.dieu)?.can || null }));
 
   // Câu mô tả hành vi chưa khớp hành vi nào trong hệ thống → đề xuất hành vi mới (mặc định không chọn).
   const used = new Set(items.map((x) => x.trich));
@@ -125,12 +132,13 @@ export function analyzeOffline(text, { primary } = {}) {
     .map((s, i) => ({ s, st: sentT[i] }))
     .filter(({ s }) => ACTION.test(s) && !used.has(short(s, 260)) && !/^(căn cứ|xét|theo|thực hiện|qua|ngày|hồi|vào lúc)\b/iu.test(s) && !/có dấu hiệu (của )?tội|theo (quy định tại )?Điều \d/iu.test(s))
     .slice(0, 8)
-    .map(({ s, st }) => ({ ten: short(s), dieu: bestDieu(st), hanhViId: null, trich: short(s, 260), score: 0, checked: false, nguon: 'tai-lieu' }));
+    .map(({ s, st }) => ({ ten: short(s), dieu: bestDieu(st), hanhViId: null, trich: short(s, 260), score: 0, checked: false, nguon: 'tai-lieu' }))
+    .map((x) => ({ ...x, canCu: top.find((c) => c.dieu === x.dieu)?.reasons?.[0] || '', can: top.find((c) => c.dieu === x.dieu)?.can || null }));
 
   const sum = summarize(src, { maxSentences: 5 });
   const crimes = [...top];
   if (primary && !crimes.some((c) => c.dieu === String(primary)) && findCrime(primary)) crimes.push({ dieu: findCrime(primary).dieu, ten: findCrime(primary).ten, score: 1, reasons: ['Điều đang xét của hồ sơ'] });
-  return { tomTat: sum.summary, keywords: sum.keywords, crimes, items: [...items, ...fresh] };
+  return { tomTat: sum.summary, keywords: sum.keywords, crimes, canLamRo, items: [...items, ...fresh] };
 }
 
 /**
@@ -215,20 +223,8 @@ export function mergeResults(...rs) {
  * Đối chiếu dấu hiệu định tội của điều luật (trong phần mềm) với nội dung vụ việc: dấu hiệu nào có cụm từ xuất hiện.
  * Trả về [{ text, hit }].
  */
-const UNIT = { 'nghìn': 1e3, 'ngàn': 1e3, 'triệu': 1e6, 'tỷ': 1e9, 'tỉ': 1e9 };
-const num = (v) => parseFloat(String(v).replace(/\.(?=\d{3}\b)/g, '').replace(',', '.'));
-/** Các số tiền nêu trong nội dung (đồng): “1,2 tỷ đồng”, “300 triệu”, “50.000.000 đồng”. */
-export function amountsIn(text) {
-  const out = [];
-  const re = /(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(nghìn|ngàn|triệu|tỷ|tỉ)?\s*(?:đồng|VNĐ|VND|đ\b)?/giu;
-  let m;
-  while ((m = re.exec(String(text)))) {
-    const unit = m[2] && UNIT[m[2].toLowerCase()];
-    const v = unit ? num(m[1]) * unit : /\d[.,]\d{3}/.test(m[1]) && /đồng|VN|đ\b/i.test(m[0]) ? num(m[1].replace(/[.,]/g, '')) : null;
-    if (v && v >= 1000) out.push({ v, raw: m[0].trim() });
-  }
-  return out;
-}
+import { amountsIn, UNIT, num } from './terms.js';
+export { amountsIn };
 const fmtMoney = (v) => (v >= 1e9 ? `${(v / 1e9).toLocaleString('vi-VN')} tỷ đồng` : `${(v / 1e6).toLocaleString('vi-VN')} triệu đồng`);
 
 export function signCoverage(crime, text) {
@@ -277,7 +273,13 @@ export function catalogForAi(dieus) {
   return dieus
     .map((d) => crimeWithCustomActs(d))
     .filter(Boolean)
-    .map((c) => `Điều ${c.dieu} — ${c.ten}\n  Dấu hiệu: ${(c.dauHieu || []).slice(0, 3).join('; ')}\n  Hành vi: ${c.hanhVi.slice(0, 8).map((h) => `[${h.id}] ${h.ten}`).join('; ')}`)
+    .map((c) => {
+      const rec = RECOGNIZER_OF.get(c.dieu);
+      const hv = c.hanhVi.slice(0, 6).map((h) => `[${h.id}] ${h.ten}`).join('; ');
+      // Điều có bộ nhận diện: gửi các yếu tố cấu thành (bắt buộc đánh dấu *) thay cho dấu hiệu chung.
+      const dh = rec ? `Cấu thành: ${rec.el.map((e) => `${e.req ? '*' : ''}${e.label.replace(/\s*\([^)]*\)\s*$/, '')}`).join('; ')}` : `Dấu hiệu: ${(c.dauHieu || []).slice(0, 2).join('; ')}`;
+      return `Điều ${c.dieu} — ${c.ten}\n  ${dh}\n  Hành vi: ${hv}`;
+    })
     .join('\n');
 }
 
@@ -365,6 +367,8 @@ export function aiItems(hanhVi, primary, { source = '', cited = null } = {}) {
         checked: !!crime && gate.ok,
         ngoaiDanhMuc: !crime && !!dieu0,
         luatYeu: gate.ok ? '' : gate.why,
+        canCu: gate.ok ? gate.why : '',
+        can: gate.ok && gate.yeuTo?.length ? { nguon: gate.nguon, muc: gate.muc, yeuTo: gate.yeuTo, thieu: gate.thieu, vs: gate.vs, ai: true } : null,
         nguon: 'ai',
       };
     })

@@ -8,6 +8,7 @@ import { getRole } from '../legal/roles.js';
 import { analyzeOffline, analyzeWithAi, annotateResult, mergeResults } from '../legal/analyze.js';
 import { streamAI } from '../lib/ai.js';
 import { store } from '../lib/store.js';
+import { lawReasonHtml } from './law-reason.js';
 import { dropzoneHtml, bindDropzone, readAll, toRows, newRow, rowHtml, bindRows, commitRows, mountRowsRefine } from './acts-review.js';
 
 export const METHOD_LABEL = { 'doi-chieu': 'Đối chiếu Bộ luật trong phần mềm', ai: 'AI phân tích', 'ket-hop': 'Kết hợp AI + đối chiếu Bộ luật' };
@@ -159,6 +160,7 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
             ${result.tomTat ? `<section class="la-sum"><h3>${icon('file', 'ic-sm')}Tóm tắt tài liệu${result.ai ? ' <span class="badge">AI</span>' : ''}</h3><p>${escapeHtml(result.tomTat)}</p></section>` : ''}
             <section class="la-crimes"><h3>${icon('book', 'ic-sm')}Điều luật liên quan (${result.crimes.length})</h3>
               <div class="la-chips">${result.crimes.map((c) => `<span class="la-chip ${c.dieu === crime.dieu ? 'primary' : ''}" title="${escapeHtml((c.reasons || []).join(' · '))}"><strong>Điều ${c.dieu}</strong> ${escapeHtml(c.ten.replace(/^Tội /, ''))}${c.dieu === crime.dieu ? ' <em>(đang mở)</em>' : ''}</span>`).join('') || '<small class="hint">Chưa xác định được điều luật nào — chọn điều cho từng hành vi bên dưới.</small>'}</div>
+              ${result.crimes.some((c) => c.can?.yeuTo?.length || c.reasons?.length) ? `<details class="la-law-why"><summary>Vì sao chọn các điều này — yếu tố cấu thành, câu trích</summary><ul class="cm-law">${result.crimes.map((c) => lawReasonHtml({ ...c, canCu: (c.reasons || [])[0] || '' }, { open: true })).join('')}</ul></details>` : ''}
             </section>
             <section class="la-list"><h3>${icon('check-circle', 'ic-sm')}Hành vi phát hiện <small data-count></small></h3>
               ${rows.length ? '' : '<p class="hint">Không tìm thấy hành vi nào phù hợp. Thêm hành vi tự nhập bên dưới.</p>'}

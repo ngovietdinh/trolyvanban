@@ -1,7 +1,7 @@
 {
-  "version": "2.30.0",
+  "version": "2.31.0",
   "date": "2026-10-09",
   "notes": [
-    "Quy tắc gửi AI (điều luật có căn cứ, dòng tiền nguyên văn, không trùng lặp); phân tích không còn kéo theo điều luật không liên quan; kéo tùy biến không gian làm việc"
+    "Bộ nhận diện điều khoản: chọn điều luật theo yếu tố cấu thành, hiện lý do và câu trích"
   ]
 }

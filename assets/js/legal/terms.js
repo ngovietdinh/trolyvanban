@@ -25,3 +25,19 @@ export function termsOf(text) {
 
 
 export const norm = (s) => syl(s).join(' ');
+
+// Số tiền trong văn bản: “300 triệu đồng”, “1.200.000 đồng” → [{ v (đồng), raw (nguyên văn) }].
+export const UNIT = { 'nghìn': 1e3, 'ngàn': 1e3, 'triệu': 1e6, 'tỷ': 1e9, 'tỉ': 1e9 };
+export const num = (v) => parseFloat(String(v).replace(/\.(?=\d{3}\b)/g, '').replace(',', '.'));
+/** Các số tiền nêu trong nội dung (đồng): “1,2 tỷ đồng”, “300 triệu”, “50.000.000 đồng”. */
+export function amountsIn(text) {
+  const out = [];
+  const re = /(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(nghìn|ngàn|triệu|tỷ|tỉ)?\s*(?:đồng|VNĐ|VND|đ\b)?/giu;
+  let m;
+  while ((m = re.exec(String(text)))) {
+    const unit = m[2] && UNIT[m[2].toLowerCase()];
+    const v = unit ? num(m[1]) * unit : /\d[.,]\d{3}/.test(m[1]) && /đồng|VN|đ\b/i.test(m[0]) ? num(m[1].replace(/[.,]/g, '')) : null;
+    if (v && v >= 1000) out.push({ v, raw: m[0].trim() });
+  }
+  return out;
+}

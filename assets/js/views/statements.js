@@ -7,6 +7,7 @@ import { casesRepo, recordsRepo } from '../legal/repo.js';
 import { getRole } from '../legal/roles.js';
 import { isFullName, stripTitle, key as nameKey } from '../legal/case-map.js';
 import { analyzeStatements, splitByHeading, clarifyPrompt, parseClarify, withExtraEdges, questionsByPerson, CLARIFY_SYSTEM, LEVELS, KINDS } from '../legal/statements.js';
+import { lawReasonHtml } from './law-reason.js';
 import { diagramFromCaseMap, syncFromCaseMap, PRESETS } from '../legal/diagram.js';
 import { findCrime } from '../legal/engine.js';
 import { mountDiagram } from './diagram-editor.js';
@@ -24,6 +25,7 @@ const TABS = [
   ['dong-tien', 'Dòng tiền'],
   ['hanh-vi', 'Hành vi'],
   ['tong-hop', 'Tư duy'],
+  ['dieu-luat', 'Điều luật'],
   ['doi-chieu', 'Đối chiếu lời khai'],
   ['cau-hoi', 'Câu hỏi làm rõ'],
 ];
@@ -199,7 +201,7 @@ export function render(ctx) {
     dgCtl = null;
     const m = st.map;
     const money = m.edges.filter((e) => e.loai === 'tien').length;
-    const count = { 'quan-he': m.edges.length, 'dong-tien': money, 'doi-chieu': st.res.speakers.length, 'cau-hoi': questionsByPerson(st.res.issues, s.answers, s.done).reduce((n, g) => n + g.list.length, 0) };
+    const count = { 'dieu-luat': m.crimes.filter((c) => c.dieu).length, 'quan-he': m.edges.length, 'dong-tien': money, 'doi-chieu': st.res.speakers.length, 'cau-hoi': questionsByPerson(st.res.issues, s.answers, s.done).reduce((n, g) => n + g.list.length, 0) };
     $('[data-lk-title]', v).value = s.title || '';
     $('[data-lk-title]', v).placeholder = titleOf();
     $('[data-lk-tabs]', v).innerHTML = TABS.map(([k, l]) => `<button class="tab" role="tab" data-lk-tab="${k}" aria-selected="${st.tab === k}">${l}${count[k] != null ? ` (${count[k]})` : ''}</button>`).join('');
@@ -221,6 +223,12 @@ export function render(ctx) {
         crimeOf: findCrime,
       });
       if (st.hl) dgCtl.highlight(st.hl);
+      return;
+    }
+    if (st.tab === 'dieu-luat') {
+      body.innerHTML = m.crimes.length
+        ? `<p class="hint">Điều luật chỉ được nêu khi lời khai đủ yếu tố cấu thành bắt buộc của điều đó (cùng một đoạn). Mở “Căn cứ” để xem từng yếu tố: đã có (kèm câu trích) hoặc còn thiếu (kèm câu cần hỏi).</p><ul class="cm-law">${m.crimes.map((c) => lawReasonHtml(c, { open: true })).join('')}</ul>`
+        : '<p class="muted">Chưa có điều luật nào đủ yếu tố cấu thành trong lời khai — hành vi chưa được gán điều luật nào. Bổ sung lời khai (hành vi, chủ thể, số tiền, mục đích) rồi xem lại.</p>';
       return;
     }
     if (st.tab === 'doi-chieu') {

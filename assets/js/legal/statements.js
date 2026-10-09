@@ -19,6 +19,7 @@ export const KINDS = {
   'thieu-chuc-vu': 'Chưa rõ chức vụ',
   'chua-khai': 'Chưa lấy lời khai',
   'chua-ro-ten': 'Tên chưa rõ',
+  'thieu-yeu-to': 'Thiếu yếu tố cấu thành',
   'mo-ho': 'Trả lời mơ hồ',
 };
 const RANK = { cao: 0, vua: 1, thap: 2 };
@@ -153,6 +154,25 @@ export function analyzeStatements(statements = [], { known = [], primary = null,
   const vBy = new Map();
   vague.forEach((s) => vBy.set(s.speaker, [...(vBy.get(s.speaker) || []), s]));
   for (const [sp, list] of vBy) add({ id: idOf('mo-ho', sp), kind: 'mo-ho', level: list.length >= 3 ? 'vua' : 'thap', title: `${sp}: ${list.length} câu trả lời mơ hồ`, detail: 'Câu trả lời “không nhớ”, “khoảng”, “hình như”… — cần hỏi lại cụ thể hoặc dùng tài liệu gợi nhớ.', excerpts: list.slice(0, 4).map((s) => ({ speaker: sp, t: short(s.t, 220) })), people: [sp], ask: [`Đề nghị ${sp} trình bày cụ thể (thời gian, số tiền, người có mặt) thay cho các câu “không nhớ / khoảng / hình như”; có tài liệu, sổ sách nào giúp xác định không?`] });
+
+  // 6b. Điều luật đã được nhận diện nhưng còn thiếu yếu tố cấu thành (không bắt buộc) → cần hỏi thêm để chứng minh.
+  for (const c of [...(map.crimes || []), ...(map.canLamRo || [])]) {
+    const th = [...(c.can?.thieu || [])].sort((a, b) => Number(!!b.req) - Number(!!a.req));
+    if (!c.dieu || !th.length || c.can?.nguon !== 'bo-nhan-dien') continue;
+    const near = c.can.muc === 'gan';
+    const name = c.ten.replace(/^Tội /, '').toLowerCase();
+    add({
+      id: idOf('thieu-yeu-to', c.dieu),
+      kind: 'thieu-yeu-to',
+      level: near ? 'cao' : 'vua',
+      title: `Điều ${c.dieu} (${name}): chưa rõ ${th.map((y) => y.label.replace(/\s*\([^)]*\)\s*$/, '').toLowerCase()).join('; ')}`,
+      detail: near ? 'Lời khai gần đủ yếu tố của điều này nhưng còn thiếu yếu tố BẮT BUỘC — chưa thể kết luận, chưa đưa vào sơ đồ; cần hỏi thêm.' : 'Lời khai đã đủ yếu tố bắt buộc của điều này nhưng còn thiếu các yếu tố sau — cần hỏi thêm để chứng minh đầy đủ cấu thành.',
+      excerpts: c.can.yeuTo.filter((y) => y.ok && y.quote).slice(0, 3).map((y) => ({ speaker: y.label.replace(/\s*\([^)]*\)\s*$/, ''), t: short(y.quote, 220) })),
+      people: [],
+      askWho: `Làm rõ cấu thành Điều ${c.dieu}`,
+      ask: th.map((y) => y.hoi).filter(Boolean),
+    });
+  }
 
   // 7. Tên chưa rõ: không đưa vào sơ đồ cho tới khi có họ tên đầy đủ nguyên văn.
   for (const u of map.unclear || []) {

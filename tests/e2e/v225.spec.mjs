@@ -42,7 +42,7 @@ test.describe('v2.25 — sơ đồ tư duy', () => {
     await act.locator('[data-toggle]').click();
     await expect(dg.locator('.dg-node', { hasText: 'Thời gian, địa điểm' })).toHaveCount(0);
     await expect(dg.locator('[data-dg-stat]')).toContainText('đang thu gọn');
-    await dg.locator('.dg-node.dg-k-act [data-toggle]').click();
+    await act.locator('[data-toggle]').click();
     await expect(dg.locator('.dg-node', { hasText: 'Thời gian, địa điểm' })).toHaveCount(1);
     // Chọn hình → cỡ chữ to hơn, kéo ô góc để đổi kích thước.
     const leaf = dg.locator('.dg-node', { hasText: 'Ai ký duyệt chứng từ' });

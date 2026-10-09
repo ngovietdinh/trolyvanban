@@ -280,6 +280,7 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
       dieu: c.dieu,
       ten: findCrime(c.dieu).ten,
       canCu: (c.reasons || []).join('; '),
+      can: c.can || null,
       // Ưu tiên hành vi khớp Bộ luật; câu mô tả rời chỉ dùng khi điều đó chưa có hành vi khớp.
       items: (an.items.some((x) => x.dieu === c.dieu && x.hanhViId) ? an.items.filter((x) => x.dieu === c.dieu && x.hanhViId) : an.items.filter((x) => x.dieu === c.dieu))
         .slice(0, 8)
@@ -289,6 +290,19 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
           return { ten: x.ten, trich: short(x.trich, 220), nguoi: actorsIn(s, all).filter((p) => p.clear).map((p) => p.ten), soTien: m ? m.raw : '' };
         }),
     }))
+    // Điều đã được bộ nhận diện xác nhận nhưng chưa có hành vi mẫu khớp: lấy chính các câu làm căn cứ thành hành vi.
+    .map((c) => {
+      if (c.items.length || !c.can?.yeuTo?.length) return c;
+      const quotes = [...new Set(c.can.yeuTo.filter((y) => y.ok && y.quote && y.id !== 'chu-the').map((y) => y.quote))].slice(0, 3);
+      return {
+        ...c,
+        items: quotes.map((q) => {
+          const s = sents.find((y) => y.t.includes(q.slice(0, 40))) || { t: q, speaker: '' };
+          const m = amountsIn(q).sort((a, b) => b.v - a.v)[0];
+          return { ten: short(q, 120), trich: short(q, 220), nguoi: actorsIn(s, all).filter((p) => p.clear).map((p) => p.ten), soTien: m ? m.raw : '' };
+        }),
+      };
+    })
     .filter((c) => c.items.length);
 
   // Dòng thời gian.
@@ -320,6 +334,7 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
     edges: edges.map((e) => ({ tu: e.from.ten, den: e.to.ten, loai: e.type, noiDung: e.verb, soTien: e.amount?.raw || '', trich: e.trich, src: e.src, n: e.n })),
     timeline,
     amounts: amounts.map((m) => m.raw),
+    canLamRo: an.canLamRo || [],
     sentences: sents.length,
     ai: false,
   };
@@ -411,16 +426,19 @@ export function mergeAiCaseMap(base, raw, { append = false, replace = false, sou
     const d = String(h.dieu || '').replace(/\D+$/, '').replace(/^Điều\s*/i, '').trim();
     let c = findCrime(d);
     let canCu = '';
+    let gateInfo = null;
     if (c) {
       const g = lawGate(c.dieu, { trich: h.trich, source, primary, cited });
-      if (g.ok) canCu = g.why;
-      else {
+      if (g.ok) {
+        canCu = g.why;
+        gateInfo = g;
+      } else {
         verifyDropped.dieu++;
         c = null;
       }
     }
     const k = c ? c.dieu : 'khac';
-    if (!byDieu.has(k)) byDieu.set(k, { dieu: c ? c.dieu : '', ten: c ? c.ten : 'Hành vi chưa xác định điều luật', canCu: c ? `AI xác định; ${canCu.charAt(0).toLocaleLowerCase('vi-VN')}${canCu.slice(1)}` : 'Chưa đủ căn cứ để gán điều luật — cần xác định thêm', items: [] });
+    if (!byDieu.has(k)) byDieu.set(k, { dieu: c ? c.dieu : '', ten: c ? c.ten : 'Hành vi chưa xác định điều luật', canCu: c ? `AI xác định; ${canCu.charAt(0).toLocaleLowerCase('vi-VN')}${canCu.slice(1)}` : 'Chưa đủ căn cứ để gán điều luật — cần xác định thêm', can: c && gateInfo ? { nguon: gateInfo.nguon, muc: gateInfo.muc, yeuTo: gateInfo.yeuTo, thieu: gateInfo.thieu, vs: gateInfo.vs, ai: true } : null, items: [] });
     const item = { ten: String(h.ten || '').trim(), trich: short(h.trich || '', 220), nguoi: (h.nguoi || []).filter(Boolean), soTien: h.soTien || '' };
     const items = byDieu.get(k).items;
     if (!items.some((x) => sameText(x.ten, item.ten) || (item.trich && x.trich === item.trich))) items.push(item);

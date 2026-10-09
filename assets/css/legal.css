@@ -4956,3 +4956,25 @@ body.dg-lock { overflow: hidden; }
 .dg-vsplit::after { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background 0.15s; }
 .dg-vsplit:hover::after, .dg-vsplit:focus-visible::after, .dg-vsplit.dragging::after { background: var(--accent); }
 @media (max-width: 760px) { .dg-vsplit { display: none; } }
+
+/* Căn cứ chọn điều luật (v2.31) */
+.cm-law { gap: 8px; }
+.lr { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.lr-h { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.lr-badge { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.lr-cao { color: var(--success); }
+.lr-vua { color: var(--warning); }
+.lr-thap { color: var(--text-3); }
+.lr-kw { color: var(--danger); }
+.lr-why { margin: 0; display: flex; gap: 6px; align-items: flex-start; color: var(--text-2); font-size: 13px; }
+.lr-more summary { cursor: pointer; font-size: 12.5px; color: var(--accent); }
+.lr-el { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.lr-el li { display: flex; gap: 8px; align-items: flex-start; }
+.lr-el li > span:last-child { display: grid; gap: 2px; min-width: 0; }
+.lr-el q { color: var(--text-2); font-size: 12.5px; overflow-wrap: anywhere; }
+.lr-el small { color: var(--danger); }
+.lr-ic { flex: none; font-weight: 800; }
+.lr-el .ok .lr-ic { color: var(--success); }
+.lr-el .no .lr-ic { color: var(--danger); }
+.lr-vs { margin: 6px 0 0; font-size: 12.5px; color: var(--text-2); }
+.lr-gan { color: var(--danger); }

@@ -4,6 +4,7 @@
 import { $, $$, icon, toast, escapeHtml } from '../ui.js';
 import { findCrime, crimeWithCustomActs } from '../legal/engine.js';
 import { customActs } from '../legal/repo.js';
+import { lawElementsHtml } from './law-reason.js';
 import { questionsForAct, taiLieuForAct, aiItems, analyzeRefinePrompt, ANALYZE_SYSTEM } from '../legal/analyze.js';
 import { extractJson, streamAI } from '../lib/ai.js';
 import { ctxFor } from '../lib/ai-chunk.js';
@@ -119,6 +120,7 @@ export function rowHtml(r, ds) {
       </div>
       ${r.trich ? `<blockquote class="la-quote">${icon('quote', 'ic-sm')}${escapeHtml(r.trich)}</blockquote>` : ''}
       ${r.lyDo ? `<p class="la-why">${escapeHtml(r.lyDo)}</p>` : ''}
+      ${r.canCu || r.can ? `<details class="la-law-why"><summary>${icon('info', 'ic-sm')}Căn cứ chọn Điều ${escapeHtml(r.dieu)}${r.canCu ? `: ${escapeHtml(r.canCu)}` : ''}</summary>${lawElementsHtml(r.can)}${r.can?.vs ? `<p class="lr-vs"><b>Phân biệt:</b> ${escapeHtml(r.can.vs)}</p>` : ''}</details>` : ''}
       ${
         known
           ? `<small class="hint">${known.cauHoi.length} câu hỏi đặc thù có sẵn + câu hỏi theo cấu thành Điều ${r.dieu}.</small>`

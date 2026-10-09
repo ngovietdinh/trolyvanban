@@ -8,13 +8,13 @@
 import { ALL_CRIMES, findCrime } from './engine.js';
 import { termsOf, norm } from './terms.js';
 import { splitSentences } from '../lib/summarize.js';
+import { RECOGNIZER_OF, recognize, explain, JOB_CUE } from './recognizers.js';
 
 // Các tội “biến thể” khác tội cơ bản bởi một tình tiết trong tên (vô ý, kích động mạnh, vượt quá phòng vệ…):
 // chỉ xét khi nội dung có nhắc tình tiết đó.
 const QUALIFIERS = [['vô ý'], ['thi hành công vụ'], ['kích động'], ['phòng vệ', 'bắt giữ'], ['quy tắc nghề nghiệp', 'quy tắc hành chính'], ['con mới đẻ']];
 const missingQualifier = (name, textNorm) => QUALIFIERS.some((ws) => ws.some((w) => norm(name).includes(w)) && !ws.some((w) => textNorm.includes(w)));
 
-const JOB_CUE = /(giám đốc|chủ tịch|trưởng (?:phòng|ban|đoàn|khoa|bộ phận|công an)|phó (?:giám đốc|chủ tịch|trưởng)|kế toán|thủ quỹ|thủ kho|cán bộ|công chức|viên chức|chuyên viên|bí thư|chỉ huy|chủ đầu tư|thanh tra|điều tra viên|kiểm sát viên|thẩm phán|chức vụ|quyền hạn)/iu;
 
 // Tình huống điển hình → điều thường gặp. Dùng (a) gợi ý ứng viên cho AI, (b) xác nhận điều AI chọn khi cụm từ trong
 // danh mục khó khớp từng chữ (“nhận 50 triệu để làm thủ tục” ≠ chữ “hối lộ”). Số điều được kiểm tra với Bộ luật trong phần mềm.
@@ -74,7 +74,7 @@ const seedHit = (dieu, text) => SEEDS.some((s) => s.d.includes(String(dieu)) && 
  * Căn cứ của một điều với nội dung: câu khớp tốt nhất (số cụm đặc trưng, điểm), tên tội danh có xuất hiện không,
  * chủ thể có phù hợp không, và kết luận show (đủ để tự đưa ra) / candidate (đáng để AI xem xét).
  */
-export function crimeEvidence(dieu, text, { sentences = null, primary = null, cited = null } = {}) {
+export function keywordEvidence(dieu, text, { sentences = null, primary = null, cited = null } = {}) {
   const ix = index();
   const d = String(dieu);
   const p = ix.prof.get(d);
@@ -111,14 +111,80 @@ export function crimeEvidence(dieu, text, { sentences = null, primary = null, ci
 }
 
 /**
- * Trong các điều “đủ căn cứ”, chỉ giữ điều được viện dẫn / đang xét và tối đa 3 điều có điểm cao nhất, mỗi điều
- * phải đạt ≥ 35% điểm của điều cao nhất (tránh kéo theo các điều chỉ gần nghĩa).
+ * Đánh giá một điều với nội dung. Điều có BỘ NHẬN DIỆN (recognizers.js) → xét từng yếu tố cấu thành (đủ yếu tố bắt buộc
+ * trong cùng đoạn mới chọn; nêu yếu tố đã có kèm câu trích, yếu tố còn thiếu kèm câu hỏi); điều chưa có → khớp từ khóa
+ * (keywordEvidence), độ chắc chắn thấp hơn và ghi rõ. ctxText: ngữ cảnh rộng (toàn bộ lời khai) cho yếu tố chủ thể / giá trị.
+ * Trả về { dieu, ten, nguon ('bo-nhan-dien' | 'tu-khoa'), muc ('cao' | 'vua' | 'thap' | 'khong'), show, candidate, ev,
+ * yeuTo[], thieu[], trich, why, vs, isCited, isPrimary }.
+ */
+export function assessCrime(dieu, text, { sentences = null, primary = null, cited = null, ctxText = null } = {}) {
+  const d = String(dieu);
+  const crime = findCrime(d);
+  if (!crime) return null;
+  const isCited = !!cited?.has(d);
+  const isPrimary = primary != null && String(primary) === d;
+  const pinWhy = isCited ? `Tài liệu viện dẫn Điều ${d}` : isPrimary ? 'Điều đang xét của hồ sơ' : '';
+  const rec = RECOGNIZER_OF.get(d);
+  const base = { dieu: d, ten: crime.ten, isCited, isPrimary, vs: rec?.vs || '' };
+  if (rec) {
+    const sents = (sentences || sentencesOf(text)).map((x) => ({ t: x.t, src: x.src }));
+    const ctx = ctxText != null ? sentencesOf(ctxText).map((x) => ({ t: x.t })) : sents;
+    const r = recognize(rec, sents, ctx);
+    // Bộ nhận diện đã mô tả đúng tình tiết của từng điều → không áp quy tắc “biến thể” (chỉ dành cho điều khớp từ khóa).
+    const qualOk = true;
+    const ok = !!r?.ok;
+    const show = isCited || isPrimary || ok;
+    const seed = seedHit(d, text || '');
+    // Gần đủ: hành vi đã có nhưng chỉ thiếu CHỦ THỂ (chưa rõ người đó có chức vụ, quyền hạn) → không đưa vào sơ đồ, báo cần làm rõ.
+    const reqMissing = (r?.yeuTo || []).filter((y) => y.req && !y.ok);
+    const gan = !show && !!r && reqMissing.length === 1 && reqMissing[0].id === 'chu-the' && (r.yeuTo || []).some((y) => y.req && y.ok && y.w >= 3);
+    return {
+      ...base,
+      nguon: 'bo-nhan-dien',
+      muc: ok ? r.muc : isCited || isPrimary ? 'thap' : gan ? 'gan' : 'khong',
+      show,
+      candidate: show || gan || (seed && (!rec.el.some((e) => e.job) || JOB_CUE.test(ctxText ?? text ?? ''))),
+      ev: ok ? r.diem * 3 : 0,
+      yeuTo: r?.yeuTo || [],
+      thieu: r?.thieu || [],
+      trich: r?.trich || '',
+      why: [pinWhy, r ? (qualOk ? explain(r) : 'Thiếu tình tiết đặc thù của tội này') : ''].filter(Boolean).join('; '),
+    };
+  }
+  const e = keywordEvidence(d, text, { sentences, primary, cited });
+  const show = !!e?.show;
+  return {
+    ...base,
+    nguon: 'tu-khoa',
+    muc: show ? (e.isCited || e.isPrimary ? 'thap' : 'vua') : 'khong',
+    show,
+    candidate: !!e?.candidate,
+    ev: e?.ev || 0,
+    yeuTo: show && e.trich ? [{ id: 'tu-khoa', label: 'Cụm từ đặc trưng của điều luật khớp nội dung', ok: true, quote: e.trich, req: false }] : [],
+    thieu: [],
+    trich: e?.trich || '',
+    why: [pinWhy, e?.why && !pinWhy ? `${e.why} (khớp từ khóa — chưa có bộ nhận diện chi tiết cho điều này, cần kiểm tra kỹ)` : ''].filter(Boolean).join('; '),
+    seed: e?.seed,
+    n: e?.n,
+    nameHit: e?.nameHit,
+    thin: e?.thin,
+  };
+}
+
+/**
+ * Chọn điều đưa ra: điều được viện dẫn / đang xét; các điều đủ yếu tố theo bộ nhận diện (cao điểm trước); điều khớp từ
+ * khóa chỉ lấy tối đa 2 điều và ≥ 35% điểm của điều cao nhất. Tối đa 5 điều.
  */
 export function pickShown(list) {
   const pinned = list.filter((e) => e.isCited || e.isPrimary);
-  const rest = list.filter((e) => e.show && !e.isCited && !e.isPrimary).sort((a, b) => b.ev - a.ev);
-  const top = Math.max(rest[0]?.ev || 0, ...pinned.map((e) => e.ev));
-  return [...pinned, ...rest.filter((e) => e.ev >= 0.35 * top).slice(0, 3)];
+  const rest = list.filter((e) => !e.isCited && !e.isPrimary && e.show);
+  const recs = rest.filter((e) => e.nguon === 'bo-nhan-dien').sort((a, b) => b.ev - a.ev);
+  const kws = rest.filter((e) => e.nguon === 'tu-khoa').sort((a, b) => b.ev - a.ev);
+  // Điều khớp từ khóa cùng nhóm với điều đã có bộ nhận diện (vd. ma túy) chỉ gây nhiễu → bỏ.
+  const fam = new Set([...pinned, ...recs].map((e) => findCrime(e.dieu)?.nhom).filter(Boolean));
+  const kw = kws.filter((e) => !fam.has(findCrime(e.dieu)?.nhom));
+  const topKw = kw[0]?.ev || 0;
+  return [...pinned, ...recs, ...kw.filter((e) => e.ev >= 0.35 * topKw).slice(0, recs.length ? 1 : 2)].slice(0, 5);
 }
 
 /** Điều đáng đưa cho AI xem xét (ưu tiên: viện dẫn, điều đang xét, đủ căn cứ, rồi theo điểm); tối đa limit. */
@@ -126,8 +192,8 @@ export function lawCandidates(text, { primary = null, cited = null, limit = 8 } 
   const sents = sentencesOf(text);
   const out = [];
   for (const c of ALL_CRIMES) {
-    const e = crimeEvidence(c.dieu, text, { sentences: sents, primary, cited });
-    if (e?.candidate) out.push({ ...e, ten: c.ten, rank: (e.isCited ? 100 : 0) + (e.isPrimary ? 90 : 0) + (e.show ? 50 : 0) + (e.seed ? 8 : 0) + e.ev });
+    const e = assessCrime(c.dieu, text, { sentences: sents, primary, cited });
+    if (e?.candidate) out.push({ ...e, rank: (e.isCited ? 100 : 0) + (e.isPrimary ? 90 : 0) + (e.show ? 50 + (e.muc === 'cao' ? 10 : 0) : 0) + (e.seed ? 8 : 0) + e.ev });
   }
   return out.sort((a, b) => b.rank - a.rank).slice(0, limit);
 }
@@ -138,14 +204,24 @@ export function lawCandidates(text, { primary = null, cited = null, limit = 8 } 
  */
 export function lawGate(dieu, { trich = '', source = '', primary = null, cited = null } = {}) {
   const d = String(dieu || '').replace(/\D+$/, '').replace(/^Điều\s*/i, '').trim();
-  if (!d || !findCrime(d)) return { ok: false, why: 'Điều không có trong Bộ luật của phần mềm' };
-  if (cited?.has(d) || (primary != null && String(primary) === d)) return { ok: true, why: 'Tài liệu viện dẫn / điều đang xét' };
-  if (!String(trich).trim()) return { ok: false, why: 'Không có đoạn trích nguyên văn làm căn cứ' };
-  const e = crimeEvidence(d, trich, { primary, cited });
-  if (/^Người có chức vụ/i.test(findCrime(d).chuThe || '') && !JOB_CUE.test(`${source} ${trich}`)) return { ok: false, why: 'Điều này cần chủ thể là người có chức vụ, quyền hạn — nội dung chưa nêu' };
+  if (!d || !findCrime(d)) return { ok: false, why: 'Điều không có trong Bộ luật của phần mềm', yeuTo: [], thieu: [] };
+  if (cited?.has(d) || (primary != null && String(primary) === d)) return { ok: true, why: cited?.has(d) ? `Tài liệu viện dẫn Điều ${d}` : 'Điều đang xét của hồ sơ', yeuTo: [], thieu: [], muc: 'thap', nguon: 'vien-dan' };
+  if (!String(trich).trim()) return { ok: false, why: 'Không có đoạn trích nguyên văn làm căn cứ', yeuTo: [], thieu: [] };
+  if (RECOGNIZER_OF.has(d)) {
+    // Đoạn trích thường chỉ là một phần câu: xét cả câu chứa nó và hai câu liền kề trong nội dung gốc (để thấy chủ thể, mục đích).
+    const all = source ? sentencesOf(source) : [];
+    const tk = String(trich).normalize('NFC').toLocaleLowerCase('vi-VN').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().slice(0, 60);
+    const at = all.findIndex((x) => x.t.normalize('NFC').toLocaleLowerCase('vi-VN').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().includes(tk));
+    const scene = at >= 0 ? all.slice(Math.max(0, at - 1), at + 2).map((x) => x.t).join('\n') : trich;
+    const a = assessCrime(d, scene, { primary, cited, ctxText: source || trich });
+    return { ok: a.show, why: a.why || 'Đoạn trích chưa đủ yếu tố cấu thành', yeuTo: a.yeuTo, thieu: a.thieu, muc: a.muc, nguon: a.nguon, vs: a.vs };
+  }
+  // Điều chưa có bộ nhận diện: khớp từ khóa (nghiêm hơn — cần tên tội danh hoặc ≥ 3 cụm đặc trưng) + chủ thể.
+  const e = keywordEvidence(d, trich, { primary, cited });
+  if (/^Người có chức vụ/i.test(findCrime(d).chuThe || '') && !JOB_CUE.test(`${source} ${trich}`)) return { ok: false, why: 'Điều này cần chủ thể là người có chức vụ, quyền hạn — nội dung chưa nêu', yeuTo: [], thieu: [] };
   const lex = (e.nameHit && e.ev >= 4) || (!e.thin && e.n >= 3 && e.ev >= 10);
-  if (lex || (e.seed && (!e.thin || e.nameHit))) return { ok: true, why: e.why || 'Đoạn trích khớp dấu hiệu của điều này' };
-  return { ok: false, why: 'Đoạn trích chưa đủ dấu hiệu của điều này' };
+  if (lex || (e.seed && (!e.thin || e.nameHit))) return { ok: true, why: `${e.why || 'Đoạn trích khớp dấu hiệu của điều này'} (khớp từ khóa — chưa có bộ nhận diện chi tiết, cần kiểm tra kỹ)`, yeuTo: [{ id: 'tu-khoa', label: 'Cụm từ đặc trưng của điều luật khớp đoạn trích', ok: true, quote: trich, req: false }], thieu: [], muc: 'thap', nguon: 'tu-khoa' };
+  return { ok: false, why: 'Đoạn trích chưa đủ dấu hiệu của điều này', yeuTo: [], thieu: [] };
 }
 
 /** Điều được viện dẫn trong văn bản (“Điều 354”, “điểm a khoản 1 Điều 353 BLHS”). */
@@ -164,7 +240,12 @@ export function lawCatalog(cands) {
   const lines = cands
     .map((x) => findCrime(x.dieu || x))
     .filter(Boolean)
-    .map((c) => `Điều ${c.dieu} — ${c.ten.replace(/^Tội\s+/i, '')} | chủ thể: ${cut(c.chuThe, 70)} | dấu hiệu: ${(c.dauHieu || []).slice(0, 2).map((x) => cut(x, 90)).join('; ')}`);
+    .map((c) => {
+      const rec = RECOGNIZER_OF.get(c.dieu);
+      // Điều có bộ nhận diện: gửi đúng các yếu tố cấu thành (bắt buộc đánh dấu *) để AI áp cùng tiêu chuẩn với máy.
+      if (rec) return `Điều ${c.dieu} — ${c.ten.replace(/^Tội\s+/i, '')} | cấu thành: ${rec.el.map((e) => `${e.req ? '*' : ''}${e.label.replace(/\s*\([^)]*\)\s*$/, '')}`).join('; ')}`;
+      return `Điều ${c.dieu} — ${c.ten.replace(/^Tội\s+/i, '')} | chủ thể: ${cut(c.chuThe, 70)} | dấu hiệu: ${(c.dauHieu || []).slice(0, 2).map((x) => cut(x, 90)).join('; ')}`;
+    });
   return `${lines.join('\n')}${confusableHints(cands)}`;
 }
 

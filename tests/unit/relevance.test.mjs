@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { crimeEvidence, lawCandidates, lawGate, lawCatalog, citedArticles, pickShown } from '../../assets/js/legal/relevance.js';
+import { assessCrime, lawCandidates, lawGate, lawCatalog, citedArticles, pickShown } from '../../assets/js/legal/relevance.js';
 import { analyzeOffline, aiItems, analyzePrompt, ANALYZE_SYSTEM } from '../../assets/js/legal/analyze.js';
 import { buildCaseMap, caseMapPrompt, caseMapRefinePrompt, lawContext, mergeAiCaseMap, CASE_MAP_SYSTEM, similarText } from '../../assets/js/legal/case-map.js';
 import { stripCache } from '../../assets/js/lib/cache-mark.js';
@@ -21,10 +21,10 @@ test('điều luật chỉ được đưa ra khi có căn cứ: không kéo theo
 });
 
 test('chủ thể đặc biệt: tội về chức vụ cần người có chức vụ, quyền hạn trong nội dung', () => {
-  assert.equal(crimeEvidence('359', 'Ông Nam lập hồ sơ giả mạo chữ ký của chủ đất cũ để sang tên.').show, false);
-  assert.equal(crimeEvidence('359', 'Ông Nam, cán bộ địa chính, lập hồ sơ giả mạo chữ ký của chủ đất cũ để sang tên.').show, true);
+  assert.equal(assessCrime('359', 'Ông Nam lập hồ sơ giả mạo chữ ký của chủ đất cũ để sang tên.').show, false);
+  assert.equal(assessCrime('359', 'Ông Nam, cán bộ địa chính, lập hồ sơ giả mạo chữ ký của chủ đất cũ để sang tên.').show, true);
   // Viện dẫn hoặc điều đang xét thì luôn được giữ.
-  assert.equal(crimeEvidence('354', 'Nội dung bất kỳ', { primary: '354' }).show, true);
+  assert.equal(assessCrime('354', 'Nội dung bất kỳ', { primary: '354' }).show, true);
   assert.deepEqual([...citedArticles('Theo Điều 354 BLHS và Điều 9999, Điều 12 Luật phòng chống tham nhũng')], ['354']);
 });
 

@@ -80,7 +80,7 @@ test.describe('v2.30 — chính xác điều luật, dòng tiền; kéo tùy bi�
     await expect(res).toContainText('AI kết hợp');
     await expect(page.locator('.toast', { hasText: 'chưa đủ căn cứ' }).first()).toBeVisible();
     // Bản chất: điều luật có căn cứ; điều 214 không có; điểm còn thiếu do AI nêu; ý trùng gộp một.
-    const law = res.locator('.cm-law');
+    const law = res.locator('.cm-law').first();
     await expect(law).toContainText('Điều 353');
     await expect(law).not.toContainText('Điều 214');
     await expect(res).toContainText('Điểm còn thiếu');

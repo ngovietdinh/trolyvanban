@@ -15,7 +15,7 @@ async function stableBox(page, loc) {
   return prev;
 }
 
-const LOI_KHAI = 'Ngày 05/3/2025 ông Nguyễn Văn An lập chứng từ chi khống để rút tiền chiếm đoạt 300 triệu đồng. Sau đó ông An chuyển cho ông Trần Văn Bình 100 triệu đồng. Ông Bình chỉ đạo ông An lập hồ sơ quyết toán. Bà Lê Thị Cúc thủ quỹ nhận 20 triệu đồng của ông An.';
+const LOI_KHAI = 'Ngày 05/3/2025 ông Nguyễn Văn An, kế toán Ban QLDA lập chứng từ chi khống để rút tiền chiếm đoạt 300 triệu đồng. Sau đó ông An chuyển cho ông Trần Văn Bình 100 triệu đồng. Ông Bình chỉ đạo ông An lập hồ sơ quyết toán. Bà Lê Thị Cúc thủ quỹ nhận 20 triệu đồng của ông An.';
 
 test.describe('v2.24 — thu gọn menu, câu hỏi gợi ý, gợi ý đầu mục', () => {
   test('thanh menu thu gọn / mở rộng, nhớ trạng thái, phím tắt Ctrl+B', async ({ page }) => {
@@ -191,7 +191,7 @@ test.describe('v2.24 — sơ đồ logic tùy chỉnh, AI làm tiếp', () => {
     const t = trackErrors(page);
     const calls = await mockClaude(page, (body) => {
       const p = JSON.stringify(body.messages);
-      if (p.includes('YÊU CẦU CỦA ĐIỀU TRA VIÊN')) return JSON.stringify({ tomTat: 'Bổ sung bà Cúc thủ quỹ nhận 20 triệu.', banChat: ['An chi khống 300 triệu', 'Cúc nhận 20 triệu'], nguoi: [{ ten: 'Nguyễn Văn An', vaiTro: 'Kế toán' }, { ten: 'Trần Văn Bình', vaiTro: 'Giám đốc' }, { ten: 'Lê Thị Cúc', vaiTro: 'Thủ quỹ, người nhận tiền' }], hanhVi: [{ ten: 'Lập chứng từ chi khống', dieu: '353', nguoi: ['Nguyễn Văn An'], soTien: '300 triệu đồng' }], quanHe: [{ tu: 'Nguyễn Văn An', den: 'Trần Văn Bình', loai: 'tien', noiDung: 'chuyển', soTien: '100 triệu đồng' }, { tu: 'Nguyễn Văn An', den: 'Lê Thị Cúc', loai: 'tien', noiDung: 'đưa', soTien: '20 triệu đồng' }], moc: [], ghiChu: 'Đã thêm bà Cúc và dòng tiền 20 triệu' });
+      if (p.includes('YÊU CẦU CỦA ĐIỀU TRA VIÊN')) return JSON.stringify({ tomTat: 'Bổ sung bà Cúc thủ quỹ nhận 20 triệu.', banChat: ['An chi khống 300 triệu', 'Cúc nhận 20 triệu'], nguoi: [{ ten: 'Nguyễn Văn An', vaiTro: 'Kế toán' }, { ten: 'Trần Văn Bình', vaiTro: 'Giám đốc' }, { ten: 'Lê Thị Cúc', vaiTro: 'Thủ quỹ, người nhận tiền' }], hanhVi: [{ ten: 'Lập chứng từ chi khống', dieu: '353', nguoi: ['Nguyễn Văn An'], soTien: '300 triệu đồng', trich: 'lập chứng từ chi khống để rút tiền chiếm đoạt 300 triệu đồng' }, { ten: 'Nhận tiền của ông An', dieu: '354', nguoi: ['Lê Thị Cúc'], soTien: '20 triệu đồng', trich: 'Bà Lê Thị Cúc thủ quỹ nhận 20 triệu đồng của ông An' }], quanHe: [{ tu: 'Nguyễn Văn An', den: 'Trần Văn Bình', loai: 'tien', noiDung: 'chuyển', soTien: '100 triệu đồng', trich: 'ông An chuyển cho ông Trần Văn Bình 100 triệu đồng' }, { tu: 'Nguyễn Văn An', den: 'Lê Thị Cúc', loai: 'tien', noiDung: 'đưa', soTien: '20 triệu đồng', trich: 'thủ quỹ nhận 20 triệu đồng của ông An' }], moc: [], ghiChu: 'Đã thêm bà Cúc và dòng tiền 20 triệu' });
       return '{}';
     });
     await freshApp(page);
@@ -204,7 +204,7 @@ test.describe('v2.24 — sơ đồ logic tùy chỉnh, AI làm tiếp', () => {
     await expect(res.locator('.cm-sum, .cm-points').first()).toBeVisible();
     // Tab vẽ: dựng sẵn từ sơ đồ vụ việc.
     await page.click('[data-cm-tab="ve"]');
-    await expect(res.locator('[data-dg] .dg-node.dg-k-crime')).toContainText('Điều 353');
+    await expect(res.locator('[data-dg] .dg-node.dg-k-crime', { hasText: 'Điều 353' })).toHaveCount(1);
     const n0 = await res.locator('[data-dg] .dg-node').count();
     // AI làm tiếp.
     const rf = page.locator('[data-cm-refine]');
@@ -220,7 +220,8 @@ test.describe('v2.24 — sơ đồ logic tùy chỉnh, AI làm tiếp', () => {
     expect(req).toContain('TÀI LIỆU, LỜI KHAI GỐC');
     // Sơ đồ tự vẽ cập nhật theo.
     await expect(res.locator('[data-dg] .dg-node', { hasText: 'Lê Thị Cúc' })).toHaveCount(1);
-    expect(await res.locator('[data-dg] .dg-node').count()).toBeGreaterThanOrEqual(n0);
+    // Hành vi mẫu từ máy (nhiều câu căn cứ) được AI gộp thành một hành vi mỗi điều → số nút có thể giảm nhẹ, không mất điều luật / người.
+    expect(await res.locator('[data-dg] .dg-node').count()).toBeGreaterThanOrEqual(n0 - 3);
     await page.click('[data-cm-tab="quan-he"]');
     await expect(res.locator('[data-dg] .dg-node', { hasText: 'Lê Thị Cúc' })).toHaveCount(1);
     await page.click('[data-cm-tab="ban-chat"]');
