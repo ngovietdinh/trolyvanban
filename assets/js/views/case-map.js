@@ -3,7 +3,7 @@
 import { $, $$, icon, toast, escapeHtml, downloadBlob } from '../ui.js';
 import { casesRepo, recordsRepo } from '../legal/repo.js';
 import { getRole } from '../legal/roles.js';
-import { buildCaseMap, caseMapPrompt, caseMapRefinePrompt, relevantText, mergeAiCaseMap, CASE_MAP_SYSTEM } from '../legal/case-map.js';
+import { buildCaseMap, caseMapPrompt, caseMapRefinePrompt, relevantText, mergeAiCaseMap, sanitizeNames, CASE_MAP_SYSTEM } from '../legal/case-map.js';
 import { diagramFromCaseMap, syncFromCaseMap, emptyDiagram, PRESETS, moneyValue, formatMoney } from '../legal/diagram.js';
 import { mountDiagram } from './diagram-editor.js';
 import { refineHtml, bindRefine } from './ai-refine.js';
@@ -103,6 +103,10 @@ function mapDoc(m, title, org = {}) {
   body.push(m.edges.length ? { table: { widths: [0.2, 0.2, 0.16, 0.16, 0.28], header: ['Từ', 'Đến', 'Nội dung', 'Số tiền', 'Căn cứ'], rows: m.edges.map((e) => [e.tu, e.den, `${LOAI[e.loai]}: ${e.noiDung}`, e.soTien || '', e.trich || e.src || '']) } } : p('Chưa xác định được quan hệ giữa các người.'));
   body.push(head('IV. NGƯỜI LIÊN QUAN'));
   body.push(m.people.length ? { table: { widths: [0.28, 0.32, 0.25, 0.15], header: ['Họ tên', 'Chức vụ / tư cách (nguyên văn)', 'Vai trò suy ra từ quan hệ', 'Số lần được nhắc'], rows: m.people.map((x) => [x.ten, x.vaiTro || '', x.suyRa ? `${x.suyRa} (suy ra)` : '', String(x.mentions || '')]) } } : p('Chưa xác định.'));
+  if ((m.unclear || []).length) {
+    body.push(head('IV-b. TÊN CHƯA RÕ (KHÔNG ĐƯA VÀO SƠ ĐỒ)'));
+    body.push({ table: { widths: [0.2, 0.4, 0.4], header: ['Tên gọi', 'Lý do chưa rõ', 'Nguyên văn lời khai'], rows: m.unclear.map((u) => [u.ten, u.lyDo || '', (u.cau || []).slice(0, 2).join(' | ')]) } });
+  }
   body.push(head('V. DÒNG THỜI GIAN'));
   body.push(m.timeline.length ? { table: { widths: [0.16, 0.6, 0.24], header: ['Thời gian', 'Sự kiện', 'Nguồn'], rows: m.timeline.map((t) => [t.thoiGian, t.suKien, t.src || '']) } } : p('Chưa có mốc thời gian.'));
   body.push(p(`Sơ đồ được lập ${m.ai ? 'bằng AI kết hợp phân tích trên máy' : 'bằng phân tích trên máy'} từ nội dung đã chọn — chỉ để tham khảo, cần đối chiếu với tài liệu, chứng cứ.`, { r: { italic: true } }));
@@ -120,7 +124,13 @@ function mapDoc(m, title, org = {}) {
 }
 
 /** Thông báo các mục AI nêu nhưng không có nguyên văn trong lời khai (đã bỏ). */
-const droppedMsg = (d) => `Đã bỏ ${[d.chucVu && `${d.chucVu} chức vụ`, d.soTien && `${d.soTien} số tiền`, d.trich && `${d.trich} trích dẫn`].filter(Boolean).join(', ')} do AI nêu nhưng không có nguyên văn trong lời khai / tài liệu.`;
+const droppedMsg = (d) => `Đã bỏ ${[d.ten && `${d.ten} tên người (không đủ họ tên / không có nguyên văn)`, d.chucVu && `${d.chucVu} chức vụ`, d.soTien && `${d.soTien} số tiền`, d.trich && `${d.trich} trích dẫn`].filter(Boolean).join(', ')} do AI nêu nhưng không có nguyên văn trong lời khai / tài liệu.`;
+
+/** Tên chưa rõ: không đưa vào sơ đồ, nêu riêng kèm lý do và câu nguyên văn để làm rõ. */
+export const unclearHtml = (m) =>
+  (m.unclear || []).length
+    ? `<h3 class="tk-h cm-unclear-h">${icon('alert', 'ic-sm')}Tên chưa rõ <small class="hint">(không đưa vào sơ đồ — chỉ ghi khi có họ tên đầy đủ nguyên văn trong lời khai)</small></h3><ul class="cm-unclear">${m.unclear.map((u) => `<li><strong>${escapeHtml(u.ten)}</strong> <span class="cm-tag cm-unclear-tag">chưa rõ</span><small>${escapeHtml(u.lyDo || '')}</small>${(u.cau || []).slice(0, 2).map((t) => `<q>${escapeHtml(t)}</q>`).join('')}</li>`).join('')}</ul>`
+    : '';
 
 /** Tab → loại sơ đồ sửa được. */
 const EDITABLE = { ve: 'tong-hop', cay: 'hanh-vi', 'quan-he': 'quan-he', 'dong-tien': 'dong-tien' };
@@ -215,7 +225,8 @@ export function render(ctx, params = []) {
         ${m.tomTat ? `<blockquote class="cm-sum">${escapeHtml(m.tomTat)}</blockquote>` : ''}
         <div class="cm-kpis"><span><strong>${m.crimes.filter((c) => c.dieu).length}</strong>điều luật</span><span><strong>${total}</strong>hành vi</span><span><strong>${m.people.length}</strong>người liên quan</span><span><strong>${m.edges.filter((e) => e.loai === 'tien').length}</strong>dòng tiền</span><span><strong>${m.amounts?.[0] || '—'}</strong>số tiền lớn nhất</span></div>
         <ul class="cm-points">${m.banChat.map((t) => `<li>${escapeHtml(t)}</li>`).join('') || '<li class="muted">Chưa rút ra được nội dung then chốt — thử chọn thêm biên bản hoặc dùng AI.</li>'}</ul>
-        ${m.people.length ? `<h3 class="tk-h">${icon('user', 'ic-sm')}Người liên quan</h3><div class="cm-people">${m.people.map((p) => `<span class="cm-chip"><strong>${escapeHtml(p.ten)}</strong><small>${p.vaiTro ? `<span title="${escapeHtml(p.chucVuTrich ? `Nguyên văn: “${p.chucVuTrich}”` : 'Chức vụ / tư cách')}">${escapeHtml(p.vaiTro)}</span>` : '<em>chưa có chức vụ trong lời khai</em>'}${p.suyRa ? ` · <span class="cm-infer" title="Suy ra từ quan hệ trong lời khai — không phải chức vụ">theo quan hệ: ${escapeHtml(p.suyRa.toLowerCase())}</span>` : ''}${p.mentions ? ` · ${p.mentions} lần` : ''}</small></span>`).join('')}</div><p class="hint">Chức vụ, số tiền chỉ lấy đúng nguyên văn trong lời khai / tài liệu; vai trò “theo quan hệ” là máy suy ra, không phải chức vụ.</p>` : ''}
+        ${m.people.length ? `<h3 class="tk-h">${icon('user', 'ic-sm')}Người liên quan</h3><div class="cm-people">${m.people.map((p) => `<span class="cm-chip"><strong>${escapeHtml(p.ten)}</strong><small>${p.vaiTro ? `<span title="${escapeHtml(p.chucVuTrich ? `Nguyên văn: “${p.chucVuTrich}”` : 'Chức vụ / tư cách')}">${escapeHtml(p.vaiTro)}</span>` : '<em>chưa có chức vụ trong lời khai</em>'}${p.suyRa ? ` · <span class="cm-infer" title="Suy ra từ quan hệ trong lời khai — không phải chức vụ">theo quan hệ: ${escapeHtml(p.suyRa.toLowerCase())}</span>` : ''}${p.mentions ? ` · ${p.mentions} lần` : ''}</small></span>`).join('')}</div><p class="hint">Họ tên, chức vụ, số tiền chỉ lấy đúng nguyên văn trong lời khai / tài liệu; vai trò “theo quan hệ” là máy suy ra, không phải chức vụ.</p>` : ''}
+        ${unclearHtml(m)}
       </div>`;
     } else if (EDITABLE[st.tab]) {
       // Sơ đồ tư duy, hành vi, quan hệ, dòng tiền: đều dựng sẵn từ phân tích và sửa được (thêm, bớt, nối, vẽ…).
@@ -226,7 +237,7 @@ export function render(ctx, params = []) {
         saveDiagram(d, preset);
       }
       const intro = { 'hanh-vi': 'Điều luật → hành vi → người thực hiện, kèm trích dẫn làm căn cứ.', 'quan-he': 'Quan hệ giữa các người: tiền, tài sản (vàng), chỉ đạo (đỏ), khác (xám). Chọn một người → “Thêm nhánh con” để thêm người có quan hệ; chọn mũi tên để sửa nội dung, số tiền.', 'dong-tien': 'Dòng tiền chảy từ trái sang phải: người đưa / chuyển ở bên trái, người nhận ở bên phải; nhãn mũi tên là số tiền.' }[preset];
-      body.innerHTML = `${intro ? `<p class="hint cm-dg-intro">${icon('info', 'ic-sm')}${escapeHtml(intro)}</p>` : ''}<div data-cm-dg></div>${preset === 'quan-he' || preset === 'dong-tien' ? relTable(m, preset === 'dong-tien') : ''}`;
+      body.innerHTML = `${intro ? `<p class="hint cm-dg-intro">${icon('info', 'ic-sm')}${escapeHtml(intro)}</p>` : ''}${(m.unclear || []).length ? `<p class="hint cm-dg-unclear">${icon('alert', 'ic-sm')}${m.unclear.length} tên chưa rõ nên chưa đưa vào sơ đồ: ${m.unclear.map((u) => `“${escapeHtml(u.ten)}”`).join(', ')} — xem tab Bản chất.</p>` : ''}<div data-cm-dg></div>${preset === 'quan-he' || preset === 'dong-tien' ? relTable(m, preset === 'dong-tien') : ''}`;
       dgCtl = mountDiagram($('[data-cm-dg]', body), {
         diagram: d,
         title: `${PRESETS[preset].label} — ${st.title}`,
@@ -315,7 +326,7 @@ export function render(ctx, params = []) {
     const chunks = splitText(focusText(full, { min: size }), size);
     let acc = offline;
     let done = 0;
-    const dropped = { chucVu: 0, soTien: 0, trich: 0 };
+    const dropped = { chucVu: 0, soTien: 0, trich: 0, ten: 0 };
     const addDropped = (d) => d && Object.keys(dropped).forEach((k) => (dropped[k] += d[k] || 0));
     try {
       const run = await runChunks(
@@ -331,7 +342,7 @@ export function render(ctx, params = []) {
         },
         { signal: ctl.signal, concurrency: concurrencyFor(ai), minSize: Math.round(size / 4), onProgress: (i, n) => say(n > 1 ? `${who} đang bổ sung phần ${i}/${n} (nội dung dài được chia nhỏ để không bị hết thời gian chờ) — sơ đồ trên máy đã hiện ở dưới.` : `${who} đang phân tích sâu — sơ đồ trên máy đã hiện ở dưới.`) },
       );
-      if (dropped.chucVu + dropped.soTien + dropped.trich) toast(droppedMsg(dropped), { type: 'info', timeout: 7000 });
+      if (dropped.chucVu + dropped.soTien + dropped.trich + dropped.ten) toast(droppedMsg(dropped), { type: 'info', timeout: 7000 });
       if (run.errors.length) toast(`AI không trả lời ${run.errors.length}/${run.total} phần — sơ đồ dùng kết quả trên máy cho các phần đó.`, { type: 'info', timeout: 6000 });
       if (ctl.signal.aborted && done) toast(`Đã dừng AI sau ${done}/${chunks.length} phần — giữ kết quả đã có.`, { type: 'info' });
     } catch (err) {
@@ -380,7 +391,7 @@ export function render(ctx, params = []) {
         const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, effort: 'medium', maxTokens: 5000, signal, messages: [{ role: 'user', content: caseMapRefinePrompt(st.map, request, { source: relevantText(full, request, max), primary: st.primary, max }) }] });
         const next = mergeAiCaseMap(st.map, out, { replace: true, source: full });
         const dr = next.verifyDropped;
-        if (dr && dr.chucVu + dr.soTien + dr.trich) toast(droppedMsg(dr), { type: 'info', timeout: 7000 });
+        if (dr && dr.chucVu + dr.soTien + dr.trich + dr.ten) toast(droppedMsg(dr), { type: 'info', timeout: 7000 });
         const before = st.map;
         st.map = { ...next, aiProgress: '' };
         // Các sơ đồ đã sửa (tư duy, hành vi, quan hệ, dòng tiền) cập nhật theo, giữ vị trí, nhãn đã sửa và phần tự thêm.
@@ -426,7 +437,7 @@ export function render(ctx, params = []) {
   function openSaved(id) {
     const x = (store.get(SAVES, []) || []).find((y) => y.id === id);
     if (!x) return;
-    Object.assign(st, { map: x.map, sources: x.sources || [], known: x.known || [], primary: x.primary || null, title: x.title, dkey: x.id, tab: 'ban-chat' });
+    Object.assign(st, { map: sanitizeNames(x.map), sources: x.sources || [], known: x.known || [], primary: x.primary || null, title: x.title, dkey: x.id, tab: 'ban-chat' });
     drawResult();
     drawRefine();
     $('[data-result]', v).scrollIntoView({ behavior: 'smooth', block: 'start' });

@@ -4918,3 +4918,15 @@ body.dg-lock { overflow: hidden; }
   .lk-stmt-head { flex-wrap: wrap; }
   .lk-stmt-head [data-lk-role] { flex-basis: 100%; order: 3; }
 }
+
+/* Tên chưa rõ (v2.29) */
+.cm-unclear { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.cm-unclear li { border: 1px dashed var(--warning); border-radius: var(--radius-sm); padding: 7px 10px; display: grid; gap: 3px; font-size: 13.5px; background: var(--warning-soft); }
+.cm-unclear small { color: var(--text-2); }
+.cm-unclear q { color: var(--text-2); font-size: 12.5px; }
+.cm-unclear-tag { background: var(--warning); color: #fff; }
+.cm-dg-unclear { color: var(--warning); display: flex; gap: 6px; align-items: flex-start; }
+.lk-confirm { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.lk-confirm .input { flex: 1; min-width: 160px; }
+.lk-names { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12.5px; }
+.lk-sp-unclear { color: var(--warning); font-size: 12px; font-weight: 600; }

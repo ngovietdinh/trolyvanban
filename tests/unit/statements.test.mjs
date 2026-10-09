@@ -64,8 +64,8 @@ test('AI làm rõ: chỉ gửi câu liên quan; quan hệ không có nguyên vă
   const prompt = stripCache(clarifyPrompt([tn], ST));
   assert.match(prompt, new RegExp(`id: ${tn.id}`));
   const source = ST.map((x) => x.text).join('\n');
-  const { answers, dropped } = parseClarify(JSON.stringify({ ketQua: [{ id: tn.id, nhanDinh: 'A', cauHoi: ['Hỏi gì?', { hoi: 'Ở đâu?', ai: 'Trần Văn Bình' }], xacMinh: ['Sao kê'], quanHe: [{ tu: 'Trần Văn Bình', den: 'Hoàng Văn Tư', loai: 'tien', soTien: '9 tỷ', trich: 'bịa ra' }, { tu: 'Nguyễn Văn An', den: 'Phạm Văn Dũng', loai: 'tien', soTien: '5.000.000 đồng', trich: 'Ông Dũng nhận 5 triệu đồng từ ông An' }] }] }), [tn], source);
-  assert.equal(dropped, 1);
+  const { answers, dropped } = parseClarify(JSON.stringify({ ketQua: [{ id: tn.id, nhanDinh: 'A', cauHoi: ['Hỏi gì?', { hoi: 'Ở đâu?', ai: 'Trần Văn Bình' }], xacMinh: ['Sao kê'], quanHe: [{ tu: 'Trần Văn Bình', den: 'Hoàng Văn Tư', loai: 'tien', soTien: '9 tỷ', trich: 'bịa ra' }, { tu: 'Nguyễn Văn An', den: 'Phạm Văn Dũng', loai: 'tien', soTien: '5.000.000 đồng', trich: 'Ông Dũng nhận 5 triệu đồng từ ông An' }, { tu: 'Ông Bình', den: 'Lê Thị Cúc', loai: 'tien', soTien: '', trich: 'Tôi nhận của ông An khoảng 30 triệu đồng' }] }] }), [tn], source, r.map.people.map((x) => x.ten));
+  assert.equal(dropped, 2, 'tên không có nguyên văn, tên gọi trơ (ông Bình) → bỏ');
   const a = answers[tn.id];
   assert.equal(a.cauHoi.length, 2);
   assert.equal(a.cauHoi[1].ai, 'Trần Văn Bình');
@@ -76,4 +76,47 @@ test('AI làm rõ: chỉ gửi câu liên quan; quan hệ không có nguyên vă
   const q = questionsByPerson([tn], answers);
   assert.ok(q.some((g) => g.ai === 'Trần Văn Bình' && g.list.includes('Ở đâu?')));
   assert.deepEqual(questionsByPerson([tn], {}, { [tn.id]: 1 }), []);
+});
+
+import { classifyPeople, sentences, isFullName, stripTitle, nameVerbatim, sanitizeNames } from '../../assets/js/legal/case-map.js';
+
+test('tên phải chính xác 100%: tên gọi trơ / trùng nhiều người / bị cắt → chưa rõ, không vào sơ đồ', () => {
+  const r = analyzeStatements([
+    { speaker: 'Nguyễn Văn An', text: 'Tôi chuyển cho ông Bình 100 triệu đồng. Tôi đưa cho bà Lê Thị Cúc 20 triệu đồng.' },
+  ]);
+  assert.ok(!r.map.people.some((p) => /Bình/.test(p.ten)), 'ông Bình chưa rõ họ tên → không có trong sơ đồ');
+  assert.equal(r.map.edges.length, 1);
+  assert.equal(r.map.edges[0].den, 'Lê Thị Cúc');
+  const u = r.map.unclear.find((x) => x.ten === 'Bình');
+  assert.match(u.lyDo, /chưa có họ tên đầy đủ/);
+  assert.equal(u.nguoiKhai[0], 'Nguyễn Văn An');
+  assert.ok(r.issues.some((x) => x.kind === 'chua-ro-ten' && x.level === 'cao' && x.rawName === 'Bình'));
+  // Xác nhận họ tên → vào sơ đồ.
+  const r2 = analyzeStatements([{ speaker: 'Nguyễn Văn An', text: 'Tôi chuyển cho ông Bình 100 triệu đồng.' }], { confirmed: ['Trần Văn Bình'] });
+  assert.ok(r2.map.edges.some((e) => e.den === 'Trần Văn Bình' && e.soTien === '100 triệu đồng'));
+  assert.equal(r2.map.unclear.length, 0);
+  // Hai người cùng tên Bình, câu chỉ nói “ông Bình” → chưa rõ là ai, không gán cho ai.
+  const r3 = analyzeStatements([{ speaker: 'Nguyễn Văn An', text: 'Ông Trần Văn Bình là giám đốc. Bà Lê Thị Bình là kế toán. Tôi chuyển cho ông Bình 50 triệu đồng.' }]);
+  assert.equal(r3.map.edges.length, 0);
+  assert.match(r3.map.unclear.find((x) => x.ten === 'Bình').lyDo, /Trần Văn Bình hoặc Lê Thị Bình/);
+});
+
+test('tên không bị cắt: “Hoàng Thị Em”, tên dính tên đơn vị', () => {
+  const sents = sentences([{ label: 'x', speaker: '', text: 'Bà Hoàng Thị Em đưa cho ông Nguyễn Văn An Ban QLDA huyện X 10 triệu đồng.' }]);
+  const ps = classifyPeople(sents, []).filter((p) => p.clear).map((p) => p.ten);
+  assert.ok(ps.includes('Hoàng Thị Em'));
+  assert.ok(ps.includes('Nguyễn Văn An'));
+});
+
+test('quy tắc tên dùng chung: danh xưng, nguyên văn, bản lưu cũ', () => {
+  assert.equal(stripTitle('Ông Nguyễn Văn An'), 'Nguyễn Văn An');
+  assert.ok(!isFullName('Ông An'));
+  assert.ok(isFullName('Lê Thị Cúc'));
+  assert.ok(nameVerbatim('Lê Thị Cúc', 'Bà LÊ THỊ CÚC nhận tiền'));
+  assert.ok(!nameVerbatim('Lê Thị Cúc', 'Bà Cúc nhận tiền'));
+  const m = sanitizeNames({ people: [{ ten: 'An' }, { ten: 'Lê Thị Cúc' }], edges: [{ tu: 'An', den: 'Lê Thị Cúc' }, { tu: 'Lê Thị Cúc', den: 'Lê Thị Cúc' }], crimes: [{ items: [{ nguoi: ['An', 'Lê Thị Cúc'] }] }] });
+  assert.deepEqual(m.people.map((p) => p.ten), ['Lê Thị Cúc']);
+  assert.equal(m.edges.length, 1);
+  assert.deepEqual(m.crimes[0].items[0].nguoi, ['Lê Thị Cúc']);
+  assert.equal(m.unclear[0].ten, 'An');
 });

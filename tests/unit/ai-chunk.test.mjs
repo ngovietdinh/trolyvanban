@@ -89,8 +89,8 @@ test('phân tích AI tài liệu dài: gửi nhiều phần nhỏ, gộp, bỏ t
 
 test('sơ đồ vụ việc: cộng dồn kết quả AI của nhiều phần', () => {
   const base = buildCaseMap({ sources: [{ text: 'Ông Nguyễn Văn An chuyển cho ông Trần Văn Bình 100 triệu đồng.' }] });
-  const a = mergeAiCaseMap(base, { tomTat: 'P1', banChat: ['Ý 1'], nguoi: [], hanhVi: [{ ten: 'Chi khống', dieu: '353', nguoi: ['A'] }], quanHe: [{ tu: 'A', den: 'B', loai: 'tien', soTien: '1 triệu' }], moc: [{ thoiGian: '01/01/2025', suKien: 'E1' }] });
-  const b = mergeAiCaseMap(a, { tomTat: 'P2', banChat: ['Ý 2', 'Ý 1'], hanhVi: [{ ten: 'Chi khống', dieu: '353' }, { ten: 'Rút tiền', dieu: '353' }], quanHe: [{ tu: 'A', den: 'B', loai: 'tien', soTien: '1 triệu' }, { tu: 'B', den: 'C', loai: 'chi-dao' }], moc: [{ thoiGian: '01/02/2025', suKien: 'E2' }] }, { append: true });
+  const a = mergeAiCaseMap(base, { tomTat: 'P1', banChat: ['Ý 1'], nguoi: [], hanhVi: [{ ten: 'Chi khống', dieu: '353', nguoi: ['Nguyễn Văn An'] }], quanHe: [{ tu: 'Nguyễn Văn An', den: 'Trần Văn Bình', loai: 'tien', soTien: '1 triệu' }], moc: [{ thoiGian: '01/01/2025', suKien: 'E1' }] });
+  const b = mergeAiCaseMap(a, { tomTat: 'P2', banChat: ['Ý 2', 'Ý 1'], hanhVi: [{ ten: 'Chi khống', dieu: '353' }, { ten: 'Rút tiền', dieu: '353' }], quanHe: [{ tu: 'Nguyễn Văn An', den: 'Trần Văn Bình', loai: 'tien', soTien: '1 triệu' }, { tu: 'Trần Văn Bình', den: 'Lê Thị Cúc', loai: 'chi-dao' }], moc: [{ thoiGian: '01/02/2025', suKien: 'E2' }] }, { append: true });
   assert.equal(b.tomTat, 'P1 P2');
   assert.deepEqual(b.banChat, ['Ý 1', 'Ý 2']);
   assert.deepEqual(b.crimes[0].items.map((x) => x.ten), ['Chi khống', 'Rút tiền']);

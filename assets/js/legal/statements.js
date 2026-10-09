@@ -1,7 +1,7 @@
 // Phân tích lời khai: đọc nhiều lời khai cùng lúc (trên máy, tức thì) → sơ đồ vụ việc + đối chiếu ai khai gì về ai
 // + danh sách điểm cần làm rõ (mâu thuẫn số tiền, phủ nhận, chỉ một người khai, thiếu số tiền / thời gian / chức vụ,
 // người chưa lấy lời khai, câu trả lời mơ hồ). AI chỉ dùng cho từng điểm cần làm rõ, gửi đúng đoạn liên quan.
-import { buildCaseMap, sentences, findPeople, classifySentence, key, short } from './case-map.js';
+import { buildCaseMap, sentences, classifyPeople, classifySentence, isFullName, nameVerbatim, stripTitle, key, short } from './case-map.js';
 import { withCache } from '../lib/cache-mark.js';
 import { extractJson } from '../lib/ai.js';
 
@@ -16,6 +16,7 @@ export const KINDS = {
   'thieu-ngay': 'Chưa rõ thời gian',
   'thieu-chuc-vu': 'Chưa rõ chức vụ',
   'chua-khai': 'Chưa lấy lời khai',
+  'chua-ro-ten': 'Tên chưa rõ',
   'mo-ho': 'Trả lời mơ hồ',
 };
 const RANK = { cao: 0, vua: 1, thap: 2 };
@@ -26,15 +27,17 @@ const idOf = (...xs) => xs.map((x) => key(x).replace(/ /g, '-')).join('_').slice
  * statements: [{ speaker, label?, role?, text }] — mỗi phần tử là lời khai của một người (một lần khai).
  * Trả về { map (sơ đồ vụ việc), speakers, claims, issues }.
  */
-export function analyzeStatements(statements = [], { known = [], primary = null } = {}) {
+export function analyzeStatements(statements = [], { known = [], primary = null, confirmed = [] } = {}) {
   const t0 = Date.now();
   const sources = statements
     .filter((s) => String(s.text || '').trim())
     .map((s, i) => ({ label: s.label || (s.speaker ? `Lời khai của ${s.speaker}` : `Lời khai ${i + 1}`), speaker: String(s.speaker || '').trim(), text: s.text }));
-  const knownAll = [...known, ...statements.filter((s) => s.speaker && s.role).map((s) => ({ ten: s.speaker, vaiTro: s.role }))];
+  // confirmed: họ tên đầy đủ do người dùng xác nhận (chỉ những tên này mới được gộp / coi là rõ khi lời khai chỉ nêu tên gọi).
+  const knownAll = [...known, ...confirmed.filter(isFullName).map((ten) => ({ ten: stripTitle(ten), vaiTro: '' })), ...statements.filter((s) => s.speaker && s.role).map((s) => ({ ten: s.speaker, vaiTro: s.role }))];
   const map = buildCaseMap({ sources, known: knownAll, primary });
   const sents = sentences(sources);
-  const people = findPeople(sents, knownAll);
+  const all = classifyPeople(sents, knownAll);
+  const people = all.filter((p) => p.clear);
   const spKeys = new Set(sources.filter((s) => s.speaker).map((s) => key(s.speaker)));
   const isSpeaker = (p) => p && (spKeys.has(p.key) || [...spKeys].some((k) => k.endsWith(` ${p.key}`) || p.key.endsWith(` ${k}`)));
 
@@ -42,11 +45,13 @@ export function analyzeStatements(statements = [], { known = [], primary = null 
   const claims = [];
   const vague = [];
   for (const s of sents) {
-    const c = classifySentence(s, people);
+    const c = classifySentence(s, all);
     if (VAGUE_RE.test(s.t) && s.speaker) vague.push(s);
     if (!c.type || !c.actors.length) continue;
     if (c.actors.length < 2 && !c.deny) continue;
-    claims.push({ speaker: s.speaker, src: s.src, t: s.t, type: c.type, deny: c.deny, tu: c.from?.ten || '', den: c.to?.ten || '', who: c.actors.map((p) => p.ten), soTien: c.money?.raw || '', v: c.money?.v || 0, date: c.date?.label || '' });
+    // Một đầu là người chưa rõ tên → không ghi nhận (điểm “Tên chưa rõ” nêu riêng).
+    if (!c.deny && !c.ok) continue;
+    claims.push({ speaker: s.speaker, src: s.src, t: s.t, type: c.type, deny: c.deny, tu: c.ok ? c.from.ten : '', den: c.ok ? c.to.ten : '', who: c.actors.map((p) => p.ten), soTien: c.money?.raw || '', v: c.money?.v || 0, date: c.date?.label || '' });
   }
   const pair = (c) => [key(c.tu), key(c.den)].sort().join('|');
   const ex = (c) => ({ speaker: c.speaker || c.src, t: short(c.t, 260) });
@@ -147,6 +152,22 @@ export function analyzeStatements(statements = [], { known = [], primary = null 
   vague.forEach((s) => vBy.set(s.speaker, [...(vBy.get(s.speaker) || []), s]));
   for (const [sp, list] of vBy) add({ id: idOf('mo-ho', sp), kind: 'mo-ho', level: list.length >= 3 ? 'vua' : 'thap', title: `${sp}: ${list.length} câu trả lời mơ hồ`, detail: 'Câu trả lời “không nhớ”, “khoảng”, “hình như”… — cần hỏi lại cụ thể hoặc dùng tài liệu gợi nhớ.', excerpts: list.slice(0, 4).map((s) => ({ speaker: sp, t: short(s.t, 220) })), people: [sp], ask: [`Đề nghị ${sp} trình bày cụ thể (thời gian, số tiền, người có mặt) thay cho các câu “không nhớ / khoảng / hình như”; có tài liệu, sổ sách nào giúp xác định không?`] });
 
+  // 7. Tên chưa rõ: không đưa vào sơ đồ cho tới khi có họ tên đầy đủ nguyên văn.
+  for (const u of map.unclear || []) {
+    add({
+      id: idOf('chua-ro-ten', u.ten),
+      kind: 'chua-ro-ten',
+      level: 'cao',
+      title: `Tên chưa rõ: “${u.ten}”`,
+      detail: `${u.lyDo}. Chưa đưa vào sơ đồ cho tới khi có họ tên đầy đủ.`,
+      excerpts: (u.cau || []).slice(0, 3).map((t) => ({ speaker: (u.nguoiKhai || [])[0] || 'Lời khai', t })),
+      people: [],
+      rawName: u.ten,
+      askWho: (u.nguoiKhai || [])[0] || '',
+      ask: [`Đề nghị nói rõ họ tên đầy đủ (họ, tên đệm, tên) của người được gọi là “${u.ten}”; năm sinh, nơi cư trú, chức vụ, quan hệ với các bên?`],
+    });
+  }
+
   issues.sort((a, b) => RANK[a.level] - RANK[b.level]);
 
   // Người khai: nhắc tới ai, khai có / phủ nhận bao nhiêu việc.
@@ -156,7 +177,7 @@ export function analyzeStatements(statements = [], { known = [], primary = null 
       const mine = claims.filter((c) => c.speaker === s.speaker);
       const mentions = new Map();
       mine.forEach((c) => c.who.forEach((w) => key(w) !== key(s.speaker) && mentions.set(w, (mentions.get(w) || 0) + 1)));
-      return { ten: s.speaker, label: s.label, khai: mine.filter((c) => !c.deny).length, phuNhan: mine.filter((c) => c.deny).length, moHo: vague.filter((x) => x.speaker === s.speaker).length, nhacToi: [...mentions].sort((a, b) => b[1] - a[1]).map(([ten, n]) => ({ ten, n })), claims: mine };
+      return { ten: s.speaker, ro: isFullName(s.speaker), label: s.label, khai: mine.filter((c) => !c.deny).length, phuNhan: mine.filter((c) => c.deny).length, moHo: vague.filter((x) => x.speaker === s.speaker).length, nhacToi: [...mentions].sort((a, b) => b[1] - a[1]).map(([ten, n]) => ({ ten, n })), claims: mine };
     });
   return { map, speakers, claims, issues, ms: Date.now() - t0 };
 }
@@ -193,7 +214,7 @@ export function clarifyPrompt(issues, statements, { max = 3500, primary = null }
 - nhanDinh: 1–3 câu nhận định (mâu thuẫn ở đâu, lời khai nào có cơ sở hơn, còn thiếu gì) — chỉ dựa trên đoạn được cung cấp;
 - cauHoi: 2–5 câu hỏi cụ thể để lấy lời khai bổ sung / đối chất, ghi rõ hỏi ai;
 - xacMinh: 1–3 biện pháp xác minh (sao kê, chứng từ, người chứng kiến, camera…);
-- quanHe: quan hệ / dòng tiền CÓ NGUYÊN VĂN trong đoạn lời khai mà sơ đồ còn thiếu (không có thì để mảng rỗng), số tiền và trích dẫn chép nguyên văn.
+- quanHe: quan hệ / dòng tiền CÓ NGUYÊN VĂN trong đoạn lời khai mà sơ đồ còn thiếu (không có thì để mảng rỗng), số tiền và trích dẫn chép nguyên văn; tu / den là HỌ TÊN ĐẦY ĐỦ chép nguyên văn — người chỉ có tên gọi (“ông An”) mà đoạn lời khai chưa có họ tên đầy đủ thì không đưa vào.
 Chỉ trả về JSON: {"ketQua":[{"id":"…","nhanDinh":"…","cauHoi":[{"hoi":"…","ai":"người được hỏi"}],"xacMinh":["…"],"quanHe":[{"tu":"…","den":"…","loai":"tien|chi-dao|khac","noiDung":"…","soTien":"…","trich":"…"}]}]}
 `;
   const body = issues
@@ -203,19 +224,24 @@ Chỉ trả về JSON: {"ketQua":[{"id":"…","nhanDinh":"…","cauHoi":[{"hoi":
 }
 
 /** Đọc kết quả AI; quan hệ AI nêu chỉ giữ khi trích dẫn có nguyên văn trong lời khai, số tiền khớp nguyên văn. */
-export function parseClarify(raw, issues, source = '') {
+export function parseClarify(raw, issues, source = '', allow = []) {
   const j = typeof raw === 'string' ? extractJson(raw) : raw;
   const list = Array.isArray(j?.ketQua) ? j.ketQua : Array.isArray(j) ? j : j && issues.length === 1 ? [{ ...j, id: issues[0].id }] : null;
   if (!list) throw new Error('AI trả về kết quả không đúng định dạng');
   const src = key(source);
   const amounts = source ? [...String(source).matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(nghìn|ngàn|triệu|tỷ|tỉ)?\s*(?:đồng|VNĐ|VND|đ\b)?/giu)].map((m) => m[0].trim()) : [];
   let dropped = 0;
+  const allowK = new Set(allow.map(key));
   const out = {};
   list.forEach((r, i) => {
     const id = issues.some((x) => x.id === r?.id) ? r.id : issues[i]?.id;
     if (!id || !r) return;
     const quanHe = (r.quanHe || []).filter((e) => {
       if (!e?.tu || !e?.den) return false;
+      // Tên phải là họ tên đầy đủ có nguyên văn trong lời khai (hoặc đã rõ trên sơ đồ); không thì không đưa lên sơ đồ.
+      if (!nameVerbatim(e.tu, source, allowK) || !nameVerbatim(e.den, source, allowK)) return !!dropped++ && false;
+      e.tu = stripTitle(e.tu);
+      e.den = stripTitle(e.den);
       const ok = !source || (e.trich && src.includes(key(e.trich).slice(0, 80)));
       if (!ok) dropped++;
       if (ok && e.soTien && source && !amounts.some((a) => key(a) === key(e.soTien))) e.soTien = '';
@@ -255,7 +281,7 @@ export function questionsByPerson(issues, answers = {}, done = {}) {
     if (done[x.id]) continue;
     const a = answers[x.id];
     if (a?.cauHoi?.length) a.cauHoi.forEach((q) => put(q.ai, q.hoi));
-    else x.ask.forEach((q) => put(x.kind === 'chua-khai' || x.kind === 'thieu-chuc-vu' || x.kind === 'mo-ho' ? x.people[0] : x.excerpts[0]?.speaker && x.kind === 'trai-nguoc' ? x.excerpts[0].speaker : x.people[0], q));
+    else x.ask.forEach((q) => put(x.askWho || (x.kind === 'chua-khai' || x.kind === 'thieu-chuc-vu' || x.kind === 'mo-ho' ? x.people[0] : x.excerpts[0]?.speaker && x.kind === 'trai-nguoc' ? x.excerpts[0].speaker : x.people[0]), q));
   }
   return [...by].map(([ai, list]) => ({ ai, list }));
 }

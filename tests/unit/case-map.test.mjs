@@ -66,5 +66,5 @@ test('chức vụ, số tiền chỉ lấy NGUYÊN VĂN: AI tự thêm chức v�
   // Số tiền AI bịa (150 triệu) bị bỏ; quan hệ giữ số tiền nguyên văn đã có trong lời khai.
   assert.equal(out.edges.find((e) => e.den === 'Trần Văn Bình').soTien, '100 triệu đồng');
   assert.equal(out.edges.find((e) => e.den === 'Lê Thị Cúc').soTien, '20 triệu đồng');
-  assert.deepEqual(out.verifyDropped, { chucVu: 1, soTien: 1, trich: 1 });
+  assert.deepEqual(out.verifyDropped, { chucVu: 1, soTien: 1, trich: 1, ten: 0 });
 });

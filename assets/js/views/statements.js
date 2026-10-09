@@ -5,6 +5,7 @@
 import { $, $$, icon, toast, escapeHtml, downloadBlob, copyText } from '../ui.js';
 import { casesRepo, recordsRepo } from '../legal/repo.js';
 import { getRole } from '../legal/roles.js';
+import { isFullName, stripTitle, key as nameKey } from '../legal/case-map.js';
 import { analyzeStatements, splitByHeading, clarifyPrompt, parseClarify, withExtraEdges, questionsByPerson, CLARIFY_SYSTEM, LEVELS, KINDS } from '../legal/statements.js';
 import { diagramFromCaseMap, syncFromCaseMap, PRESETS } from '../legal/diagram.js';
 import { findCrime } from '../legal/engine.js';
@@ -28,6 +29,9 @@ const TABS = [
 const DIAGRAM_TABS = new Set(['quan-he', 'dong-tien', 'hanh-vi', 'tong-hop']);
 const newItem = (o = {}) => ({ id: uid(), speaker: '', role: '', text: '', ...o });
 const newSession = () => ({ id: `lk-${uid()}`, title: '', items: [newItem(), newItem()], done: {}, answers: {}, extra: [], at: Date.now() });
+
+/** Chữ cuối (tên) của tên gọi trong lời khai, dạng đã chuẩn hóa. */
+const nameVerbatimLast = (t) => nameKey(stripTitle(t)).split(' ').at(-1) || '';
 
 export function render(ctx) {
   const all = () => store.get(SESS, []) || [];
@@ -62,6 +66,7 @@ export function render(ctx) {
         <button class="btn btn-sm btn-ghost" type="button" data-lk-new title="Bắt đầu phân tích mới (phiên hiện tại vẫn được lưu)">${icon('file', 'ic-sm')}Phiên mới</button>
       </div>
       <div class="lk-stmts" data-lk-stmts></div>
+      <div class="lk-names" data-lk-names></div>
       <p class="hint lk-status" data-lk-status aria-live="polite"></p>
       <div data-lk-sessions></div>
     </section>
@@ -87,6 +92,8 @@ export function render(ctx) {
       </div>`,
       )
       .join('');
+    const nm = $('[data-lk-names]', v);
+    if (nm) nm.innerHTML = (s.names || []).length ? `<span class="hint">Họ tên đã xác nhận:</span>${s.names.map((n, i) => `<span class="chip">${escapeHtml(n)} <button type="button" class="btn btn-ghost btn-sm btn-icon" data-lk-unname="${i}" aria-label="Bỏ xác nhận ${escapeHtml(n)}">${icon('x', 'ic-sm')}</button></span>`).join('')}` : '';
   }
   function drawSessions() {
     const list = all().filter((x) => x.id !== s.id);
@@ -122,7 +129,7 @@ export function render(ctx) {
     const known = [];
     const c = s.caseId && casesRepo.get(s.caseId);
     if (c) (c.persons || []).forEach((p) => known.push({ ten: p.hoTen, vaiTro: getRole(p.roleId).ten.split('/')[0].trim() }));
-    st.res = analyzeStatements(items.map((x) => ({ speaker: x.speaker, role: x.role, text: x.text, label: x.speaker ? `Lời khai của ${x.speaker}` : '' })), { known, primary: c?.toiDanh?.[0] || null });
+    st.res = analyzeStatements(items.map((x) => ({ speaker: x.speaker, role: x.role, text: x.text, label: x.speaker ? `Lời khai của ${x.speaker}` : '' })), { known, primary: c?.toiDanh?.[0] || null, confirmed: s.names || [] });
     st.map = withExtraEdges(st.res.map, s.extra || []);
     const open = st.res.issues.filter((x) => !s.done[x.id]);
     const cao = open.filter((x) => x.level === 'cao').length;
@@ -161,8 +168,9 @@ export function render(ctx) {
           ? `<div class="lk-ai-ans" data-lk-ans><div class="lk-ai-h">${icon('sparkles', 'ic-sm')}AI làm rõ</div>${a.nhanDinh ? `<p>${escapeHtml(a.nhanDinh)}</p>` : ''}${a.cauHoi.length ? `<b>Câu hỏi</b><ol>${a.cauHoi.map((q) => `<li>${q.ai ? `<em>Hỏi ${escapeHtml(q.ai)}:</em> ` : ''}${escapeHtml(q.hoi)}</li>`).join('')}</ol>` : ''}${a.xacMinh.length ? `<b>Xác minh</b><ul>${a.xacMinh.map((q) => `<li>${escapeHtml(q)}</li>`).join('')}</ul>` : ''}${a.quanHe.length ? `<p class="hint">Đã bổ sung lên sơ đồ ${a.quanHe.length} quan hệ có nguyên văn trong lời khai.</p>` : ''}</div>`
           : `<div class="lk-ask"><b>Câu hỏi gợi ý</b><ol>${x.ask.map((q) => `<li>${escapeHtml(q)}</li>`).join('')}</ol></div>`
       }
+      ${x.kind === 'chua-ro-ten' ? `<div class="lk-confirm"><input class="input" data-lk-fullname placeholder="Họ tên đầy đủ của “${escapeHtml(x.rawName)}”" aria-label="Họ tên đầy đủ của ${escapeHtml(x.rawName)}" /><button type="button" class="btn btn-sm" data-lk-confirm>${icon('check', 'ic-sm')}Xác nhận tên</button></div><small class="hint">Chỉ xác nhận khi chắc chắn đúng 100% (theo lời khai, giấy tờ). Tên được xác nhận mới vào sơ đồ.</small>` : ''}
       <div class="lk-i-act">
-        ${ai() ? `<button type="button" class="btn btn-sm" data-lk-ai ${busy ? 'disabled' : ''}>${icon('sparkles', 'ic-sm')}${busy ? 'AI đang làm rõ…' : a ? 'Hỏi AI lại' : 'Hỏi AI làm rõ'}</button>` : ''}
+        ${ai() && x.kind !== 'chua-ro-ten' ? `<button type="button" class="btn btn-sm" data-lk-ai ${busy ? 'disabled' : ''}>${icon('sparkles', 'ic-sm')}${busy ? 'AI đang làm rõ…' : a ? 'Hỏi AI lại' : 'Hỏi AI làm rõ'}</button>` : ''}
         ${x.people.length ? `<button type="button" class="btn btn-sm btn-ghost" data-lk-show>${icon('eye', 'ic-sm')}Xem trên sơ đồ</button>` : ''}
         <button type="button" class="btn btn-sm btn-ghost" data-lk-done aria-pressed="${done}">${icon('check', 'ic-sm')}${done ? 'Đã rõ' : 'Đánh dấu đã rõ'}</button>
       </div>
@@ -201,7 +209,7 @@ export function render(ctx) {
         d = diagramFromCaseMap(m, { title: titleOf(), preset });
         saveD(d, preset);
       }
-      body.innerHTML = '<div data-lk-dg></div>';
+      body.innerHTML = `${(m.unclear || []).length ? `<p class="hint cm-dg-unclear">${icon('alert', 'ic-sm')}${m.unclear.length} tên chưa rõ nên chưa đưa vào sơ đồ: ${m.unclear.map((u) => `“${escapeHtml(u.ten)}”`).join(', ')} — làm rõ ở mục “Cần làm rõ”.</p>` : ''}<div data-lk-dg></div>`;
       dgCtl = mountDiagram($('[data-lk-dg]', body), {
         diagram: d,
         title: `${PRESETS[preset].label} — ${titleOf()}`,
@@ -217,7 +225,7 @@ export function render(ctx) {
       body.innerHTML = st.res.speakers.length
         ? `<p class="hint">Mỗi người khai: khai có bao nhiêu việc (đưa / nhận tiền, chỉ đạo…), phủ nhận gì, bao nhiêu câu mơ hồ, nhắc tới ai.</p><div class="lk-speakers">${st.res.speakers
             .map(
-              (p) => `<article class="lk-sp"><h3>${icon('user', 'ic-sm')}${escapeHtml(p.ten)}</h3><div class="lk-sp-kpi"><span><b>${p.khai}</b>khai có</span><span class="${p.phuNhan ? 'neg' : ''}"><b>${p.phuNhan}</b>phủ nhận</span><span class="${p.moHo ? 'warn' : ''}"><b>${p.moHo}</b>mơ hồ</span></div>${p.nhacToi.length ? `<p class="lk-sp-ppl">Nhắc tới: ${p.nhacToi.map((x) => `<span class="chip">${escapeHtml(x.ten)} · ${x.n}</span>`).join(' ')}</p>` : ''}<ul class="lk-claims">${p.claims
+              (p) => `<article class="lk-sp"><h3>${icon('user', 'ic-sm')}${escapeHtml(p.ten)}${p.ro ? '' : ' <span class="lk-sp-unclear">chưa rõ họ tên</span>'}</h3><div class="lk-sp-kpi"><span><b>${p.khai}</b>khai có</span><span class="${p.phuNhan ? 'neg' : ''}"><b>${p.phuNhan}</b>phủ nhận</span><span class="${p.moHo ? 'warn' : ''}"><b>${p.moHo}</b>mơ hồ</span></div>${p.nhacToi.length ? `<p class="lk-sp-ppl">Nhắc tới: ${p.nhacToi.map((x) => `<span class="chip">${escapeHtml(x.ten)} · ${x.n}</span>`).join(' ')}</p>` : ''}<ul class="lk-claims">${p.claims
                 .slice(0, 12)
                 .map((c) => `<li class="${c.deny ? 'deny' : 'ok'}"><span class="lk-cl-ic" aria-label="${c.deny ? 'Phủ nhận' : 'Khai có'}">${c.deny ? '✗' : '✓'}</span>${escapeHtml(c.t.length > 200 ? `${c.t.slice(0, 198)}…` : c.t)}</li>`)
                 .join('')}</ul></article>`,
@@ -242,13 +250,13 @@ export function render(ctx) {
     const source = stmts.map((x) => x.text).join('\n');
     try {
       const out = await streamClaude({ provider: a.provider, apiKey: a.apiKey, model: a.model, system: CLARIFY_SYSTEM, effort: 'medium', cache: true, maxTokens: issues.length > 1 ? 2800 : 1200, messages: [{ role: 'user', content: clarifyPrompt(issues, stmts, { max: ctxFor(a, 3500 * Math.min(issues.length, 3), 2400), primary: casesRepo.get(s.caseId || '')?.toiDanh?.[0] || null }) }] });
-      const { answers, dropped } = parseClarify(out, issues, source);
+      const { answers, dropped } = parseClarify(out, issues, source, st.map.people.map((p) => p.ten));
       Object.assign(s.answers, answers);
       const extra = Object.values(answers).flatMap((x) => x.quanHe);
       if (extra.length) s.extra = [...(s.extra || []), ...extra];
       const n = Object.keys(answers).length;
       toast(n ? `AI đã làm rõ ${n} điểm${extra.length ? `, bổ sung ${extra.length} quan hệ lên sơ đồ` : ''}` : 'AI chưa trả lời được điểm nào', { type: n ? 'success' : 'info' });
-      if (dropped) toast(`Đã bỏ ${dropped} quan hệ AI nêu nhưng không có nguyên văn trong lời khai.`, { type: 'info', timeout: 6000 });
+      if (dropped) toast(`Đã bỏ ${dropped} quan hệ AI nêu nhưng không có nguyên văn (họ tên, trích dẫn) trong lời khai.`, { type: 'info', timeout: 6000 });
     } catch (err) {
       toast(err.message, { type: 'error', timeout: 6000 });
     }
@@ -275,6 +283,10 @@ export function render(ctx) {
     });
     body.push(head('III. QUAN HỆ, DÒNG TIỀN THEO LỜI KHAI'));
     body.push(st.map.edges.length ? { table: { widths: [0.2, 0.2, 0.16, 0.16, 0.28], header: ['Từ', 'Đến', 'Nội dung', 'Số tiền (nguyên văn)', 'Căn cứ'], rows: st.map.edges.map((e) => [e.tu, e.den, e.noiDung || '', e.soTien || '', e.trich || e.src || '']) } } : p('Chưa xác định được quan hệ.'));
+    if ((st.map.unclear || []).length) {
+      body.push(head('III-b. TÊN CHƯA RÕ (KHÔNG ĐƯA VÀO SƠ ĐỒ)'));
+      body.push({ table: { widths: [0.2, 0.4, 0.4], header: ['Tên gọi', 'Lý do chưa rõ', 'Nguyên văn lời khai'], rows: st.map.unclear.map((u) => [u.ten, u.lyDo || '', (u.cau || []).slice(0, 2).join(' | ')]) } });
+    }
     body.push(head('IV. ĐỐI CHIẾU LỜI KHAI'));
     body.push(st.res.speakers.length ? { table: { widths: [0.26, 0.12, 0.12, 0.12, 0.38], header: ['Người khai', 'Khai có', 'Phủ nhận', 'Mơ hồ', 'Nhắc tới'], rows: st.res.speakers.map((x) => [x.ten, String(x.khai), String(x.phuNhan), String(x.moHo), x.nhacToi.map((y) => y.ten).join(', ')]) } } : p('Chưa ghi tên người khai.'));
     body.push(p('Phân tích bằng máy (AI chỉ dùng ở các điểm đã hỏi) — để tham khảo, cần đối chiếu với biên bản, chứng cứ.', { r: { italic: true } }));
@@ -425,6 +437,23 @@ export function render(ctx) {
     if (t.closest('[data-lk-copy]')) {
       const txt = questionsByPerson(st.res.issues, s.answers, s.done).map((g) => `${g.ai}:\n${g.list.map((q, i) => `${i + 1}. ${q}`).join('\n')}`).join('\n\n');
       return copyText(txt).then(() => toast('Đã sao chép câu hỏi làm rõ'));
+    }
+    if (t.closest('[data-lk-unname]')) {
+      s.names = (s.names || []).filter((_, i) => i !== Number(t.closest('[data-lk-unname]').dataset.lkUnname));
+      drawItems();
+      return analyze(true);
+    }
+    if (issue && t.closest('[data-lk-confirm]')) {
+      const raw = $('[data-lk-fullname]', card).value.trim();
+      const full = stripTitle(raw).replace(/\s+/g, ' ');
+      if (!isFullName(full)) return toast('Cần nhập họ tên đầy đủ (ít nhất họ và tên)', { type: 'error' });
+      // Họ tên xác nhận phải chứa đúng tên gọi trong lời khai (“Bình” → “… Bình”), tránh gán nhầm người.
+      const last = nameVerbatimLast(issue.rawName);
+      if (last && !nameKey(full).endsWith(last)) return toast(`Họ tên phải kết thúc bằng “${last}” như trong lời khai`, { type: 'error' });
+      s.names = [...new Set([...(s.names || []), full])];
+      drawItems();
+      toast(`Đã xác nhận “${full}” — đưa vào sơ đồ`);
+      return analyze(true);
     }
     if (t.closest('[data-lk-word]')) return exportWord();
     if (t.closest('[data-lk-open-map]')) return openInMap();

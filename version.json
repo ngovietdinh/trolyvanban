@@ -1,7 +1,7 @@
 {
-  "version": "2.28.0",
+  "version": "2.29.0",
   "date": "2026-10-09",
   "notes": [
-    "Phân tích lời khai: máy phân tích ngay ra sơ đồ, đối chiếu ai khai gì về ai, chỉ điểm cần làm rõ (mâu thuẫn, phủ nhận, thiếu số tiền / thời gian / chức vụ, chưa lấy lời khai); AI chỉ làm rõ từng điểm, gửi đúng câu liên quan"
+    "Tên chính xác 100%: chỉ người đủ họ tên nguyên văn mới vào sơ đồ; tên chưa rõ ghi riêng, không vẽ lên sơ đồ"
   ]
 }

@@ -14,6 +14,29 @@ export const key = (s) => String(s || '').normalize('NFC').toLocaleLowerCase('vi
 const UP = 'A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ';
 const TITLE = '(?:ông|bà|anh|chị|em|cô|chú|bác|cháu|đồng chí|đ\\/c|giám đốc|phó giám đốc|chủ tịch|phó chủ tịch|trưởng phòng|phó trưởng phòng|kế toán trưởng|kế toán|thủ quỹ|thủ kho|cán bộ|chuyên viên|bị can|người làm chứng|đối tượng|hộ|ông\\/bà)';
 const NAME_RE = new RegExp(`(?<![\\p{L}])${TITLE}\\s+((?:[${UP}][\\p{Ll}]*)(?:\\s+[${UP}][\\p{Ll}]*){0,3})`, 'gu');
+// Quy tắc tên: chỉ đưa vào sơ đồ khi là HỌ TÊN ĐẦY ĐỦ (≥ 2 chữ, không tính danh xưng) có nguyên văn trong lời khai.
+// Tên gọi trơ (“ông Bình”), tên có thể bị cắt, tên trùng nhiều người → “chưa rõ”, không đưa vào sơ đồ.
+const TITLE_WORDS = new Set(['ông', 'bà', 'anh', 'chị', 'em', 'cô', 'chú', 'bác', 'cháu', 'đồng', 'chí', 'đ/c', 'hộ']);
+const ORG_CAP = new Set(['Ban', 'Phòng', 'Sở', 'UBND', 'HĐND', 'Cục', 'Tổng', 'Huyện', 'Xã', 'Tỉnh', 'Bộ', 'Viện', 'Bệnh', 'Đảng', 'Đoàn']);
+const wordsOf = (t) => String(t || '').trim().split(/\s+/).filter(Boolean);
+/** Bỏ danh xưng đứng đầu (“Ông Nguyễn Văn An” → “Nguyễn Văn An”). */
+export const stripTitle = (t) => {
+  const w = wordsOf(t);
+  while (w.length && TITLE_WORDS.has(w[0].toLowerCase())) w.shift();
+  return w.join(' ');
+};
+/** Họ tên đầy đủ: sau khi bỏ danh xưng còn ≥ 2 chữ, chỉ gồm chữ cái. */
+export const isFullName = (t) => {
+  const w = wordsOf(stripTitle(t));
+  return w.length >= 2 && w.every((x) => /^[\p{L}'’.-]+$/u.test(x));
+};
+/** Tên có nguyên văn trong nguồn (hoặc đã là tên rõ ràng trong sơ đồ: allow)? Không có nguồn thì chỉ cần đủ họ tên. */
+export const nameVerbatim = (t, source = '', allow = new Set()) => {
+  const n = stripTitle(t);
+  if (!isFullName(n)) return false;
+  const k = key(n);
+  return allow.has(k) || !source || key(source).includes(k);
+};
 // Chức vụ (chỉ lấy khi có NGUYÊN VĂN trong lời khai: đứng trước tên, hoặc ngay sau tên).
 const JOB = '(?:phó giám đốc|giám đốc|phó chủ tịch|chủ tịch|phó trưởng phòng|trưởng phòng|trưởng ban|phó trưởng ban|kế toán trưởng|kế toán viên|kế toán|thủ quỹ|thủ kho|cán bộ|chuyên viên|nhân viên|cán bộ địa chính|chánh văn phòng|phó chánh văn phòng|bí thư|phó bí thư|thanh tra viên|nhà thầu|chủ đầu tư|chỉ huy trưởng|đội trưởng|tổ trưởng)';
 const JOB_RE = new RegExp(`^${JOB}$`, 'i');
@@ -54,38 +77,48 @@ export function sentences(sources) {
   );
 }
 
-/** Người được nhắc tới: tên có danh xưng / chức danh đứng trước, người khai, người trong hồ sơ. */
+/**
+ * Người được nhắc tới: tên có danh xưng / chức danh đứng trước, người khai, người trong hồ sơ.
+ * Tên gọi ngắn (“Bình”, “Văn Bình”) chỉ gộp vào họ tên đầy đủ khi chỉ khớp ĐÚNG MỘT người; khớp nhiều người → ambiguous.
+ */
 export function findPeople(sents, known = []) {
-  const map = new Map();
+  const reg = new Map();
   const put = (ten, extra = {}) => {
     ten = String(ten || '').trim().replace(/\s+/g, ' ');
     if (!ten || ten.length < 2) return null;
     const k = key(ten);
-    // Gộp tên ngắn (Bình, Văn Bình) vào tên đầy đủ đã có (Trần Văn Bình).
-    const full = [...map.values()].find((p) => p.key === k || p.key.endsWith(` ${k}`) || k.endsWith(` ${p.key}`));
-    if (full) {
-      if (k.length > full.key.length) Object.assign(full, { ten, key: k });
-      Object.assign(full, Object.fromEntries(Object.entries(extra).filter(([, v]) => v)));
-      return full;
-    }
-    const p = { ten, key: k, vaiTro: '', mentions: 0, ...extra };
-    map.set(k, p);
-    return p;
+    const e = reg.get(k) || { ten, key: k, keys: new Set([k]), vaiTro: '', mentions: 0, idx: reg.size };
+    reg.set(k, e);
+    Object.assign(e, Object.fromEntries(Object.entries(extra).filter(([, v]) => v)));
+    return e;
   };
   known.forEach((p) => put(p.ten, { vaiTro: p.vaiTro || '', known: true }));
   sents.forEach((s) => s.speaker && put(s.speaker, { speaker: true }));
-  // Danh xưng viết hoa đầu câu (“Bà Lê Thị Cúc…”) → viết thường để nhận diện tên ngay sau.
-  const TITLE_CI = new RegExp(`(?<![\\p{L}])${TITLE}(?=\\s)`, 'giu');
+  // Danh xưng viết hoa đầu câu (“Bà Lê Thị Cúc…”) → viết thường để nhận diện tên ngay sau; giữa câu giữ nguyên
+  // (tránh “Hoàng Thị Em” bị đọc “em” là danh xưng rồi cắt mất chữ “Em”).
+  const TITLE_START = new RegExp(`^(\\s*)(${TITLE})(?=\\s)`, 'iu');
+  // Chức danh (không phải cách xưng hô) viết hoa giữa câu vẫn là chức danh: “chuyển cho Giám đốc Trần Văn Bình”.
+  const TITLE_JOB = new RegExp(`(?<![\\p{L}])(?:đồng chí|đ\\/c|giám đốc|phó giám đốc|chủ tịch|phó chủ tịch|trưởng phòng|phó trưởng phòng|kế toán trưởng|kế toán|thủ quỹ|thủ kho|cán bộ|chuyên viên|bị can|người làm chứng|đối tượng)(?=\\s)`, 'giu');
   for (const s of sents) {
-    const low = s.t.replace(TITLE_CI, (x) => x.toLocaleLowerCase('vi-VN'));
+    const low = s.t.replace(TITLE_START, (_, sp, t) => sp + t.toLocaleLowerCase('vi-VN')).replace(TITLE_JOB, (t) => t.toLocaleLowerCase('vi-VN'));
     for (const m of low.matchAll(NAME_RE)) {
       const title = m[0].slice(0, m[0].length - m[1].length).trim();
+      // Tên viết hoa dính liền tên đơn vị (“ông Nguyễn Văn An Ban QLDA”) → cắt ở chữ chỉ đơn vị.
+      let nm = m[1];
+      const nw = nm.split(' ');
+      const cut = nw.findIndex((w, i) => i > 0 && ORG_CAP.has(w));
+      if (cut > 0) nm = nw.slice(0, cut).join(' ');
       // Chức vụ nguyên văn: “Giám đốc Trần Văn Bình”, “ông An, kế toán Ban QLDA”, “bà Cúc (thủ quỹ)”.
       const after = s.t.slice(m.index + m[0].length).match(JOB_AFTER);
       const before = JOB_RE.test(title) ? title : (s.t.slice(Math.max(0, m.index - 70), m.index).match(JOB_BEFORE) || [])[1];
       const chucVu = trimJob(after?.[1] || before || '');
-      const p = put(m[1], chucVu ? { chucVu: chucVu.charAt(0).toLocaleUpperCase('vi-VN') + chucVu.slice(1), chucVuTrich: short(s.t, 200) } : {});
+      const p = put(nm, chucVu ? { chucVu: chucVu.charAt(0).toLocaleUpperCase('vi-VN') + chucVu.slice(1), chucVuTrich: short(s.t, 200) } : {});
       if (p && chucVu && p.chucVu !== chucVu && !p.chucVu) p.chucVu = chucVu;
+      // Tên 4 chữ mà liền sau vẫn là chữ viết hoa → có thể còn dài hơn, chưa chắc đã đủ.
+      if (p && cut < 0 && nw.length >= 4) {
+        const nx = s.t.slice(m.index + m[0].length).match(new RegExp(`^\\s+([${UP}][\\p{Ll}]*)`, 'u'));
+        if (nx) p.nghiNgo = nx[1];
+      }
     }
   }
   // Người khai tự nêu chức vụ: “Tôi là kế toán Ban QLDA huyện X”, “tôi giữ chức Giám đốc…”.
@@ -96,13 +129,50 @@ export function findPeople(sents, known = []) {
     const p = put(s.speaker, { speaker: true });
     if (p && chucVu && !p.chucVu) Object.assign(p, { chucVu: chucVu.charAt(0).toLocaleUpperCase('vi-VN') + chucVu.slice(1), chucVuTrich: short(s.t, 200) });
   }
-  const people = [...map.values()];
-  // Bí danh để nhận diện trong câu: tên đầy đủ, 2 chữ cuối, “ông/bà + tên”.
+  // Gộp tên ngắn vào họ tên đầy đủ khi chỉ có một khả năng; nhiều khả năng → giữ riêng, đánh ambiguous.
+  const canon = [];
+  for (const e of [...reg.values()].sort((a, b) => wordsOf(b.ten).length - wordsOf(a.ten).length)) {
+    const cands = canon.filter((c) => !c.ambiguous && c.key.endsWith(` ${e.key}`));
+    if (cands.length === 1) {
+      const c = cands[0];
+      c.keys.add(e.key);
+      c.idx = Math.min(c.idx, e.idx);
+      for (const [f, v] of Object.entries(e)) if (!['key', 'keys', 'ten', 'mentions', 'idx', 'aliases'].includes(f) && v && !c[f]) c[f] = v;
+      continue;
+    }
+    if (cands.length > 1) e.ambiguous = cands.map((c) => c.ten);
+    canon.push(e);
+  }
+  const people = canon.sort((a, b) => a.idx - b.idx);
+  // Cách gọi để nhận diện trong câu: họ tên đầy đủ, 2 chữ cuối, danh xưng + tên. Tên gọi trơ chỉ nhận dạng khi có danh xưng.
+  const TT = ['ông', 'bà', 'anh', 'chị', 'em', 'cô', 'chú', 'bác', 'cháu'];
   people.forEach((p) => {
     const w = p.ten.split(' ');
-    p.aliases = [...new Set([p.key, w.length >= 3 ? key(w.slice(-2).join(' ')) : null, w.length >= 2 ? `ông ${key(w.at(-1))}` : null, w.length >= 2 ? `bà ${key(w.at(-1))}` : null, w.length >= 2 ? `anh ${key(w.at(-1))}` : null, w.length >= 2 ? `chị ${key(w.at(-1))}` : null].filter(Boolean))];
+    p.aliases = [...new Set([w.length >= 2 ? p.key : null, w.length >= 3 ? key(w.slice(-2).join(' ')) : null, ...[...p.keys].filter((x) => x.includes(' ')), ...TT.map((t) => `${t} ${key(w.at(-1))}`)].filter(Boolean))];
   });
   return people;
+}
+
+/**
+ * Phân loại người: rõ (họ tên đầy đủ, có nguyên văn) / chưa rõ (lyDo). Chỉ người rõ mới được đưa vào sơ đồ.
+ * Cách gọi dùng chung cho nhiều người (“ông Bình” khi có hai người tên Bình) bị bỏ khỏi người rõ.
+ */
+export function classifyPeople(sents, known = []) {
+  const all = findPeople(sents, known);
+  const text = key(sents.map((x) => x.t).join(' '));
+  for (const p of all) {
+    let why = '';
+    if (p.ambiguous?.length) why = `“${p.ten}” có thể là ${p.ambiguous.join(' hoặc ')} — lời khai không nói rõ là ai`;
+    else if (!isFullName(p.ten)) why = `Chỉ có tên gọi “${p.ten}”, chưa có họ tên đầy đủ trong lời khai`;
+    else if (p.nghiNgo) why = `Tên “${p.ten}” có thể chưa đầy đủ (liền sau là “${p.nghiNgo}”)`;
+    else if (!p.known && !p.speaker && !text.includes(key(p.ten))) why = 'Họ tên không có nguyên văn trong lời khai';
+    p.clear = !why;
+    p.lyDo = why;
+  }
+  const cnt = new Map();
+  all.filter((p) => p.clear).forEach((p) => p.aliases.forEach((a) => cnt.set(a, (cnt.get(a) || 0) + 1)));
+  all.filter((p) => p.clear).forEach((p) => (p.aliases = p.aliases.filter((a) => cnt.get(a) === 1)));
+  return all;
 }
 
 /** Vị trí người được nhắc trong câu (theo thứ tự xuất hiện); “tôi” = người khai. */
@@ -118,7 +188,7 @@ export function actorsIn(s, people) {
     if (at >= 0) hits.push({ p, at });
   }
   if (s.speaker && /(^|\s)tôi(\s|$)/.test(t)) {
-    const sp = people.find((p) => p.key === key(s.speaker));
+    const sp = people.find((p) => p.keys?.has(key(s.speaker)) || p.key === key(s.speaker));
     if (sp && !hits.some((h) => h.p === sp)) hits.push({ p: sp, at: t.indexOf(' tôi ') });
   }
   return hits.sort((a, b) => a.at - b.at).map((h) => h.p);
@@ -139,18 +209,21 @@ export const parseDate = (s) => {
  * số tiền lớn nhất nêu trong câu, có phải câu phủ nhận không.
  */
 export function classifySentence(s, people) {
-  const actors = actorsIn(s, people);
+  const hits = actorsIn(s, people);
+  const actors = hits.filter((p) => p.clear !== false);
+  const unclear = hits.filter((p) => p.clear === false);
   const money = amountsIn(s.t).sort((x, y) => y.v - x.v)[0] || null;
   const type = MONEY_V.test(s.t) || (RECV_V.test(s.t) && (money || /tiền|tài sản|vàng|quà/i.test(s.t))) ? 'tien' : ORDER_V.test(s.t) ? 'chi-dao' : OTHER_V.test(s.t) ? 'khac' : null;
-  let [from, to] = actors;
+  let [from, to] = hits;
   // “B nhận … của / từ A” → A → B; “nhận” đứng trước người thứ hai.
   const tk = key(s.t);
   if (type === 'tien' && RECV_V.test(s.t) && !MONEY_V.test(s.t)) [from, to] = [to, from];
-  if (actors.length >= 2 && /(của|từ)\s/.test(tk) && RECV_V.test(s.t) && tk.indexOf(' của ') > -1) [from, to] = [actors[1], actors[0]];
+  if (hits.length >= 2 && /(của|từ)\s/.test(tk) && RECV_V.test(s.t) && tk.indexOf(' của ') > -1) [from, to] = [hits[1], hits[0]];
   // Mũi tên luôn đi từ người đưa → người nhận, nên “nhận” được ghi thành “đưa”.
   let verb = type ? (s.t.match(type === 'tien' ? MONEY_V : type === 'chi-dao' ? ORDER_V : OTHER_V) || [''])[0].toLowerCase() : '';
   if (type === 'tien' && !verb) verb = 'đưa';
-  return { actors, from, to, type, verb, money, deny: isDenial(s.t), date: parseDate(s.t) };
+  // ok: cả hai đầu mũi tên đều là người rõ họ tên → mới vẽ được.
+  return { hits, actors, unclear, from, to, ok: !!(from && to && from.clear !== false && to.clear !== false), type, verb, money, deny: isDenial(s.t), date: parseDate(s.t) };
 }
 
 /**
@@ -161,15 +234,21 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
   const sents = sentences(sources);
   const text = sents.map((s) => s.t).join('\n');
   const an = text ? analyzeOffline(text, { primary }) : { tomTat: '', crimes: [], items: [] };
-  const people = findPeople(sents, known);
+  const all = classifyPeople(sents, known);
+  const people = all.filter((p) => p.clear);
 
   // Quan hệ, dòng tiền giữa các người.
   const edges = [];
   for (const s of sents) {
-    const c = classifySentence(s, people);
-    c.actors.forEach((p) => p.mentions++);
+    const c = classifySentence(s, all);
+    c.hits.forEach((p) => p.mentions++);
+    // Người chưa rõ tên: ghi lại câu nguyên văn có nhắc (không đưa vào sơ đồ).
+    c.unclear.forEach((p) => {
+      p.cau = p.cau || [];
+      if (p.cau.length < 3) p.cau.push({ t: short(s.t, 200), speaker: s.speaker || '' });
+    });
     // Câu phủ nhận không dựng thành quan hệ (Phân tích lời khai nêu riêng thành điểm cần làm rõ).
-    if (c.actors.length < 2 || !c.type || c.deny) continue;
+    if (c.hits.length < 2 || !c.type || c.deny || !c.ok) continue;
     const { from, to, type, verb, money } = c;
     const dup = edges.find((e) => e.from === from && e.to === to && e.type === type && (e.amount?.v || 0) === (money?.v || 0));
     if (dup) {
@@ -201,7 +280,7 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
         .map((x) => {
           const s = sents.find((y) => x.trich && y.t.includes(x.trich.slice(0, 40))) || { t: x.trich, speaker: '' };
           const m = amountsIn(x.trich || '').sort((a, b) => b.v - a.v)[0];
-          return { ten: x.ten, trich: short(x.trich, 220), nguoi: actorsIn(s, people).map((p) => p.ten), soTien: m ? m.raw : '' };
+          return { ten: x.ten, trich: short(x.trich, 220), nguoi: actorsIn(s, all).filter((p) => p.clear).map((p) => p.ten), soTien: m ? m.raw : '' };
         }),
     }))
     .filter((c) => c.items.length);
@@ -231,6 +310,7 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
     banChat,
     crimes,
     people: people.filter((p) => p.mentions || p.known).map(({ ten, vaiTro, chucVu, chucVuTrich, suyRa, mentions, speaker, known: k }) => ({ ten, vaiTro, chucVu: chucVu || '', chucVuTrich: chucVuTrich || '', suyRa: suyRa || '', mentions, speaker: !!speaker, known: !!k })),
+    unclear: all.filter((p) => !p.clear && (p.mentions || p.known || p.speaker)).map((p) => ({ ten: p.ten, lyDo: p.lyDo, cau: (p.cau || []).map((x) => x.t), nguoiKhai: [...new Set((p.cau || []).map((x) => x.speaker).filter(Boolean))] })),
     edges: edges.map((e) => ({ tu: e.from.ten, den: e.to.ten, loai: e.type, noiDung: e.verb, soTien: e.amount?.raw || '', trich: e.trich, src: e.src, n: e.n })),
     timeline,
     amounts: amounts.map((m) => m.raw),
@@ -241,14 +321,14 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
 
 /* ---------------- AI ---------------- */
 
-export const CASE_MAP_SYSTEM = 'Bạn là điều tra viên cao cấp. Đọc tài liệu, lời khai và dựng sơ đồ bản chất vụ việc: ai làm gì, với ai, khi nào, bao nhiêu tiền, thuộc điều luật nào. Chỉ dựa trên nội dung được cung cấp, không suy diễn. Chỉ trả về JSON hợp lệ.';
+export const CASE_MAP_SYSTEM = 'Bạn là điều tra viên cao cấp. Đọc tài liệu, lời khai và dựng sơ đồ bản chất vụ việc: ai làm gì, với ai, khi nào, bao nhiêu tiền, thuộc điều luật nào. Chỉ dựa trên nội dung được cung cấp, không suy diễn. Họ tên người phải chép NGUYÊN VĂN, đầy đủ (họ, tên đệm, tên) như trong nội dung; người chỉ có tên gọi (“ông An”, “bà Cúc”) mà nội dung chưa có họ tên đầy đủ thì KHÔNG đưa vào sơ đồ. Chỉ trả về JSON hợp lệ.';
 
 export function caseMapPrompt(text, { known = [], primary = null, part = null } = {}) {
   // Phần cố định trước (giống nhau giữa các phần của cùng tài liệu → đọc lại từ cache), nội dung đặt cuối.
   const stable = `${primary ? `Điều luật đang xem xét: Điều ${primary} BLHS.\n` : ''}${known.length ? `Người trong hồ sơ: ${known.map((p) => `${p.ten}${p.vaiTro ? ` (${p.vaiTro})` : ''}`).join('; ')}\n` : ''}Đọc NỘI DUNG ở cuối, trả về JSON:
 {"tomTat":"bản chất vụ việc 3–5 câu",
  "banChat":["các ý then chốt, mỗi ý một câu ngắn"],
- "nguoi":[{"ten":"họ tên","vaiTro":"chức vụ CHÉP NGUYÊN VĂN trong nội dung — không có thì để trống, không tự suy ra"}],
+ "nguoi":[{"ten":"họ tên đầy đủ CHÉP NGUYÊN VĂN — chưa có họ tên đầy đủ trong nội dung thì bỏ người đó","vaiTro":"chức vụ CHÉP NGUYÊN VĂN trong nội dung — không có thì để trống, không tự suy ra"}],
  "hanhVi":[{"ten":"hành vi","dieu":"số điều BLHS","nguoi":["ai thực hiện"],"soTien":"số tiền CHÉP NGUYÊN VĂN trong nội dung — không có thì để trống","trich":"trích nguyên văn ngắn"}],
  "quanHe":[{"tu":"người A","den":"người B","loai":"tien|chi-dao|khac","noiDung":"A làm gì với B","soTien":"số tiền CHÉP NGUYÊN VĂN — không có thì để trống"}],
  "moc":[{"thoiGian":"dd/mm/yyyy hoặc mô tả","suKien":"sự kiện"}]}
@@ -279,7 +359,7 @@ export function caseMapToAiJson(m) {
 export function caseMapRefinePrompt(m, request, { source = '', primary = null, max = 12000 } = {}) {
   const cur = JSON.stringify(caseMapToAiJson(m));
   const stable = `${primary ? `Điều luật đang xem xét: Điều ${primary} BLHS.\n` : ''}Nhiệm vụ: thực hiện YÊU CẦU CỦA ĐIỀU TRA VIÊN (ở cuối) trên SƠ ĐỒ VỤ VIỆC HIỆN TẠI: giữ nguyên những gì đúng, sửa / bổ sung / bỏ theo yêu cầu, không suy diễn ngoài tài liệu.
-Chức vụ, số tiền, trích dẫn phải CHÉP NGUYÊN VĂN trong tài liệu; không có thì để trống, tuyệt đối không tự suy ra.
+Họ tên đầy đủ, chức vụ, số tiền, trích dẫn phải CHÉP NGUYÊN VĂN trong tài liệu; không có thì để trống, tuyệt đối không tự suy ra; người chưa rõ họ tên đầy đủ thì không đưa vào sơ đồ.
 Trả về TOÀN BỘ sơ đồ sau khi sửa, cùng định dạng JSON:
 {"tomTat":"…","banChat":["…"],"nguoi":[{"ten":"…","vaiTro":"…"}],"hanhVi":[{"ten":"…","dieu":"…","nguoi":["…"],"soTien":"…","trich":"…"}],"quanHe":[{"tu":"…","den":"…","loai":"tien|chi-dao|khac","noiDung":"…","soTien":"…"}],"moc":[{"thoiGian":"…","suKien":"…"}],"ghiChu":"1 câu: đã thay đổi gì"}
 `;
@@ -300,8 +380,11 @@ ${String(request).slice(0, 2000)}
 export function mergeAiCaseMap(base, raw, { append = false, replace = false, source = '' } = {}) {
   const j = typeof raw === 'string' ? extractJson(raw) : raw;
   if (!j || (!Array.isArray(j.hanhVi) && !Array.isArray(j.quanHe))) throw new Error('AI trả về kết quả không đúng định dạng — đang dùng sơ đồ phân tích trên máy');
-  if (source) verifyAiAgainstSource(j, source);
+  const clearKeys = new Set((base.people || []).map((p) => key(p.ten)));
+  verifyAiAgainstSource(j, source, clearKeys);
   const verifyDropped = j._dropped || null;
+  const uniqU = new Map([...(base.unclear || []), ...(j._unclear || [])].filter((u) => !clearKeys.has(key(u.ten))).map((u) => [key(u.ten), u]));
+  const unclear = [...uniqU.values()];
   const byDieu = new Map();
   (j.hanhVi || []).forEach((h) => {
     const d = String(h.dieu || '').replace(/\D+$/, '').replace(/^Điều\s*/i, '').trim();
@@ -321,7 +404,7 @@ export function mergeAiCaseMap(base, raw, { append = false, replace = false, sou
     const b0 = baseEdge({ ...e, loai });
     return { tu: e.tu, den: e.den, loai, noiDung: e.noiDung || b0?.noiDung || '', soTien: e.soTien || b0?.soTien || '', trich: b0?.trich || '', src: b0 ? b0.src : 'AI', n: 1 };
   });
-  edges.forEach((e) => [e.tu, e.den].forEach((t) => !people.has(key(t)) && people.set(key(t), { ten: t, vaiTro: 'Người liên quan', mentions: 1 })));
+  edges.forEach((e) => [e.tu, e.den].forEach((t) => !people.has(key(t)) && people.set(key(t), { ten: t, vaiTro: '', mentions: 1 })));
   const timeline = (j.moc || []).filter((m) => m?.suKien).map((m) => ({ ts: parseDate(String(m.thoiGian || ''))?.ts ?? Number.MAX_SAFE_INTEGER, thoiGian: m.thoiGian || '', suKien: m.suKien, src: 'AI' })).sort((a, b) => a.ts - b.ts);
   if (append && base.ai) {
     const crimes = base.crimes.map((c) => ({ ...c, items: [...c.items] }));
@@ -342,11 +425,12 @@ export function mergeAiCaseMap(base, raw, { append = false, replace = false, sou
       edges: uniq([...base.edges, ...edges], ek),
       timeline: uniq([...base.timeline, ...timeline], tk).sort((a, b) => a.ts - b.ts),
       ai: true,
+      unclear,
       verifyDropped,
     };
   }
   if (replace) {
-    return { ...base, tomTat: j.tomTat || '', banChat: j.banChat || [], crimes: [...byDieu.values()], people: [...people.values()], edges, timeline, ai: true, note: String(j.ghiChu || '').slice(0, 300), verifyDropped };
+    return { ...base, tomTat: j.tomTat || '', banChat: j.banChat || [], crimes: [...byDieu.values()], people: [...people.values()], edges, timeline, ai: true, note: String(j.ghiChu || '').slice(0, 300), unclear, verifyDropped };
   }
   return {
     ...base,
@@ -357,6 +441,7 @@ export function mergeAiCaseMap(base, raw, { append = false, replace = false, sou
     edges: edges.length ? edges : base.edges,
     timeline: timeline.length ? timeline : base.timeline,
     ai: true,
+    unclear,
     verifyDropped,
   };
 }
@@ -365,33 +450,54 @@ export function mergeAiCaseMap(base, raw, { append = false, replace = false, sou
  * Đối chiếu kết quả AI với lời khai / tài liệu gốc (sửa trực tiếp j): chức vụ, số tiền, trích dẫn chỉ giữ khi có
  * NGUYÊN VĂN trong nguồn; số tiền khớp giá trị thì dùng đúng cách ghi trong nguồn. Ghi lại số mục đã bỏ (j._dropped).
  */
-export function verifyAiAgainstSource(j, source) {
+export function verifyAiAgainstSource(j, source, allow = new Set()) {
   const src = key(source);
-  const amounts = amountsIn(source);
-  const dropped = { chucVu: 0, soTien: 0, trich: 0 };
+  const has = !!source;
+  const amounts = has ? amountsIn(source) : [];
+  const dropped = { chucVu: 0, soTien: 0, trich: 0, ten: 0 };
+  const unclear = new Map();
+  // Tên: phải là họ tên đầy đủ, có nguyên văn trong lời khai (hoặc đã là tên rõ trong sơ đồ); không thì bỏ khỏi sơ đồ, ghi “chưa rõ”.
+  const name = (t) => {
+    const n = stripTitle(String(t || '').trim());
+    if (!n) return '';
+    if (nameVerbatim(n, source, allow)) return n;
+    dropped.ten++;
+    const k = key(n);
+    if (!unclear.has(k)) unclear.set(k, { ten: n, lyDo: isFullName(n) ? 'AI nêu tên nhưng không có nguyên văn trong lời khai' : `Chỉ có tên gọi “${n}”, chưa có họ tên đầy đủ`, cau: [], nguoiKhai: [] });
+    return '';
+  };
   const money = (v) => {
-    if (!v) return '';
+    if (!v || !has) return v || '';
     const val = amountsIn(String(v))[0]?.v;
     const hit = val ? amounts.find((a) => a.v === val) : null;
     if (!hit) dropped.soTien++;
     return hit ? hit.raw : '';
   };
-  (j.nguoi || []).forEach((p) => {
-    if (p?.vaiTro && !src.includes(key(p.vaiTro))) {
+  j.nguoi = (j.nguoi || []).filter((p) => p?.ten && (p.ten = name(p.ten)));
+  j.nguoi.forEach((p) => {
+    if (has && p.vaiTro && !src.includes(key(p.vaiTro))) {
       dropped.chucVu++;
       p.vaiTro = '';
     }
   });
   (j.hanhVi || []).forEach((h) => {
     if (!h) return;
+    h.nguoi = (h.nguoi || []).map(name).filter(Boolean);
     h.soTien = money(h.soTien);
-    if (h.trich && !src.includes(key(h.trich).slice(0, 80))) {
+    if (has && h.trich && !src.includes(key(h.trich).slice(0, 80))) {
       dropped.trich++;
       h.trich = '';
     }
   });
-  (j.quanHe || []).forEach((e) => e && (e.soTien = money(e.soTien)));
+  j.quanHe = (j.quanHe || []).filter((e) => {
+    if (!e) return false;
+    e.tu = name(e.tu);
+    e.den = name(e.den);
+    e.soTien = money(e.soTien);
+    return e.tu && e.den;
+  });
   j._dropped = dropped;
+  j._unclear = [...unclear.values()];
   return j;
 }
 
@@ -462,4 +568,19 @@ export function relevantText(full, request, max = 12000) {
     len += x.s.length + 1;
   }
   return scored.filter((x) => pick.has(x.i)).map((x) => x.s).join(' ');
+}
+
+/** Kết quả đã lưu từ phiên bản cũ (chưa có “tên chưa rõ”): bỏ người chưa đủ họ tên khỏi sơ đồ và ghi vào danh sách chưa rõ. */
+export function sanitizeNames(m) {
+  if (!m || Array.isArray(m.unclear)) return m;
+  const bad = (m.people || []).filter((p) => !isFullName(p.ten));
+  const badK = new Set(bad.map((p) => key(p.ten)));
+  const ok = (n) => !badK.has(key(n));
+  return {
+    ...m,
+    people: (m.people || []).filter((p) => ok(p.ten)),
+    edges: (m.edges || []).filter((e) => ok(e.tu) && ok(e.den)),
+    crimes: (m.crimes || []).map((c) => ({ ...c, items: c.items.map((it) => ({ ...it, nguoi: (it.nguoi || []).filter(ok) })) })),
+    unclear: bad.map((p) => ({ ten: p.ten, lyDo: `Chỉ có tên gọi “${p.ten}”, chưa có họ tên đầy đủ trong lời khai`, cau: [], nguoiKhai: [] })),
+  };
 }
