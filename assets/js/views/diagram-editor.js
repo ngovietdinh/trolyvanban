@@ -2,6 +2,7 @@
 // hoàn tác / làm lại, sắp xếp tự động, thu phóng, toàn màn hình, xuất PNG / SVG. Tự lưu sau mỗi thay đổi.
 import { $, $$, icon, toast, escapeHtml, downloadBlob } from '../ui.js';
 import { attachSuggest } from '../lib/suggest.js';
+import { makeResizable } from '../lib/resizer.js';
 import { store, uid } from '../lib/store.js';
 import { NODE_KINDS, EDGE_KINDS, PEN_COLORS, LAYOUTS, FONT_STEPS, newId, layoutDiagram, bounds, simplify, strokeAt, diagramSvgBody, diagramToSvg, labelSuggestions, nodeIdeas, treeOf, hiddenSet, fontScale, nodeSize, isTreeLayout } from '../legal/diagram.js';
 
@@ -68,13 +69,18 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
         <div class="dg-pop dg-lib" data-dg-libp hidden role="dialog" aria-label="Lưu và mở sơ đồ"></div>
         <input type="file" accept=".json,application/json" data-dg-file hidden />
       </div>
+      <div class="dg-vsplit" data-dg-vsplit style="right: var(--dg-pw, 260px)" title="Kéo để đổi độ rộng khung thuộc tính · bấm đúp: mặc định" aria-label="Kéo để đổi độ rộng khung thuộc tính"></div>
       <aside class="dg-props" data-dg-props></aside>
     </div>
+    <div class="dg-grip" data-dg-grip title="Kéo để đổi chiều cao khung vẽ · bấm đúp: mặc định" aria-label="Kéo để đổi chiều cao khung vẽ"></div>
     <div class="dg-foot"><small data-dg-stat></small><span class="spacer"></span>${onRebuild ? `<button type="button" class="btn btn-ghost btn-sm" data-dg-rebuild title="Cập nhật nút, mũi tên từ sơ đồ vụ việc hiện tại — giữ vị trí, nhãn đã sửa và mọi thứ tự thêm">${icon('refresh', 'ic-sm')}Cập nhật từ sơ đồ vụ việc</button>` : ''}<button type="button" class="btn btn-sm" data-dg-lib title="Lưu bản sơ đồ có tên, mở bản đã lưu, tải ra / mở từ tệp">${icon('save', 'ic-sm')}Lưu / mở bản</button><button type="button" class="btn btn-ghost btn-sm" data-dg-clear>${icon('trash', 'ic-sm')}Xóa nét vẽ</button><button type="button" class="btn btn-sm" data-dg-png>${icon('download', 'ic-sm')}PNG</button><button type="button" class="btn btn-sm" data-dg-svgx>${icon('download', 'ic-sm')}SVG</button></div>
   </div>`;
   const root = $('[data-dg]', host);
   const svg = $('[data-dg-svg]', root);
   const canvas = $('[data-dg-canvas]', root);
+  // Kéo thanh dưới khung vẽ để đổi chiều cao; kéo thanh trước khung thuộc tính để đổi độ rộng (nhớ trên máy).
+  const rzH = makeResizable($('[data-dg-grip]', root), { axis: 'y', min: 280, max: () => Math.max(420, window.innerHeight * 1.6), key: 'tlvb:dg-h', current: () => canvas.getBoundingClientRect().height, apply: (v) => root.style.setProperty('--dg-h', v == null ? '' : `${v}px`) });
+  const rzW = makeResizable($('[data-dg-vsplit]', root), { axis: 'x', dir: -1, min: 200, max: () => Math.max(260, root.clientWidth * 0.5), key: 'tlvb:dg-pw', current: () => $('[data-dg-props]', root).getBoundingClientRect().width, apply: (v) => root.style.setProperty('--dg-pw', v == null ? '' : `${v}px`) });
   const props = $('[data-dg-props]', root);
 
   /* ---------- Lịch sử ---------- */
@@ -997,6 +1003,8 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       return hl.size;
     },
     destroy() {
+      rzH.destroy();
+      rzW.destroy();
       popCtl?.abort();
       document.removeEventListener('fullscreenchange', onFs);
       if (document.fullscreenElement === root) document.exitFullscreen?.();

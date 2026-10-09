@@ -41,7 +41,7 @@ test('sơ đồ vụ việc trên máy: điều luật, hành vi, dòng tiền, 
 
 test('ghép kết quả AI: điều luật kiểm tra với Bộ luật, quan hệ, mốc thời gian', () => {
   const base = buildCaseMap({ sources: SRC });
-  const m = mergeAiCaseMap(base, JSON.stringify({ tomTat: 'Tham ô qua chi khống.', banChat: ['A chiếm đoạt 300 triệu'], nguoi: [{ ten: 'Phạm D', vaiTro: 'Người môi giới' }], hanhVi: [{ ten: 'Chi khống', dieu: '353', nguoi: ['Nguyễn Văn An'], soTien: '300 triệu' }, { ten: 'Việc lạ', dieu: '9999' }], quanHe: [{ tu: 'Phạm D', den: 'Nguyễn Văn An', loai: 'chi-dao', noiDung: 'môi giới' }], moc: [{ thoiGian: '01/02/2025', suKien: 'Bắt đầu' }] }));
+  const m = mergeAiCaseMap(base, JSON.stringify({ tomTat: 'Tham ô qua chi khống.', banChat: ['A chiếm đoạt 300 triệu'], nguoi: [{ ten: 'Phạm D', vaiTro: 'Người môi giới' }], hanhVi: [{ ten: 'Chi khống', dieu: '353', nguoi: ['Nguyễn Văn An'], soTien: '300 triệu' }, { ten: 'Việc lạ', dieu: '9999' }], quanHe: [{ tu: 'Phạm D', den: 'Nguyễn Văn An', loai: 'chi-dao', noiDung: 'môi giới' }], moc: [{ thoiGian: '01/02/2025', suKien: 'Bắt đầu' }] }), { primary: '353' });
   assert.ok(m.ai);
   assert.deepEqual(m.crimes.map((c) => c.dieu), ['353', '']);
   assert.ok(m.people.some((p) => p.ten === 'Phạm D' && p.vaiTro === 'Người môi giới'));
@@ -66,5 +66,6 @@ test('chức vụ, số tiền chỉ lấy NGUYÊN VĂN: AI tự thêm chức v�
   // Số tiền AI bịa (150 triệu) bị bỏ; quan hệ giữ số tiền nguyên văn đã có trong lời khai.
   assert.equal(out.edges.find((e) => e.den === 'Trần Văn Bình').soTien, '100 triệu đồng');
   assert.equal(out.edges.find((e) => e.den === 'Lê Thị Cúc').soTien, '20 triệu đồng');
-  assert.deepEqual(out.verifyDropped, { chucVu: 1, soTien: 1, trich: 1, ten: 0 });
+  assert.deepEqual(out.verifyDropped, { chucVu: 1, soTien: 1, trich: 1, ten: 0, dieu: 1, dongTien: 0 });
+  assert.equal(out.crimes[0].dieu, '', 'điều 353 không có trích dẫn nguyên văn → chưa xác định điều luật');
 });

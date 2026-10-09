@@ -3,6 +3,8 @@
 // người chưa lấy lời khai, câu trả lời mơ hồ). AI chỉ dùng cho từng điểm cần làm rõ, gửi đúng đoạn liên quan.
 import { buildCaseMap, sentences, classifyPeople, classifySentence, isFullName, nameVerbatim, stripTitle, key, short } from './case-map.js';
 import { withCache } from '../lib/cache-mark.js';
+import { rules } from './ai-rules.js';
+import { amountsIn } from './analyze.js';
 import { extractJson } from '../lib/ai.js';
 
 export const VAGUE_RE = /(không nhớ|không rõ|không biết|không nắm|không chắc|khoảng chừng|khoảng|tầm|hình như|có lẽ|chắc là|nghe nói|nghe đâu|quên|lâu rồi)/i;
@@ -184,7 +186,7 @@ export function analyzeStatements(statements = [], { known = [], primary = null,
 
 /* ---------------- AI làm rõ từng điểm (chỉ gửi đoạn liên quan) ---------------- */
 
-export const CLARIFY_SYSTEM = 'Bạn là điều tra viên cao cấp, giỏi đối chiếu lời khai. Chỉ dựa trên các đoạn lời khai được cung cấp, không suy diễn; chức vụ, số tiền, trích dẫn phải chép nguyên văn. Chỉ trả về JSON hợp lệ.';
+export const CLARIFY_SYSTEM = `Bạn là điều tra viên cao cấp, giỏi đối chiếu lời khai. Chỉ làm rõ điểm được hỏi, dựa trên các đoạn lời khai được cung cấp.\nQUY TẮC (bắt buộc):\n${rules('nguon', 'nguyenVan', 'trung', 'tien', 'gon')}`;
 
 /** Câu trong lời khai nhắc tới những người của điểm cần làm rõ (gửi kèm cho AI, không gửi toàn bộ). */
 export function contextFor(issue, statements, max = 3500) {
@@ -242,6 +244,9 @@ export function parseClarify(raw, issues, source = '', allow = []) {
       if (!nameVerbatim(e.tu, source, allowK) || !nameVerbatim(e.den, source, allowK)) return !!dropped++ && false;
       e.tu = stripTitle(e.tu);
       e.den = stripTitle(e.den);
+      // Số tiền phải nằm trong chính câu trích dẫn của khoản đó.
+      const v = e.soTien ? amountsIn(e.soTien)[0]?.v : 0;
+      if (v && !amountsIn(e.trich || '').some((a) => a.v === v)) e.soTien = '';
       const ok = !source || (e.trich && src.includes(key(e.trich).slice(0, 80)));
       if (!ok) dropped++;
       if (ok && e.soTien && source && !amounts.some((a) => key(a) === key(e.soTien))) e.soTien = '';
@@ -261,7 +266,7 @@ export function parseClarify(raw, issues, source = '', allow = []) {
 /** Thêm quan hệ AI tìm thêm (đã kiểm nguyên văn) vào sơ đồ. */
 export function withExtraEdges(map, extra = []) {
   if (!extra.length) return map;
-  const ek = (e) => `${key(e.tu)}|${key(e.den)}|${e.loai}`;
+  const ek = (e) => `${key(e.tu)}|${key(e.den)}|${e.loai}|${amountsIn(e.soTien || '')[0]?.v || 0}`;
   const have = new Set(map.edges.map(ek));
   const edges = [...map.edges, ...extra.filter((e) => !have.has(ek(e)) && have.add(ek(e)))];
   const people = [...map.people];

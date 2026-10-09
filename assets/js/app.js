@@ -30,6 +30,7 @@ import * as pdf from './views/pdf.js';
 import * as tracking from './views/tracking.js';
 import * as caseMap from './views/case-map.js';
 import * as statements from './views/statements.js';
+import { makeResizable } from './lib/resizer.js';
 import { openFeatureCatalog } from './features.js';
 import { guideForRoute, visibleGuides, findGuide } from './guide/guides.js';
 import { guideBodyHtml, bindGuide, isSeen } from './guide/render.js';
@@ -447,6 +448,13 @@ document.addEventListener('keydown', (e) => {
 try {
   if (localStorage.getItem(SB_KEY) === '1') setSidebarCollapsed(true);
 } catch {}
+// Kéo mép phải thanh menu để đổi độ rộng (bấm đúp: về mặc định; phím ← → khi đang chọn tay nắm).
+const sbGrip = document.createElement('div');
+sbGrip.className = 'sb-grip';
+sbGrip.setAttribute('aria-label', 'Kéo để đổi độ rộng thanh menu (bấm đúp: mặc định)');
+sbGrip.title = 'Kéo để đổi độ rộng thanh menu · bấm đúp: mặc định';
+$('.shell')?.append(sbGrip);
+makeResizable(sbGrip, { axis: 'x', min: 200, max: () => Math.min(460, window.innerWidth * 0.4), key: 'tlvb:sb-w', current: () => sidebar.getBoundingClientRect().width, apply: (v) => document.documentElement.style.setProperty('--sb-w', v == null ? '' : `${v}px`) });
 $$('[data-sidebar-close]').forEach((el) => el.addEventListener('click', closeSidebar));
 $('[data-ai-status]').addEventListener('click', () => ctx.navigate('#settings'));
 

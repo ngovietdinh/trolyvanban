@@ -14,6 +14,7 @@ import { streamClaude } from '../lib/ai.js';
 import { isTight, ctxFor } from '../lib/ai-chunk.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { store, uid } from '../lib/store.js';
+import { makeResizable } from '../lib/resizer.js';
 import { extractText } from '../lib/extract.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -72,6 +73,7 @@ export function render(ctx) {
     </section>
     <section class="lk-out" data-lk-out hidden>
       <aside class="panel lk-issues" data-lk-issues></aside>
+      <div class="lk-split" data-lk-split title="Kéo để đổi độ rộng khung Cần làm rõ · bấm đúp: mặc định" aria-label="Kéo để đổi độ rộng khung Cần làm rõ"></div>
       <div class="panel lk-main">
         <div class="lk-main-head"><input class="input lk-title" data-lk-title aria-label="Tên phiên phân tích" placeholder="Tên vụ việc / phiên phân tích" /><span class="spacer"></span><button class="btn btn-sm btn-ghost" type="button" data-lk-open-map title="Mở kết quả trong Sơ đồ vụ việc (bản chất, dòng thời gian, xuất Word, AI làm tiếp)">${icon('chart', 'ic-sm')}Mở trong Sơ đồ vụ việc</button><button class="btn btn-sm" type="button" data-lk-word>${icon('download', 'ic-sm')}Xuất Word</button></div>
         <div class="tabs lk-tabs" role="tablist" data-lk-tabs></div>
@@ -459,10 +461,14 @@ export function render(ctx) {
     if (t.closest('[data-lk-open-map]')) return openInMap();
   });
 
+  // Kéo thanh giữa để đổi độ rộng khung “Cần làm rõ” (nhớ trên máy).
+  const out = $('[data-lk-out]', v);
+  const split = makeResizable($('[data-lk-split]', v), { axis: 'x', min: 260, max: () => Math.max(300, out.clientWidth - 360), key: 'tlvb:lk-w', current: () => $('[data-lk-issues]', v).getBoundingClientRect().width, apply: (w) => out.style.setProperty('--lk-w', w == null ? '' : `${w}px`) });
   drawItems();
   drawSessions();
   analyze(true);
   return () => {
+    split.destroy();
     clearTimeout(timer);
     persist();
     dgCtl?.destroy();

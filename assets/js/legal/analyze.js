@@ -7,29 +7,11 @@ import { extractJson } from '../lib/ai.js';
 import { focusText, splitText, runChunks, CHUNK } from '../lib/ai-chunk.js';
 import { withCache } from '../lib/cache-mark.js';
 
-const STOP = new Set(
-  `và của là các có được cho với trong những một này đã để không theo về khi đến tại như do thì mà còn cũng nên vì nếu đó sẽ đang bị ra vào lại trên dưới hay hoặc rằng nhưng tuy nhiều ít rất làm người năm ngày tháng số nhằm đối qua sau trước giữa cùng chỉ đều đây ấy thế nào gì ai sự phải cần đồng thời bao gồm khác hành vi tội việc rồi đó sau khi`.split(/\s+/),
-);
-
-const syl = (s) =>
-  String(s || '')
-    .normalize('NFC')
-    .toLocaleLowerCase('vi-VN')
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .split(/\s+/)
-    .filter(Boolean);
-
-/** Cụm 2 âm tiết có nghĩa (tiếng Việt đơn lập: “chiếm đoạt”, “hối lộ”, “chứng từ”…) và âm tiết nội dung. */
-export function termsOf(text) {
-  const s = syl(text);
-  const bi = new Set();
-  const uni = new Set();
-  for (let i = 0; i < s.length; i++) {
-    if (!STOP.has(s[i]) && s[i].length > 1 && !/^\d+$/.test(s[i])) uni.add(s[i]);
-    if (i < s.length - 1 && !STOP.has(s[i]) && !STOP.has(s[i + 1]) && !/^\d+$/.test(s[i]) && !/^\d+$/.test(s[i + 1])) bi.add(`${s[i]} ${s[i + 1]}`);
-  }
-  return { bi, uni };
-}
+import { termsOf, syl, norm } from './terms.js';
+import { crimeEvidence, pickShown, lawCandidates, lawGate, citedArticles, confusableHints } from './relevance.js';
+import { rules } from './ai-rules.js';
+import { key, sameText } from './text-sim.js';
+export { termsOf };
 
 /** Độ khớp 0–1 giữa câu trong tài liệu và tên hành vi trong hệ thống (theo cụm từ của hành vi). */
 export function matchScore(actTerms, sentTerms, phrase = '', sentence = '') {
@@ -56,7 +38,6 @@ const short = (s, n = 140) => {
   return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 60))}…`;
 };
 
-const norm = (s) => syl(s).join(' ');
 
 // Các tội “biến thể” khác tội cơ bản bởi một tình tiết đặc biệt trong tên (vô ý, khi thi hành công vụ, kích động
 // mạnh, vượt quá phòng vệ…): chỉ chọn khi mô tả có nhắc tình tiết đó.
@@ -94,54 +75,30 @@ export function analyzeOffline(text, { primary } = {}) {
   const whole = norm(src);
   const mentioned = mentionedArticles(src);
 
-  const crimeInfo = [];
+  // Điều luật liên quan: chỉ điều có CĂN CỨ trong nội dung (viện dẫn, điều đang xét, câu khớp nhiều cụm đặc trưng,
+  // chủ thể phù hợp) — xem relevance.js. Không còn “lấy tạm vài điều điểm cao nhất”.
+  const evSents = sentences.map((t, i) => ({ t, bi: sentT[i].bi }));
+  const cited = new Set(mentioned.keys());
+  const evs = ALL_CRIMES.map((c) => crimeEvidence(c.dieu, src, { sentences: evSents, primary, cited })).filter(Boolean);
+  const top = pickShown(evs).map((e) => ({ dieu: e.dieu, ten: findCrime(e.dieu).ten, score: Math.max(e.ev, e.isCited || e.isPrimary ? 1 : 0), reasons: [e.why, e.trich && !e.isCited && !e.isPrimary ? `Câu căn cứ: “${short(e.trich, 140)}”` : ''].filter(Boolean), strong: true }));
+  const keep = new Set(top.map((c) => c.dieu));
+  if (primary) keep.add(String(primary));
+  // Hành vi trong hệ thống khớp với nội dung (chỉ xét các điều được giữ).
   const best = new Map(); // `${dieu}|${hvId}` → item
   for (const base of ALL_CRIMES) {
+    if (!keep.has(base.dieu)) continue;
     const crime = crimeWithCustomActs(base.dieu) || base;
-    const reasons = [];
-    let score = 0;
-    const name = norm(crime.ten.replace(/^Tội\s+/i, ''));
-    if (name.split(' ').length >= 2 && whole.includes(name)) {
-      score += 5;
-      reasons.push('Tài liệu nêu tên tội danh');
-    }
-    if (mentioned.has(crime.dieu)) {
-      score += 6;
-      reasons.push(`Tài liệu viện dẫn Điều ${crime.dieu}`);
-    }
-    let matched = 0;
     for (const h of crime.hanhVi) {
       const ht = termsOf(h.ten);
       const phrase = norm(h.ten);
-      let top = null;
+      let topS = null;
       sentences.forEach((s, i) => {
         const sc = matchScore(ht, sentT[i], phrase, sentN[i]) - qualifierPenalty(crime.ten, sentN[i]);
-        if (sc >= 0.34 && (!top || sc > top.sc)) top = { sc, s };
+        if (sc >= 0.34 && (!topS || sc > topS.sc)) topS = { sc, s };
       });
-      if (top) {
-        matched++;
-        score += 1.5 + top.sc * 2;
-        const k = `${crime.dieu}|${h.id}`;
-        if (!best.has(k) || best.get(k).score < top.sc) best.set(k, { ten: h.ten, dieu: crime.dieu, hanhViId: h.id, trich: short(top.s, 260), score: top.sc, nguon: 'he-thong' });
-      }
+      if (topS) best.set(`${crime.dieu}|${h.id}`, { ten: h.ten, dieu: crime.dieu, hanhViId: h.id, trich: short(topS.s, 260), score: topS.sc, nguon: 'he-thong' });
     }
-    if (matched) reasons.push(`${matched} hành vi trong hệ thống khớp với nội dung tài liệu`);
-    const strong = [...best.values()].some((x) => x.dieu === crime.dieu && x.score >= 0.45);
-    // Dấu hiệu định tội xuất hiện trong tài liệu (trọng số nhỏ).
-    const sig = termsOf((crime.dauHieu || []).join(' '));
-    let hit = 0;
-    sig.bi.forEach((t) => whole.includes(t) && hit++);
-    if (sig.bi.size && hit / sig.bi.size > 0.15) {
-      score += Math.min(2, (hit / sig.bi.size) * 4);
-      reasons.push('Nội dung có các dấu hiệu định tội của điều này');
-    }
-    if (score > 0) crimeInfo.push({ dieu: crime.dieu, ten: crime.ten, score: Math.round(score * 10) / 10, reasons, strong });
   }
-  crimeInfo.sort((a, b) => b.score - a.score);
-  // Điều được xem xét: điều đang mở, điều được viện dẫn, và các điều điểm cao (đủ mạnh).
-  const top = crimeInfo.filter((c, i) => c.dieu === String(primary) || mentioned.has(c.dieu) || (i < 8 && (c.score >= 4.5 || c.strong)));
-  const keep = new Set(top.map((c) => c.dieu));
-  if (primary) keep.add(String(primary));
 
   const items = [...best.values()]
     .filter((x) => keep.has(x.dieu))
@@ -159,7 +116,7 @@ export function analyzeOffline(text, { primary } = {}) {
     for (const c of crimeTerms) {
       let n = 0;
       st.bi.forEach((t) => (c.name.bi.has(t) ? (n += 2.5) : c.t.bi.has(t) && n++)); // trùng tên tội danh nặng hơn
-      const eff = c.kept ? n + 0.5 : n >= 2 ? n : 0;
+      const eff = c.kept ? n + 0.5 : 0; // chỉ gắn vào điều đã có căn cứ; không có thì để trống (chưa xác định điều luật)
       if (eff > sc) [sc, pick] = [eff, c.dieu];
     }
     return pick;
@@ -171,13 +128,8 @@ export function analyzeOffline(text, { primary } = {}) {
     .map(({ s, st }) => ({ ten: short(s), dieu: bestDieu(st), hanhViId: null, trich: short(s, 260), score: 0, checked: false, nguon: 'tai-lieu' }));
 
   const sum = summarize(src, { maxSentences: 5 });
-  const crimes = top.length ? [...top] : crimeInfo.slice(0, 5);
-  for (const f of fresh) {
-    if (f.dieu && !crimes.some((c) => c.dieu === f.dieu)) {
-      const c = findCrime(f.dieu);
-      if (c) crimes.push({ dieu: c.dieu, ten: c.ten, score: 1, reasons: ['Có câu mô tả hành vi gần với điều này'] });
-    }
-  }
+  const crimes = [...top];
+  if (primary && !crimes.some((c) => c.dieu === String(primary)) && findCrime(primary)) crimes.push({ dieu: findCrime(primary).dieu, ten: findCrime(primary).ten, score: 1, reasons: ['Điều đang xét của hồ sơ'] });
   return { tomTat: sum.summary, keywords: sum.keywords, crimes, items: [...items, ...fresh] };
 }
 
@@ -315,15 +267,17 @@ export function annotateResult(result, text, method) {
 
 /* ---------------- AI ---------------- */
 
-export const ANALYZE_SYSTEM = `Bạn là điều tra viên, kiểm sát viên giàu kinh nghiệm, nắm vững Bộ luật Hình sự 2015 (sửa đổi 2017, 2025). Nhiệm vụ: đọc tài liệu vụ việc, tóm tắt, rồi liệt kê từng hành vi có dấu hiệu tội phạm, đối chiếu với điều luật cụ thể.
-Nguyên tắc: chỉ dựa trên nội dung tài liệu, không suy diễn; mỗi hành vi kèm đoạn trích nguyên văn làm căn cứ; ưu tiên các điều và hành vi có trong danh mục được cung cấp; một vụ việc có thể liên quan nhiều điều luật (ví dụ tham ô và lạm quyền, lừa đảo và làm giả tài liệu) — liệt kê đủ; điều luật ngoài danh mục chỉ nêu khi chắc chắn. Câu hỏi phải bám sát dấu hiệu cấu thành của điều luật, đúng tư cách người được hỏi, không mớm cung. Chỉ trả về JSON hợp lệ.`;
+export const ANALYZE_SYSTEM = `Bạn là điều tra viên, kiểm sát viên giàu kinh nghiệm, nắm vững Bộ luật Hình sự 2015 (sửa đổi 2017, 2025). Nhiệm vụ: đọc tài liệu vụ việc, tóm tắt, rồi liệt kê từng hành vi có dấu hiệu tội phạm, đối chiếu với điều luật trong danh mục. Kết quả sẽ được máy đối chiếu lại với tài liệu: điều luật không đủ căn cứ bị hạ cấp, trích dẫn không có nguyên văn bị bỏ.
+QUY TẮC (bắt buộc):
+${rules('nguon', 'nguyenVan', 'trung', 'luat', 'gon')}
+Câu hỏi phải bám sát dấu hiệu cấu thành của điều luật, đúng tư cách người được hỏi, không mớm cung.`;
 
 /** Danh mục rút gọn gửi kèm cho AI: các điều ứng viên với hành vi (id) và dấu hiệu định tội. */
 export function catalogForAi(dieus) {
   return dieus
     .map((d) => crimeWithCustomActs(d))
     .filter(Boolean)
-    .map((c) => `Điều ${c.dieu} — ${c.ten}\n  Dấu hiệu: ${(c.dauHieu || []).slice(0, 4).join('; ')}\n  Hành vi: ${c.hanhVi.map((h) => `[${h.id}] ${h.ten}`).join('; ')}`)
+    .map((c) => `Điều ${c.dieu} — ${c.ten}\n  Dấu hiệu: ${(c.dauHieu || []).slice(0, 3).join('; ')}\n  Hành vi: ${c.hanhVi.slice(0, 8).map((h) => `[${h.id}] ${h.ten}`).join('; ')}`)
     .join('\n');
 }
 
@@ -331,12 +285,12 @@ export function analyzePrompt(text, { primary, candidates, role, part = null }) 
   const body = String(text).slice(0, 14000);
   // Phần cố định (giống nhau giữa các phần của cùng tài liệu) đặt trước để AI đọc lại từ cache; tài liệu đặt cuối.
   const stable = `Điều đang làm việc: Điều ${primary}. Người sẽ lấy lời khai: ${role}.
-DANH MỤC ĐIỀU LUẬT TRONG HỆ THỐNG (ưu tiên dùng; "hanhViId" lấy trong ngoặc vuông nếu hành vi trùng):
-${catalogForAi(candidates)}
+DANH MỤC ĐIỀU LUẬT (chỉ chọn trong này; "hanhViId" lấy trong ngoặc vuông nếu hành vi trùng):
+${catalogForAi(candidates)}${confusableHints(candidates)}
 
 Đọc TÀI LIỆU VỤ VIỆC ở cuối, trả về JSON:
 {"tomTat":"tóm tắt vụ việc 3–5 câu",
- "hanhVi":[{"ten":"tên hành vi ngắn gọn","dieu":"số điều BLHS","hanhViId":"id trong danh mục hoặc null nếu hành vi mới","trich":"đoạn trích nguyên văn trong tài liệu","lyDo":"vì sao thỏa mãn dấu hiệu của điều này","cauHoi":["3–6 câu hỏi đặc thù bám dấu hiệu cấu thành — chỉ khi hanhViId null"],"taiLieu":["tài liệu cần thu thập"]}]}
+ "hanhVi":[{"ten":"tên hành vi ngắn gọn","dieu":"số điều trong danh mục; không đủ căn cứ thì rỗng","hanhViId":"id trong danh mục hoặc null nếu hành vi mới","trich":"đoạn trích nguyên văn trong tài liệu (bắt buộc)","lyDo":"vì sao thỏa mãn dấu hiệu của điều này (1 câu)","cauHoi":["3–6 câu hỏi đặc thù bám dấu hiệu cấu thành — chỉ khi hanhViId null"],"taiLieu":["tài liệu cần thu thập"]}]}
 `;
   const variable = `${part ? `\nĐÂY LÀ PHẦN ${part[0]}/${part[1]} CỦA TÀI LIỆU — chỉ liệt kê hành vi có trong phần này; "tomTat" chỉ 1–2 câu.\n` : ''}
 TÀI LIỆU VỤ VIỆC${String(text).length > 14000 ? ' (đã cắt bớt phần cuối)' : ''}:
@@ -351,7 +305,8 @@ ${body}
  * Điều luật AI nêu được kiểm tra với hệ thống: không có trong hệ thống → gắn cờ ngoài danh mục.
  */
 export async function analyzeWithAi(call, text, { primary, offline, role = 'người được hỏi', signal, chunkSize = CHUNK.online, onProgress, concurrency = 1 } = {}) {
-  const candidates = [...new Set([String(primary), ...offline.crimes.map((c) => c.dieu)])].filter(Boolean).slice(0, 12);
+  const cited = citedArticles(text);
+  const candidates = [...new Set([String(primary), ...offline.crimes.map((c) => c.dieu), ...lawCandidates(text, { primary, cited }).map((c) => c.dieu)])].filter(Boolean).slice(0, 8);
   // Tài liệu dài: lọc câu có thông tin rồi chia phần, gửi lần lượt — tránh hết thời gian chờ.
   const chunks = splitText(focusText(text, { min: chunkSize }), chunkSize);
   const run = await runChunks(
@@ -371,7 +326,7 @@ export async function analyzeWithAi(call, text, { primary, offline, role = 'ngư
     const k = `${String(h?.dieu || '').replace(/\D+$/, '')}|${h?.hanhViId || String(h?.ten || '').toLowerCase().trim()}`;
     return h && !seen.has(k) && seen.add(k);
   });
-  const items = aiItems(j.hanhVi, primary);
+  const items = aiItems(j.hanhVi, primary, { source: text, cited });
   // Giữ thêm các hành vi hệ thống khớp mạnh mà AI bỏ sót.
   const have = new Set(items.map((x) => `${x.dieu}|${x.hanhViId}`));
   const extra = offline.items.filter((x) => x.hanhViId && x.score >= 0.5 && !have.has(`${x.dieu}|${x.hanhViId}`)).map((x) => ({ ...x, checked: false }));
@@ -384,26 +339,40 @@ export async function analyzeWithAi(call, text, { primary, offline, role = 'ngư
 }
 
 /** Hành vi AI trả về → mục kết quả (điều luật kiểm tra với hệ thống; hành vi trùng danh mục lấy theo danh mục). */
-export function aiItems(hanhVi, primary) {
+export function aiItems(hanhVi, primary, { source = '', cited = null } = {}) {
+  const src = source ? key(source) : '';
+  const seen = [];
   return (hanhVi || [])
     .filter((h) => h && h.ten)
     .map((h) => {
-      const dieu = String(h.dieu || primary).replace(/\D+$/g, '').replace(/^Điều\s*/i, '').trim();
-      const crime = crimeWithCustomActs(dieu);
+      const dieu0 = String(h.dieu || '').replace(/\D+$/g, '').replace(/^Điều\s*/i, '').trim();
+      // Trích dẫn phải có nguyên văn trong tài liệu (nếu có tài liệu để đối chiếu); không thì bỏ.
+      const trich = h.trich && (!src || src.includes(key(h.trich).slice(0, 80))) ? h.trich : '';
+      const crime = crimeWithCustomActs(dieu0);
+      // Điều AI chọn chỉ được chấp nhận khi đủ căn cứ (relevance.js); không thì hành vi vẫn hiện nhưng không chọn sẵn.
+      const gate = crime ? lawGate(crime.dieu, { trich, source, primary, cited }) : { ok: false, why: dieu0 ? 'Điều không có trong Bộ luật của phần mềm' : 'AI chưa xác định được điều luật phù hợp' };
+      const dieu = crime ? dieu0 : String(primary || '');
       const known = crime && h.hanhViId ? crime.hanhVi.find((x) => x.id === h.hanhViId) : null;
       return {
         ten: known ? known.ten : short(h.ten, 160),
         dieu,
         hanhViId: known ? known.id : null,
-        trich: short(h.trich || '', 260),
+        trich: short(trich, 260),
         lyDo: h.lyDo || '',
         cauHoi: known ? [] : (h.cauHoi || []).filter(Boolean).slice(0, 8),
         taiLieu: (h.taiLieu || []).filter(Boolean).slice(0, 6),
         score: 1,
-        checked: !!crime,
-        ngoaiDanhMuc: !crime,
+        checked: !!crime && gate.ok,
+        ngoaiDanhMuc: !crime && !!dieu0,
+        luatYeu: gate.ok ? '' : gate.why,
         nguon: 'ai',
       };
+    })
+    .filter((it) => {
+      // Bỏ hành vi trùng nhau (cùng điều, gần như cùng nội dung / cùng trích dẫn).
+      if (seen.some((x) => x.dieu === it.dieu && (sameText(x.ten, it.ten) || (it.trich && x.trich === it.trich)))) return false;
+      seen.push(it);
+      return true;
     });
 }
 
@@ -414,8 +383,8 @@ export function aiItems(hanhVi, primary) {
 export function analyzeRefinePrompt(text, request, { primary, candidates, role, current = [], max = 12000 }) {
   const cur = current.map((r, i) => `${i + 1}. [Điều ${r.dieu || '?'}] ${r.ten}${r.trich ? ` — “${String(r.trich).slice(0, 160)}”` : ''}`).join('\n');
   const stable = `Điều đang làm việc: Điều ${primary}. Người sẽ lấy lời khai: ${role}.
-DANH MỤC ĐIỀU LUẬT TRONG HỆ THỐNG (ưu tiên dùng; "hanhViId" lấy trong ngoặc vuông nếu hành vi trùng):
-${catalogForAi(candidates)}
+DANH MỤC ĐIỀU LUẬT (chỉ chọn trong này; "hanhViId" lấy trong ngoặc vuông nếu hành vi trùng):
+${catalogForAi(candidates)}${confusableHints(candidates)}
 
 Nhiệm vụ: thực hiện YÊU CẦU CỦA ĐIỀU TRA VIÊN (ở cuối) trên danh sách hành vi đã xác định, chỉ dựa trên tài liệu. Trả về JSON:
 {"hanhVi":[{"ten":"hành vi cần thêm, hoặc hành vi đã có nhưng sửa (giữ nguyên tên cũ trong \"tenCu\")","tenCu":"tên cũ nếu là sửa, không thì null","dieu":"số điều","hanhViId":"id hoặc null","trich":"trích nguyên văn","lyDo":"vì sao","cauHoi":["3–6 câu hỏi nếu hanhViId null"],"taiLieu":["…"]}],

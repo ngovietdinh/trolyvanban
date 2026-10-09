@@ -76,12 +76,13 @@ test('AI làm tiếp sơ đồ: gửi sơ đồ hiện tại + yêu cầu, kết
   assert.match(prompt, /SƠ ĐỒ VỤ VIỆC HIỆN TẠI/);
   assert.match(prompt, /Bổ sung bà Cúc thủ quỹ/);
   assert.match(prompt, /TOÀN BỘ sơ đồ/);
-  const next = mergeAiCaseMap(m, JSON.stringify({ tomTat: 'Mới', banChat: ['A'], nguoi: [{ ten: 'Nguyễn Văn An', vaiTro: 'Kế toán' }, { ten: 'Lê Thị Cúc', vaiTro: 'Thủ quỹ' }], hanhVi: [{ ten: 'Lập chứng từ chi khống', dieu: '353', nguoi: ['Nguyễn Văn An'] }], quanHe: [{ tu: 'Nguyễn Văn An', den: 'Lê Thị Cúc', loai: 'tien', noiDung: 'đưa', soTien: '20 triệu' }], moc: [], ghiChu: 'Thêm bà Cúc' }), { replace: true });
+  const next = mergeAiCaseMap(m, JSON.stringify({ tomTat: 'Mới', banChat: ['A'], nguoi: [{ ten: 'Nguyễn Văn An', vaiTro: 'Kế toán' }, { ten: 'Lê Thị Cúc', vaiTro: 'Thủ quỹ' }], hanhVi: [{ ten: 'Lập chứng từ chi khống', dieu: '353', nguoi: ['Nguyễn Văn An'] }], quanHe: [{ tu: 'Nguyễn Văn An', den: 'Lê Thị Cúc', loai: 'tien', noiDung: 'đưa', soTien: '20 triệu', trich: 'Bà Cúc nhận 20 triệu đồng' }, { tu: 'Nguyễn Văn An', den: 'Lê Thị Cúc', loai: 'tien', noiDung: 'đưa', soTien: '30 triệu' }], moc: [], ghiChu: 'Thêm bà Cúc' }), { replace: true, primary: '353' });
   assert.equal(next.tomTat, 'Mới');
   assert.equal(next.note, 'Thêm bà Cúc');
   assert.ok(!next.people.some((p) => /Bình/.test(p.ten)), 'người AI bỏ thì bỏ');
   assert.ok(next.people.some((p) => p.ten === 'Lê Thị Cúc'));
-  assert.equal(next.edges.length, 1);
+  assert.equal(next.edges.length, 1, 'dòng tiền AI nêu không có câu nguyên văn làm căn cứ (và máy chưa thấy) bị bỏ');
+  assert.equal(next.verifyDropped.dongTien, 1);
   assert.equal(next.timeline.length, 0);
 });
 
@@ -124,7 +125,7 @@ test('cập nhật từ sơ đồ vụ việc mới: giữ vị trí, nhãn đã
   d.nodes.push({ id: 'u1', kind: 'note', label: 'Ghi chú của tôi', x: 10, y: 10, origin: 'user' });
   d.edges.push({ id: 'ue', from: 'u1', to: crime.id, label: 'xem', kind: 'khac', origin: 'user' });
   d.strokes.push({ id: 's1', color: '#c0392b', width: 3, points: [[0, 0], [10, 10]] });
-  const m2 = mergeAiCaseMap(m, { nguoi: [...m.people.map((p) => ({ ten: p.ten, vaiTro: p.vaiTro })), { ten: 'Lê Thị Cúc', vaiTro: 'Thủ quỹ' }], hanhVi: caseMapToAiJson(m).hanhVi, quanHe: caseMapToAiJson(m).quanHe, moc: [] }, { replace: true });
+  const m2 = mergeAiCaseMap(m, { nguoi: [...m.people.map((p) => ({ ten: p.ten, vaiTro: p.vaiTro })), { ten: 'Lê Thị Cúc', vaiTro: 'Thủ quỹ' }], hanhVi: caseMapToAiJson(m).hanhVi, quanHe: caseMapToAiJson(m).quanHe, moc: [] }, { replace: true, primary: '353' });
   const d2 = syncFromCaseMap(d, m2);
   const c2 = d2.nodes.find((x) => x.id === crime.id);
   assert.equal(c2.x, 999);

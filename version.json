@@ -1,7 +1,7 @@
 {
-  "version": "2.29.0",
+  "version": "2.30.0",
   "date": "2026-10-09",
   "notes": [
-    "Tên chính xác 100%: chỉ người đủ họ tên nguyên văn mới vào sơ đồ; tên chưa rõ ghi riêng, không vẽ lên sơ đồ"
+    "Quy tắc gửi AI (điều luật có căn cứ, dòng tiền nguyên văn, không trùng lặp); phân tích không còn kéo theo điều luật không liên quan; kéo tùy biến không gian làm việc"
   ]
 }

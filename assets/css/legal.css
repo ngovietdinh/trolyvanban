@@ -4724,7 +4724,7 @@ body.pt-fullscreen {
 .dg-color { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--line-strong); background: var(--c); cursor: pointer; padding: 0; }
 .dg-color.on { box-shadow: 0 0 0 2px var(--accent); }
 .dg-opt:empty { display: none; }
-.dg-main { display: grid; grid-template-columns: minmax(0, 1fr) 260px; min-height: 0; }
+.dg-main { display: grid; grid-template-columns: minmax(0, 1fr) 260px; min-height: 0; position: relative; }
 .dg-canvas { position: relative; height: min(68vh, 640px); min-height: 360px; background: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text-3) 22%, transparent) 1px, transparent 0) 0 0 / 20px 20px, #fbfbfd; touch-action: none; overflow: hidden; }
 .dg-svg { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-select: none; }
 .dg[data-mode='select'] .dg-svg { cursor: grab; }
@@ -4858,7 +4858,10 @@ body.dg-lock { overflow: hidden; }
 .lk-no { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; }
 .lk-stmt .textarea { resize: vertical; min-height: 92px; }
 .lk-status { margin: 0; }
-.lk-out { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 14px; align-items: start; margin-top: 14px; }
+.lk-out { display: grid; grid-template-columns: var(--lk-w, 380px) 10px minmax(0, 1fr); gap: 4px; align-items: start; margin-top: 14px; }
+.lk-split { align-self: stretch; cursor: col-resize; position: relative; touch-action: none; min-height: 120px; }
+.lk-split::after { content: ''; position: absolute; top: 8px; bottom: 8px; left: 3px; width: 4px; border-radius: 3px; background: var(--line-strong); opacity: 0.6; transition: background 0.15s, opacity 0.15s; }
+.lk-split:hover::after, .lk-split:focus-visible::after, .lk-split.dragging::after { background: var(--accent); opacity: 0.9; }
 .lk-out[hidden] { display: none; }
 .lk-issues { padding: 12px; display: grid; gap: 10px; position: sticky; top: 12px; max-height: calc(100vh - 40px); overflow: auto; }
 .lk-is-head { display: grid; gap: 8px; }
@@ -4911,6 +4914,7 @@ body.dg-lock { overflow: hidden; }
 .dg-node.hl rect { stroke: #e03131; stroke-width: 3.4; filter: drop-shadow(0 0 6px rgba(224, 49, 49, 0.55)); }
 @media (max-width: 960px) {
   .lk-out { grid-template-columns: 1fr; }
+  .lk-split { display: none; }
   .lk-issues { position: static; max-height: none; }
   .lk-issue-list { max-height: 62vh; overflow: auto; overscroll-behavior: contain; }
 }
@@ -4930,3 +4934,25 @@ body.dg-lock { overflow: hidden; }
 .lk-confirm .input { flex: 1; min-width: 160px; }
 .lk-names { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12.5px; }
 .lk-sp-unclear { color: var(--warning); font-size: 12px; font-weight: 600; }
+
+.cm-law { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.cm-law li { display: grid; gap: 1px; }
+.cm-law small { color: var(--text-3); }
+
+/* Kéo để đổi cỡ khung vẽ sơ đồ (v2.30) */
+@media (min-width: 761px) {
+  .dg:not(.is-full) .dg-canvas { height: var(--dg-h, min(78vh, 780px)); }
+  .dg:not(.is-full) .dg-props { max-height: var(--dg-h, min(78vh, 780px)); }
+  .dg:not(.is-full) .dg-main { grid-template-columns: minmax(0, 1fr) var(--dg-pw, 260px); }
+}
+@media (max-width: 760px) {
+  .dg:not(.is-full) .dg-canvas { height: var(--dg-h, 62vh); }
+}
+.dg-grip { height: 12px; cursor: row-resize; position: relative; touch-action: none; border-top: 1px solid var(--line); background: var(--surface-2); }
+.dg-grip::after { content: ''; position: absolute; left: 50%; top: 4px; width: 46px; height: 4px; margin-left: -23px; border-radius: 3px; background: var(--line-strong); transition: background 0.15s; }
+.dg-grip:hover::after, .dg-grip:focus-visible::after, .dg-grip.dragging::after { background: var(--accent); }
+.dg.is-full .dg-grip, .dg.is-full .dg-vsplit { display: none; }
+.dg-vsplit { position: absolute; top: 0; bottom: 0; width: 9px; margin-left: -5px; cursor: col-resize; z-index: 6; touch-action: none; }
+.dg-vsplit::after { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background 0.15s; }
+.dg-vsplit:hover::after, .dg-vsplit:focus-visible::after, .dg-vsplit.dragging::after { background: var(--accent); }
+@media (max-width: 760px) { .dg-vsplit { display: none; } }

@@ -112,6 +112,7 @@ export function rowHtml(r, ds) {
       <div class="la-meta">
         ${known ? `<span class="badge badge-success" title="Dùng bộ câu hỏi có sẵn của hành vi này">Có trong hệ thống</span>` : `<span class="badge badge-accent" title="Sẽ được lưu thành hành vi tự thêm của Điều ${r.dieu}">Hành vi mới</span>`}
         ${r.daCo ? '<span class="badge">Đã có trong kế hoạch</span>' : ''}
+        ${r.luatYeu ? `<span class="badge badge-warning" title="AI gán điều này nhưng máy chưa tìm thấy đủ căn cứ trong tài liệu — kiểm tra kỹ hoặc chọn điều khác">Chưa đủ căn cứ điều luật: ${escapeHtml(r.luatYeu)}</span>` : ''}
         ${r.ngoaiDanhMuc ? `<span class="badge badge-warning">Điều ${escapeHtml(r.dieu)} chưa có trong hệ thống — chọn điều khác</span>` : ''}
         ${r.nguon === 'ai' ? `<span class="badge" title="${known ? 'AI xác định, đã khớp hành vi trong Bộ luật của phần mềm' : 'AI đề xuất — chưa có trong Bộ luật của phần mềm, kiểm tra kỹ'}">${known ? 'AI · khớp Bộ luật' : 'AI đề xuất'}</span>` : r.nguon === 'tu-nhap' ? '' : '<span class="badge" title="Xác định bằng đối chiếu với Bộ luật trong phần mềm">Đối chiếu Bộ luật</span>'}
         <small>${c ? escapeHtml(c.ten) : ''}</small>
@@ -147,6 +148,7 @@ export function bindRows(box, rows, { rerender, onCount }) {
       r.dieu = d;
       r.askOther = false;
       r.ngoaiDanhMuc = false;
+      r.luatYeu = '';
       if (r.hanhViId && !crimeWithCustomActs(d)?.hanhVi.some((h) => h.id === r.hanhViId)) r.hanhViId = null;
       if (!r.edited) r.q = genQuestions({ ...r, cauHoiAi: [] });
       rerender();
@@ -207,10 +209,10 @@ const lkey = (t) => String(t || '').normalize('NFC').toLocaleLowerCase('vi-VN').
  * Áp kết quả AI làm tiếp lên danh sách hàng (sửa trực tiếp rows): hành vi mới → thêm hàng (đã chọn); hành vi sửa
  * (tenCu khớp) → cập nhật; “bo” → bỏ chọn (không xóa, người dùng vẫn chọn lại được).
  */
-export function refineRows(rows, raw, primary) {
+export function refineRows(rows, raw, primary, source = '') {
   const j = typeof raw === 'string' ? extractJson(raw) : raw;
   if (!j || (!Array.isArray(j.hanhVi) && !Array.isArray(j.bo))) throw new Error('AI trả về kết quả không đúng định dạng — danh sách hành vi giữ nguyên.');
-  const items = aiItems(j.hanhVi, primary);
+  const items = aiItems(j.hanhVi, primary, { source });
   let added = 0;
   let updated = 0;
   let removed = 0;
@@ -267,7 +269,7 @@ export function mountRowsRefine(host, ctx, { text, primary, role, candidates, ro
       const max = ctxFor(ai, 12000, 5000);
       say(`${ai.local ? 'AI trên máy' : ai.label} đang thực hiện yêu cầu…`);
       const out = await streamAI({ ...ai, system: ANALYZE_SYSTEM, cache: true, effort: 'medium', maxTokens: 4000, signal, messages: [{ role: 'user', content: analyzeRefinePrompt(text, request, { primary, candidates, role, current: rows.filter((r) => r.ten.trim()), max }) }] });
-      const r = refineRows(rows, out, primary);
+      const r = refineRows(rows, out, primary, text);
       if (r.tomTat) result.tomTat = r.tomTat;
       const parts = [r.added && `thêm ${r.added}`, r.updated && `sửa ${r.updated}`, r.removed && `bỏ chọn ${r.removed}`].filter(Boolean);
       toast(parts.length ? `AI đã ${parts.join(', ')} hành vi` : 'AI không thay đổi danh sách hành vi', { type: parts.length ? 'success' : 'info' });

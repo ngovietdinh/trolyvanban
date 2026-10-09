@@ -3,7 +3,7 @@
 import { $, $$, icon, toast, escapeHtml, downloadBlob } from '../ui.js';
 import { casesRepo, recordsRepo } from '../legal/repo.js';
 import { getRole } from '../legal/roles.js';
-import { buildCaseMap, caseMapPrompt, caseMapRefinePrompt, relevantText, mergeAiCaseMap, sanitizeNames, CASE_MAP_SYSTEM } from '../legal/case-map.js';
+import { buildCaseMap, caseMapPrompt, caseMapRefinePrompt, relevantText, mergeAiCaseMap, sanitizeNames, lawContext, sumDropped, CASE_MAP_SYSTEM } from '../legal/case-map.js';
 import { diagramFromCaseMap, syncFromCaseMap, emptyDiagram, PRESETS, moneyValue, formatMoney } from '../legal/diagram.js';
 import { mountDiagram } from './diagram-editor.js';
 import { refineHtml, bindRefine } from './ai-refine.js';
@@ -123,8 +123,11 @@ function mapDoc(m, title, org = {}) {
   };
 }
 
-/** Thông báo các mục AI nêu nhưng không có nguyên văn trong lời khai (đã bỏ). */
-const droppedMsg = (d) => `Đã bỏ ${[d.ten && `${d.ten} tên người (không đủ họ tên / không có nguyên văn)`, d.chucVu && `${d.chucVu} chức vụ`, d.soTien && `${d.soTien} số tiền`, d.trich && `${d.trich} trích dẫn`].filter(Boolean).join(', ')} do AI nêu nhưng không có nguyên văn trong lời khai / tài liệu.`;
+/** Thông báo các mục AI nêu nhưng không có nguyên văn / không đủ căn cứ (đã bỏ hoặc hạ cấp). */
+const droppedMsg = (d) => {
+  const parts = [d.ten && `${d.ten} tên người (không đủ họ tên / không có nguyên văn)`, d.chucVu && `${d.chucVu} chức vụ`, d.soTien && `${d.soTien} số tiền`, d.trich && `${d.trich} trích dẫn`, d.dongTien && `${d.dongTien} dòng tiền (không có câu nguyên văn làm căn cứ)`].filter(Boolean);
+  return `${parts.length ? `Đã bỏ ${parts.join(', ')} do AI nêu nhưng không có nguyên văn trong lời khai / tài liệu.` : ''}${d.dieu ? ` ${d.dieu} hành vi AI gán điều luật chưa đủ căn cứ — chuyển sang “chưa xác định điều luật”.` : ''}`.trim();
+};
 
 /** Tên chưa rõ: không đưa vào sơ đồ, nêu riêng kèm lý do và câu nguyên văn để làm rõ. */
 export const unclearHtml = (m) =>
@@ -226,6 +229,8 @@ export function render(ctx, params = []) {
         <div class="cm-kpis"><span><strong>${m.crimes.filter((c) => c.dieu).length}</strong>điều luật</span><span><strong>${total}</strong>hành vi</span><span><strong>${m.people.length}</strong>người liên quan</span><span><strong>${m.edges.filter((e) => e.loai === 'tien').length}</strong>dòng tiền</span><span><strong>${m.amounts?.[0] || '—'}</strong>số tiền lớn nhất</span></div>
         <ul class="cm-points">${m.banChat.map((t) => `<li>${escapeHtml(t)}</li>`).join('') || '<li class="muted">Chưa rút ra được nội dung then chốt — thử chọn thêm biên bản hoặc dùng AI.</li>'}</ul>
         ${m.people.length ? `<h3 class="tk-h">${icon('user', 'ic-sm')}Người liên quan</h3><div class="cm-people">${m.people.map((p) => `<span class="cm-chip"><strong>${escapeHtml(p.ten)}</strong><small>${p.vaiTro ? `<span title="${escapeHtml(p.chucVuTrich ? `Nguyên văn: “${p.chucVuTrich}”` : 'Chức vụ / tư cách')}">${escapeHtml(p.vaiTro)}</span>` : '<em>chưa có chức vụ trong lời khai</em>'}${p.suyRa ? ` · <span class="cm-infer" title="Suy ra từ quan hệ trong lời khai — không phải chức vụ">theo quan hệ: ${escapeHtml(p.suyRa.toLowerCase())}</span>` : ''}${p.mentions ? ` · ${p.mentions} lần` : ''}</small></span>`).join('')}</div><p class="hint">Họ tên, chức vụ, số tiền chỉ lấy đúng nguyên văn trong lời khai / tài liệu; vai trò “theo quan hệ” là máy suy ra, không phải chức vụ.</p>` : ''}
+        ${m.crimes.some((c) => c.dieu) ? `<h3 class="tk-h">${icon('gavel', 'ic-sm')}Điều luật liên quan <small class="hint">(chỉ điều có căn cứ trong nội dung)</small></h3><ul class="cm-law">${m.crimes.filter((c) => c.dieu).map((c) => `<li><strong>Điều ${escapeHtml(c.dieu)}</strong> ${escapeHtml(c.ten.replace(/^Tội /, ''))}${c.canCu ? `<small>${escapeHtml(c.canCu)}</small>` : ''}</li>`).join('')}</ul>` : '<p class="hint">Chưa có điều luật nào đủ căn cứ trong nội dung — hành vi được ghi là “chưa xác định điều luật”, không gán đại.</p>'}
+        ${(m.chuaRo || []).length ? `<h3 class="tk-h">${icon('alert', 'ic-sm')}Điểm còn thiếu / mâu thuẫn <small class="hint">(AI nêu — cần làm rõ)</small></h3><ul class="cm-points">${m.chuaRo.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : ''}
         ${unclearHtml(m)}
       </div>`;
     } else if (EDITABLE[st.tab]) {
@@ -324,16 +329,18 @@ export function render(ctx, params = []) {
     const full = sources.map((s) => `${s.speaker ? `[Lời khai của ${s.speaker} — ${s.label}]` : `[${s.label}]`}\n${s.text}`).join('\n\n');
     const size = chunkSizeFor(ai);
     const chunks = splitText(focusText(full, { min: size }), size);
+    // Ứng viên điều luật tính một lần từ toàn bộ nội dung (lời nhắc cố định giữa các phần → đọc lại từ cache).
+    const law = lawContext(full, { primary }).catalog;
     let acc = offline;
     let done = 0;
-    const dropped = { chucVu: 0, soTien: 0, trich: 0, ten: 0 };
+    const dropped = { chucVu: 0, soTien: 0, trich: 0, ten: 0, dieu: 0, dongTien: 0 };
     const addDropped = (d) => d && Object.keys(dropped).forEach((k) => (dropped[k] += d[k] || 0));
     try {
       const run = await runChunks(
         chunks,
         async (chunk, i, n) => {
-          const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, effort: 'medium', maxTokens: n > 1 ? 2500 : 4000, cache: true, signal: ctl.signal, timeoutRetry: n > 1 ? false : undefined, messages: [{ role: 'user', content: caseMapPrompt(chunk, { known, primary, part: n > 1 ? [i + 1, n] : null }) }] });
-          acc = mergeAiCaseMap(acc, out, { append: done > 0, source: full });
+          const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, effort: 'medium', maxTokens: n > 1 ? 2500 : 4000, cache: true, signal: ctl.signal, timeoutRetry: n > 1 ? false : undefined, messages: [{ role: 'user', content: caseMapPrompt(chunk, { known, primary, law, part: n > 1 ? [i + 1, n] : null }) }] });
+          acc = mergeAiCaseMap(acc, out, { append: done > 0, source: full, primary });
           addDropped(acc.verifyDropped);
           done++;
           // Vẽ lại ngay sau mỗi phần để người dùng thấy sơ đồ đầy dần.
@@ -342,7 +349,7 @@ export function render(ctx, params = []) {
         },
         { signal: ctl.signal, concurrency: concurrencyFor(ai), minSize: Math.round(size / 4), onProgress: (i, n) => say(n > 1 ? `${who} đang bổ sung phần ${i}/${n} (nội dung dài được chia nhỏ để không bị hết thời gian chờ) — sơ đồ trên máy đã hiện ở dưới.` : `${who} đang phân tích sâu — sơ đồ trên máy đã hiện ở dưới.`) },
       );
-      if (dropped.chucVu + dropped.soTien + dropped.trich + dropped.ten) toast(droppedMsg(dropped), { type: 'info', timeout: 7000 });
+      if (sumDropped(dropped)) toast(droppedMsg(dropped), { type: 'info', timeout: 7000 });
       if (run.errors.length) toast(`AI không trả lời ${run.errors.length}/${run.total} phần — sơ đồ dùng kết quả trên máy cho các phần đó.`, { type: 'info', timeout: 6000 });
       if (ctl.signal.aborted && done) toast(`Đã dừng AI sau ${done}/${chunks.length} phần — giữ kết quả đã có.`, { type: 'info' });
     } catch (err) {
@@ -388,10 +395,10 @@ export function render(ctx, params = []) {
         const max = ctxFor(ai, 12000, 5000);
         const full = st.sources.map((x) => `${x.speaker ? `[Lời khai của ${x.speaker} — ${x.label}]` : `[${x.label}]`}\n${x.text}`).join('\n\n');
         say(`${who} đang thực hiện yêu cầu trên sơ đồ hiện tại…`);
-        const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, effort: 'medium', maxTokens: 5000, signal, messages: [{ role: 'user', content: caseMapRefinePrompt(st.map, request, { source: relevantText(full, request, max), primary: st.primary, max }) }] });
-        const next = mergeAiCaseMap(st.map, out, { replace: true, source: full });
+        const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, effort: 'medium', maxTokens: 5000, signal, messages: [{ role: 'user', content: caseMapRefinePrompt(st.map, request, { source: relevantText(full, request, max), primary: st.primary, max, law: lawContext(full, { primary: st.primary }).catalog }) }] });
+        const next = mergeAiCaseMap(st.map, out, { replace: true, source: full, primary: st.primary });
         const dr = next.verifyDropped;
-        if (dr && dr.chucVu + dr.soTien + dr.trich + dr.ten) toast(droppedMsg(dr), { type: 'info', timeout: 7000 });
+        if (dr && sumDropped(dr)) toast(droppedMsg(dr), { type: 'info', timeout: 7000 });
         const before = st.map;
         st.map = { ...next, aiProgress: '' };
         // Các sơ đồ đã sửa (tư duy, hành vi, quan hệ, dòng tiền) cập nhật theo, giữ vị trí, nhãn đã sửa và phần tự thêm.

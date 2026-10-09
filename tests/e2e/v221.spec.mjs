@@ -58,7 +58,7 @@ test.describe('Sơ đồ vụ việc', () => {
 
   test('từ tài liệu tải lên, có AI phân tích sâu', async ({ page }) => {
     const t = trackErrors(page);
-    const calls = await mockClaude(page, () => JSON.stringify({ tomTat: 'Ông A tham ô 300 triệu, chuyển cho ông B.', banChat: ['A chi khống 300 triệu', 'B nhận 100 triệu'], nguoi: [{ ten: 'Nguyễn Văn An', vaiTro: 'Kế toán, người thực hiện' }, { ten: 'Trần Văn Bình', vaiTro: 'Giám đốc, người nhận tiền' }], hanhVi: [{ ten: 'Lập chứng từ chi khống', dieu: '353', nguoi: ['Nguyễn Văn An'], soTien: '300 triệu đồng' }], quanHe: [{ tu: 'Nguyễn Văn An', den: 'Trần Văn Bình', loai: 'tien', noiDung: 'chuyển', soTien: '100 triệu đồng' }], moc: [{ thoiGian: '05/03/2025', suKien: 'Lập chứng từ chi khống' }] }));
+    const calls = await mockClaude(page, () => JSON.stringify({ tomTat: 'Ông A tham ô 300 triệu, chuyển cho ông B.', banChat: ['A chi khống 300 triệu', 'B nhận 100 triệu'], nguoi: [{ ten: 'Nguyễn Văn An', vaiTro: 'Kế toán, người thực hiện' }, { ten: 'Trần Văn Bình', vaiTro: 'Giám đốc, người nhận tiền' }], hanhVi: [{ ten: 'Lập chứng từ chi khống', dieu: '353', nguoi: ['Nguyễn Văn An'], soTien: '300 triệu đồng' }], quanHe: [{ tu: 'Nguyễn Văn An', den: 'Trần Văn Bình', loai: 'tien', noiDung: 'chuyển', soTien: '100 triệu đồng', trich: 'tôi chuyển cho ông Trần Văn Bình 100 triệu đồng' }], moc: [{ thoiGian: '05/03/2025', suKien: 'Lập chứng từ chi khống' }] }));
     await freshApp(page);
     await setApiKey(page, 'anthropic', 'sk-ant-test-1234');
     await page.goto('/app.html#so-do');
