@@ -4844,3 +4844,77 @@ body.dg-lock { overflow: hidden; }
 .dg-lib-save .input { flex: 1; min-width: 0; }
 .dg-lib { max-height: calc(100% - 16px); }
 .cm-infer { color: var(--text-3); font-style: italic; }
+
+/* ---------- Phân tích lời khai (v2.28) ---------- */
+.lk-in { padding: 12px 16px 14px; display: grid; gap: 10px; }
+.lk-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lk-bar .select { max-width: 280px; }
+.lk-bar label.btn { cursor: pointer; }
+.lk-stmts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 10px; }
+.lk-stmt { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px; background: var(--surface); display: grid; gap: 6px; min-width: 0; }
+.lk-stmt-head { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.lk-stmt-head .input { min-width: 0; flex: 1; }
+.lk-stmt-head [data-lk-role] { flex: 0.8; }
+.lk-no { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; }
+.lk-stmt .textarea { resize: vertical; min-height: 92px; }
+.lk-status { margin: 0; }
+.lk-out { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 14px; align-items: start; margin-top: 14px; }
+.lk-out[hidden] { display: none; }
+.lk-issues { padding: 12px; display: grid; gap: 10px; position: sticky; top: 12px; max-height: calc(100vh - 40px); overflow: auto; }
+.lk-is-head { display: grid; gap: 8px; }
+.lk-is-head h2 { font-size: 16px; margin: 0; display: flex; align-items: center; gap: 6px; }
+.lk-lvs { display: flex; gap: 6px; flex-wrap: wrap; }
+.lk-lvs .chip[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.lk-issue-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.lk-issue { --lv: var(--text-3); border: 1px solid var(--line); border-left: 4px solid var(--lv); border-radius: var(--radius-sm); padding: 9px 10px; display: grid; gap: 5px; background: var(--surface); font-size: 13.5px; }
+.lk-issue.lv-cao { --lv: var(--danger); }
+.lk-issue.lv-vua { --lv: var(--warning); }
+.lk-issue.lv-thap { --lv: #1c7ed6; }
+.lk-issue.done { opacity: 0.55; }
+.lk-issue.done .lk-i-title { text-decoration: line-through; }
+.lk-i-tags { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
+.lk-lv { color: var(--lv); }
+.lk-kind { color: var(--text-3); }
+.lk-i-title { line-height: 1.35; }
+.lk-i-detail { margin: 0; color: var(--text-2); }
+.lk-ex summary { cursor: pointer; color: var(--text-3); font-size: 12.5px; }
+.lk-ex ul, .lk-ask ol, .lk-ai-ans ol, .lk-ai-ans ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 3px; }
+.lk-ex li { color: var(--text-2); font-size: 12.5px; }
+.lk-ask, .lk-ai-ans { background: var(--surface-2); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.lk-ai-ans { background: var(--accent-soft); }
+.lk-ai-ans p { margin: 2px 0 4px; }
+.lk-ai-h { font-weight: 700; display: flex; align-items: center; gap: 4px; color: var(--accent); }
+.lk-i-act { display: flex; gap: 6px; flex-wrap: wrap; }
+.lk-main { padding: 12px; min-width: 0; display: grid; gap: 10px; }
+.lk-main-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.lk-title { max-width: 420px; flex: 1; min-width: 180px; font-weight: 600; }
+.lk-tabs { overflow-x: auto; }
+.lk-body { min-width: 0; }
+.lk-speakers { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 10px; }
+.lk-sp { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; display: grid; gap: 6px; }
+.lk-sp h3 { margin: 0; font-size: 15px; display: flex; gap: 6px; align-items: center; }
+.lk-sp-kpi { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.lk-sp-kpi span { display: grid; font-size: 11.5px; color: var(--text-3); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+.lk-sp-kpi b { font-size: 18px; color: var(--text); font-family: var(--font-serif); font-weight: 500; }
+.lk-sp-kpi .neg b { color: var(--danger); }
+.lk-sp-kpi .warn b { color: var(--warning); }
+.lk-sp-ppl { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12.5px; }
+.lk-claims { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.lk-claims li { display: flex; gap: 6px; align-items: flex-start; }
+.lk-cl-ic { flex: none; font-weight: 700; color: var(--success); }
+.lk-claims .deny .lk-cl-ic { color: var(--danger); }
+.lk-q-head { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+.lk-q-head .hint { margin: 0; }
+.lk-q { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.lk-q h3 { margin: 0 0 4px; font-size: 14.5px; display: flex; gap: 6px; align-items: center; }
+.lk-q ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.dg-node.hl rect { stroke: #e03131; stroke-width: 3.4; filter: drop-shadow(0 0 6px rgba(224, 49, 49, 0.55)); }
+@media (max-width: 960px) {
+  .lk-out { grid-template-columns: 1fr; }
+  .lk-issues { position: static; max-height: none; }
+  .lk-issue-list { max-height: 62vh; overflow: auto; overscroll-behavior: contain; }
+}
+@media (max-width: 560px) {
+  .lk-stmt-head { flex-wrap: wrap; }
+  .lk-stmt-head [data-lk-role] { flex-basis: 100%; order: 3; }
+}

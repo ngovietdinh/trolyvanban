@@ -6,11 +6,11 @@ import { analyzeOffline, amountsIn } from './analyze.js';
 import { extractJson } from '../lib/ai.js';
 import { withCache } from '../lib/cache-mark.js';
 
-const short = (s, n = 160) => {
+export const short = (s, n = 160) => {
   const t = String(s || '').replace(/\s+/g, ' ').trim();
   return t.length <= n ? t.replace(/[.;,:]$/, '') : `${t.slice(0, n).replace(/\s+\S*$/, '')}…`;
 };
-const key = (s) => String(s || '').normalize('NFC').toLocaleLowerCase('vi-VN').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+export const key = (s) => String(s || '').normalize('NFC').toLocaleLowerCase('vi-VN').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const UP = 'A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ';
 const TITLE = '(?:ông|bà|anh|chị|em|cô|chú|bác|cháu|đồng chí|đ\\/c|giám đốc|phó giám đốc|chủ tịch|phó chủ tịch|trưởng phòng|phó trưởng phòng|kế toán trưởng|kế toán|thủ quỹ|thủ kho|cán bộ|chuyên viên|bị can|người làm chứng|đối tượng|hộ|ông\\/bà)';
 const NAME_RE = new RegExp(`(?<![\\p{L}])${TITLE}\\s+((?:[${UP}][\\p{Ll}]*)(?:\\s+[${UP}][\\p{Ll}]*){0,3})`, 'gu');
@@ -32,13 +32,18 @@ function trimJob(t) {
   return out.join(' ').replace(/[,;:.(–-]+$/, '');
 }
 const JOB_BEFORE = new RegExp(`(${JOB}${ORG_TAIL})\\s*$`, 'iu');
+const SELF_JOB = new RegExp(`^\\s*(?:tôi|bản thân tôi)\\s+(?:hiện\\s+|đang\\s+|lúc đó\\s+)?(?:là|giữ chức(?:\\s+vụ)?|làm|công tác(?:\\s+là)?)\\s+(${JOB}${ORG_TAIL})`, 'iu');
 const MONEY_V = /(đưa|chuyển khoản|chuyển|giao|trả|chi|nộp|biếu|cho vay|vay|hối lộ|lại quả|chia)/i;
 const RECV_V = /(nhận|thu|lấy)/i;
 const ORDER_V = /(chỉ đạo|giao cho|yêu cầu|bảo|ép|nhờ|đề nghị|phê duyệt|ký duyệt|duyệt|ra lệnh|quyết định)/i;
 const OTHER_V = /(thông đồng|bàn bạc|thống nhất|móc nối|câu kết|gặp|liên hệ|gọi điện|ký|lập)/i;
 
+// Câu phủ nhận (“tôi không nhận tiền của ông Bình”, “chưa bao giờ chỉ đạo”): không dựng thành quan hệ.
+const DENY_RE = /(?:^| )(?:không|chưa|không hề|chưa hề|chưa bao giờ|chưa từng|không bao giờ)(?: \S+){0,2}? (?:đưa|nhận|chuyển|giao|trả|chi|nộp|biếu|lấy|thu|chỉ đạo|yêu cầu|bảo|ép|nhờ|gặp|bàn bạc|thông đồng|thống nhất|ký|cho)(?= |$)|phủ nhận|không thừa nhận|không có (?:việc|chuyện)|không đúng sự thật/;
+export const isDenial = (t) => DENY_RE.test(key(t));
+
 /** Tách câu, giữ nguồn. */
-function sentences(sources) {
+export function sentences(sources) {
   return sources.flatMap((s, si) =>
     String(s.text || '')
       .replace(/\r/g, '')
@@ -83,6 +88,14 @@ export function findPeople(sents, known = []) {
       if (p && chucVu && p.chucVu !== chucVu && !p.chucVu) p.chucVu = chucVu;
     }
   }
+  // Người khai tự nêu chức vụ: “Tôi là kế toán Ban QLDA huyện X”, “tôi giữ chức Giám đốc…”.
+  for (const s of sents) {
+    const m = s.speaker && s.t.match(SELF_JOB);
+    if (!m) continue;
+    const chucVu = trimJob(m[1]);
+    const p = put(s.speaker, { speaker: true });
+    if (p && chucVu && !p.chucVu) Object.assign(p, { chucVu: chucVu.charAt(0).toLocaleUpperCase('vi-VN') + chucVu.slice(1), chucVuTrich: short(s.t, 200) });
+  }
   const people = [...map.values()];
   // Bí danh để nhận diện trong câu: tên đầy đủ, 2 chữ cuối, “ông/bà + tên”.
   people.forEach((p) => {
@@ -93,7 +106,7 @@ export function findPeople(sents, known = []) {
 }
 
 /** Vị trí người được nhắc trong câu (theo thứ tự xuất hiện); “tôi” = người khai. */
-function actorsIn(s, people) {
+export function actorsIn(s, people) {
   const t = ` ${key(s.t)} `;
   const hits = [];
   for (const p of people) {
@@ -111,7 +124,7 @@ function actorsIn(s, people) {
   return hits.sort((a, b) => a.at - b.at).map((h) => h.p);
 }
 
-const parseDate = (s) => {
+export const parseDate = (s) => {
   let m = /ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/iu.exec(s) || /\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b/.exec(s);
   if (m) return { ts: Date.UTC(+m[3], +m[2] - 1, +m[1]), label: `${String(m[1]).padStart(2, '0')}/${String(m[2]).padStart(2, '0')}/${m[3]}` };
   m = /tháng\s+(\d{1,2})[/\s]+(?:năm\s+)?(\d{4})/iu.exec(s) || /\b(\d{1,2})\/(\d{4})\b/.exec(s);
@@ -120,6 +133,25 @@ const parseDate = (s) => {
   if (m && +m[1] > 1970 && +m[1] < 2100) return { ts: Date.UTC(+m[1], 0, 1), label: m[1] };
   return null;
 };
+
+/**
+ * Một câu → ai (theo thứ tự), loại quan hệ (tien / chi-dao / khac), chiều (người đưa → người nhận), động từ,
+ * số tiền lớn nhất nêu trong câu, có phải câu phủ nhận không.
+ */
+export function classifySentence(s, people) {
+  const actors = actorsIn(s, people);
+  const money = amountsIn(s.t).sort((x, y) => y.v - x.v)[0] || null;
+  const type = MONEY_V.test(s.t) || (RECV_V.test(s.t) && (money || /tiền|tài sản|vàng|quà/i.test(s.t))) ? 'tien' : ORDER_V.test(s.t) ? 'chi-dao' : OTHER_V.test(s.t) ? 'khac' : null;
+  let [from, to] = actors;
+  // “B nhận … của / từ A” → A → B; “nhận” đứng trước người thứ hai.
+  const tk = key(s.t);
+  if (type === 'tien' && RECV_V.test(s.t) && !MONEY_V.test(s.t)) [from, to] = [to, from];
+  if (actors.length >= 2 && /(của|từ)\s/.test(tk) && RECV_V.test(s.t) && tk.indexOf(' của ') > -1) [from, to] = [actors[1], actors[0]];
+  // Mũi tên luôn đi từ người đưa → người nhận, nên “nhận” được ghi thành “đưa”.
+  let verb = type ? (s.t.match(type === 'tien' ? MONEY_V : type === 'chi-dao' ? ORDER_V : OTHER_V) || [''])[0].toLowerCase() : '';
+  if (type === 'tien' && !verb) verb = 'đưa';
+  return { actors, from, to, type, verb, money, deny: isDenial(s.t), date: parseDate(s.t) };
+}
 
 /**
  * Dựng sơ đồ vụ việc trên máy.
@@ -134,19 +166,11 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
   // Quan hệ, dòng tiền giữa các người.
   const edges = [];
   for (const s of sents) {
-    const a = actorsIn(s, people);
-    const money = amountsIn(s.t).sort((x, y) => y.v - x.v)[0] || null;
-    const type = MONEY_V.test(s.t) || (RECV_V.test(s.t) && money) ? 'tien' : ORDER_V.test(s.t) ? 'chi-dao' : OTHER_V.test(s.t) ? 'khac' : null;
-    a.forEach((p) => p.mentions++);
-    if (a.length < 2 || !type) continue;
-    let [from, to] = a;
-    // “B nhận … của / từ A” → A → B; “nhận” đứng trước người thứ hai.
-    const tk = key(s.t);
-    if (type === 'tien' && RECV_V.test(s.t) && !MONEY_V.test(s.t)) [from, to] = [to, from];
-    if (/(của|từ)\s/.test(tk) && RECV_V.test(s.t) && tk.indexOf(' của ') > -1) [from, to] = [a[1], a[0]];
-    // Mũi tên luôn đi từ người đưa → người nhận, nên “nhận” được ghi thành “đưa”.
-    let verb = (s.t.match(type === 'tien' ? MONEY_V : type === 'chi-dao' ? ORDER_V : OTHER_V) || [''])[0].toLowerCase();
-    if (type === 'tien' && !verb) verb = 'đưa';
+    const c = classifySentence(s, people);
+    c.actors.forEach((p) => p.mentions++);
+    // Câu phủ nhận không dựng thành quan hệ (Phân tích lời khai nêu riêng thành điểm cần làm rõ).
+    if (c.actors.length < 2 || !c.type || c.deny) continue;
+    const { from, to, type, verb, money } = c;
     const dup = edges.find((e) => e.from === from && e.to === to && e.type === type && (e.amount?.v || 0) === (money?.v || 0));
     if (dup) {
       dup.n++;

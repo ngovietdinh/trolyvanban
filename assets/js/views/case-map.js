@@ -143,6 +143,7 @@ function relTable(m, moneyOnly) {
 
 /* ---------------- Màn hình ---------------- */
 export function render(ctx, params = []) {
+  const openId = String(params[0] || '').startsWith('saved-') ? String(params[0]).slice(6) : '';
   const st = { src: 'records', caseId: params[0] && casesRepo.get(params[0]) ? params[0] : store.get('case-map-case', '') || '', picked: null, tab: 'ban-chat', map: null, title: '', sources: [], known: [], primary: null, dkey: '' };
   let dgCtl = null;
   let refineCtl = null;
@@ -525,6 +526,8 @@ export function render(ctx, params = []) {
   });
   drawSource();
   drawSaved();
+  // Mở thẳng một kết quả đã lưu (ví dụ từ Phân tích lời khai).
+  if (openId) openSaved(openId);
   return () => {
     dgCtl?.destroy();
     refineCtl?.destroy();

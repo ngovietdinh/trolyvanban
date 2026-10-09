@@ -1,7 +1,7 @@
 {
-  "version": "2.27.0",
+  "version": "2.28.0",
   "date": "2026-10-09",
   "notes": [
-    "Chức vụ, số tiền, trích dẫn chỉ lấy đúng nguyên văn lời khai — AI nêu mà không có nguyên văn thì bỏ và báo; vai trò suy ra ghi riêng; tổng tiền chỉ ở bảng, ghi rõ máy cộng. Lưu kết quả phân tích và mở lại không cần phân tích lại; mỗi sơ đồ lưu nhiều bản có tên, tải ra / mở từ tệp"
+    "Phân tích lời khai: máy phân tích ngay ra sơ đồ, đối chiếu ai khai gì về ai, chỉ điểm cần làm rõ (mâu thuẫn, phủ nhận, thiếu số tiền / thời gian / chức vụ, chưa lấy lời khai); AI chỉ làm rõ từng điểm, gửi đúng câu liên quan"
   ]
 }

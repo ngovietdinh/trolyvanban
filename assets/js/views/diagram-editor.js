@@ -33,6 +33,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
   let edgeKind = 'khac';
   let pen = { color: PEN_COLORS[0], width: 3 };
   let connectFrom = null;
+  let hl = new Set(); // nút được làm nổi (Phân tích lời khai → “Xem trên sơ đồ”)
   const undo = [];
   const redo = [];
   let view = null; // { x, y, w, h } — vùng đang nhìn (viewBox)
@@ -178,6 +179,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     const selId = sel?.id || null;
     svg.innerHTML = `${diagramSvgBody(d, { sel: selId, ui: true, ideas: ideaCount })}<g class="dg-temp" data-dg-temp>${connectFrom ? tempLine : ''}</g>${liveStroke ? `<path class="dg-live" d="M${liveStroke.points.map((p) => p.join(',')).join(' L')}" stroke="${liveStroke.color}" stroke-width="${liveStroke.width}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : ''}`;
     if (connectFrom) $(`[data-node="${CSS.escape(connectFrom)}"]`, svg)?.classList.add('from');
+    hl.forEach((id) => $(`[data-node="${CSS.escape(id)}"]`, svg)?.classList.add('hl'));
   }
   // Chỉ đổi lớp “đang chọn”, không dựng lại SVG (giữ phần tử dưới con trỏ để nhận bấm đúp).
   function markSel() {
@@ -982,6 +984,17 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       drawProps();
       stat();
       fit();
+    },
+    /** Làm nổi các nút có nhãn trùng tên (bỏ trống để tắt); trả về số nút tìm thấy. */
+    highlight(names = []) {
+      const k = (x) => String(x || '').normalize('NFC').toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ').trim();
+      const want = new Set(names.map(k));
+      hl = new Set(d.nodes.filter((n) => want.has(k(n.label))).map((n) => n.id));
+      $$('.dg-node.hl', svg).forEach((x) => x.classList.remove('hl'));
+      hl.forEach((id) => $(`[data-node="${CSS.escape(id)}"]`, svg)?.classList.add('hl'));
+      const first = d.nodes.find((n) => hl.has(n.id));
+      if (first) ensureVisible(first);
+      return hl.size;
     },
     destroy() {
       popCtl?.abort();
