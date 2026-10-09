@@ -30,7 +30,7 @@ test.describe('Sơ đồ vụ việc', () => {
     await expect(res.locator('h2')).toContainText('Vụ tham ô tại Ban QLDA');
     await expect(res.locator('.cm-points')).toContainText('Dòng tiền: Nguyễn Văn An → Trần Văn Bình: 100 triệu đồng');
     await expect(res.locator('.cm-points')).toContainText('Điều 353');
-    await expect(res.locator('.cm-people')).toContainText('Người chỉ đạo');
+    await expect(res.locator('.cm-people')).toContainText('theo quan hệ: người chỉ đạo');
 
     // Sơ đồ hành vi, quan hệ, dòng tiền: đều là sơ đồ sửa được.
     await page.click('[data-cm-tab="cay"]');

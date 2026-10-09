@@ -4830,3 +4830,17 @@ body.dg-lock { overflow: hidden; }
 }
 
 .cm-dg-intro { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 10px; }
+
+/* ================= Lưu / mở lại (v2.27) ================= */
+.cm-saved:empty { display: none; }
+.cm-saved-box { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; background: var(--surface); }
+.cm-saved-box summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cm-saved-box summary small { font-weight: 400; color: var(--text-3); }
+.cm-saved-list, .dg-lib-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.cm-saved-list li, .dg-lib-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; }
+.cm-saved-list li > span, .dg-lib-list li > span { flex: 1; min-width: 0; display: grid; }
+.cm-saved-list small, .dg-lib-list small { color: var(--text-3); }
+.dg-lib-save { display: flex; gap: 6px; }
+.dg-lib-save .input { flex: 1; min-width: 0; }
+.dg-lib { max-height: calc(100% - 16px); }
+.cm-infer { color: var(--text-3); font-style: italic; }

@@ -190,15 +190,7 @@ function relationFromCaseMap(m, { money = false } = {}) {
   }
   // Quan hệ: cả người chưa có quan hệ nào (để nối tay).
   if (!money) (m.people || []).forEach((p) => person(p.ten));
-  // Dòng tiền: tổng đã đưa / đã nhận của từng người.
-  if (money) {
-    for (const n of nodes) {
-      const out = edges.filter((e) => e.from === n.id).reduce((s, e) => s + moneyValue(e.label), 0);
-      const inn = edges.filter((e) => e.to === n.id).reduce((s, e) => s + moneyValue(e.label), 0);
-      const parts = [out && `Đưa ${formatMoney(out)}`, inn && `Nhận ${formatMoney(inn)}`].filter(Boolean);
-      if (parts.length) n.sub = [n.sub, parts.join(' · ')].filter(Boolean).join(' — ');
-    }
-  }
+  // Không ghi tổng tiền tự cộng lên hình (chỉ số liệu nguyên văn); tổng theo người xem ở bảng bên dưới sơ đồ.
   return { nodes, edges };
 }
 

@@ -14,6 +14,24 @@ const key = (s) => String(s || '').normalize('NFC').toLocaleLowerCase('vi-VN').r
 const UP = 'A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ';
 const TITLE = '(?:ông|bà|anh|chị|em|cô|chú|bác|cháu|đồng chí|đ\\/c|giám đốc|phó giám đốc|chủ tịch|phó chủ tịch|trưởng phòng|phó trưởng phòng|kế toán trưởng|kế toán|thủ quỹ|thủ kho|cán bộ|chuyên viên|bị can|người làm chứng|đối tượng|hộ|ông\\/bà)';
 const NAME_RE = new RegExp(`(?<![\\p{L}])${TITLE}\\s+((?:[${UP}][\\p{Ll}]*)(?:\\s+[${UP}][\\p{Ll}]*){0,3})`, 'gu');
+// Chức vụ (chỉ lấy khi có NGUYÊN VĂN trong lời khai: đứng trước tên, hoặc ngay sau tên).
+const JOB = '(?:phó giám đốc|giám đốc|phó chủ tịch|chủ tịch|phó trưởng phòng|trưởng phòng|trưởng ban|phó trưởng ban|kế toán trưởng|kế toán viên|kế toán|thủ quỹ|thủ kho|cán bộ|chuyên viên|nhân viên|cán bộ địa chính|chánh văn phòng|phó chánh văn phòng|bí thư|phó bí thư|thanh tra viên|nhà thầu|chủ đầu tư|chỉ huy trưởng|đội trưởng|tổ trưởng)';
+const JOB_RE = new RegExp(`^${JOB}$`, 'i');
+const ORG_TAIL = '(?:\\s+(?:của\\s+)?(?:Ban|Phòng|phòng|Công ty|công ty|UBND|Sở|Trung tâm|Chi cục|Cục|xã|huyện|tỉnh|Hợp tác xã|Doanh nghiệp|doanh nghiệp|Văn phòng)[^,.;:()\\n]{0,60})?';
+const JOB_AFTER = new RegExp(`^\\s*(?:,|\\(|–|-)?\\s*(?:là\\s+)?(${JOB}${ORG_TAIL})`, 'iu');
+// Phần tên đơn vị sau chức vụ: dừng ở động từ / từ nối, tối đa 8 từ (“kế toán Ban QLDA huyện X lập…” → “kế toán Ban QLDA huyện X”).
+const STOP_WORD = /^(lập|rút|chuyển|nhận|đưa|ký|đã|đang|sẽ|có|là|và|cùng|chỉ|khai|biết|được|bị|không|nói|cho|gặp|bàn|thống|giao|trả|chi|nộp|yêu|đề|thì|nhưng|vì|nên|để|với|tại|vào|năm|ngày|tháng|lúc|khi|sau|trước|thông|móc|câu|ép|bảo|nhờ|thu|lấy|làm|tổ|ra|duyệt|phê|quyết|trực|tiếp|tôi|anh|chị|ông|bà|họ|mình)$/i;
+function trimJob(t) {
+  const w = String(t || '').trim().replace(/\s+/g, ' ').split(' ');
+  const out = [];
+  for (const x of w) {
+    if (out.length && STOP_WORD.test(x.replace(/[^\p{L}]/gu, ''))) break;
+    out.push(x);
+    if (out.length >= 9) break;
+  }
+  return out.join(' ').replace(/[,;:.(–-]+$/, '');
+}
+const JOB_BEFORE = new RegExp(`(${JOB}${ORG_TAIL})\\s*$`, 'iu');
 const MONEY_V = /(đưa|chuyển khoản|chuyển|giao|trả|chi|nộp|biếu|cho vay|vay|hối lộ|lại quả|chia)/i;
 const RECV_V = /(nhận|thu|lấy)/i;
 const ORDER_V = /(chỉ đạo|giao cho|yêu cầu|bảo|ép|nhờ|đề nghị|phê duyệt|ký duyệt|duyệt|ra lệnh|quyết định)/i;
@@ -53,7 +71,18 @@ export function findPeople(sents, known = []) {
   sents.forEach((s) => s.speaker && put(s.speaker, { speaker: true }));
   // Danh xưng viết hoa đầu câu (“Bà Lê Thị Cúc…”) → viết thường để nhận diện tên ngay sau.
   const TITLE_CI = new RegExp(`(?<![\\p{L}])${TITLE}(?=\\s)`, 'giu');
-  for (const s of sents) for (const m of s.t.replace(TITLE_CI, (x) => x.toLocaleLowerCase('vi-VN')).matchAll(NAME_RE)) put(m[1]);
+  for (const s of sents) {
+    const low = s.t.replace(TITLE_CI, (x) => x.toLocaleLowerCase('vi-VN'));
+    for (const m of low.matchAll(NAME_RE)) {
+      const title = m[0].slice(0, m[0].length - m[1].length).trim();
+      // Chức vụ nguyên văn: “Giám đốc Trần Văn Bình”, “ông An, kế toán Ban QLDA”, “bà Cúc (thủ quỹ)”.
+      const after = s.t.slice(m.index + m[0].length).match(JOB_AFTER);
+      const before = JOB_RE.test(title) ? title : (s.t.slice(Math.max(0, m.index - 70), m.index).match(JOB_BEFORE) || [])[1];
+      const chucVu = trimJob(after?.[1] || before || '');
+      const p = put(m[1], chucVu ? { chucVu: chucVu.charAt(0).toLocaleUpperCase('vi-VN') + chucVu.slice(1), chucVuTrich: short(s.t, 200) } : {});
+      if (p && chucVu && p.chucVu !== chucVu && !p.chucVu) p.chucVu = chucVu;
+    }
+  }
   const people = [...map.values()];
   // Bí danh để nhận diện trong câu: tên đầy đủ, 2 chữ cuối, “ông/bà + tên”.
   people.forEach((p) => {
@@ -91,7 +120,6 @@ const parseDate = (s) => {
   if (m && +m[1] > 1970 && +m[1] < 2100) return { ts: Date.UTC(+m[1], 0, 1), label: m[1] };
   return null;
 };
-const fmtMoney = (v) => (v >= 1e9 ? `${(v / 1e9).toLocaleString('vi-VN', { maximumFractionDigits: 3 })} tỷ đồng` : v >= 1e6 ? `${(v / 1e6).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} triệu đồng` : `${v.toLocaleString('vi-VN')} đồng`);
 
 /**
  * Dựng sơ đồ vụ việc trên máy.
@@ -127,12 +155,13 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
     edges.push({ from, to, type, verb, amount: money, trich: short(s.t, 200), src: s.src, n: 1 });
   }
 
-  // Vai trò suy ra từ quan hệ.
+  // vaiTro: CHỈ chức vụ nguyên văn trong lời khai (hoặc tư cách trong hồ sơ). Vai trò suy ra từ quan hệ để riêng
+  // (suyRa) và luôn ghi rõ là suy ra — không trộn với chức vụ.
   people.forEach((p) => {
-    if (p.vaiTro) return;
+    p.vaiTro = p.chucVu || p.vaiTro || '';
     const out = edges.filter((e) => e.from === p);
     const inn = edges.filter((e) => e.to === p);
-    p.vaiTro = out.some((e) => e.type === 'chi-dao') ? 'Người chỉ đạo' : inn.some((e) => e.type === 'tien') && !out.some((e) => e.type === 'tien') ? 'Người nhận tiền' : out.some((e) => e.type === 'tien') ? 'Người đưa / chuyển tiền' : p.speaker ? 'Người khai' : 'Người liên quan';
+    p.suyRa = out.some((e) => e.type === 'chi-dao') ? 'Người chỉ đạo' : inn.some((e) => e.type === 'tien') && !out.some((e) => e.type === 'tien') ? 'Người nhận tiền' : out.some((e) => e.type === 'tien') ? 'Người đưa / chuyển tiền' : p.speaker ? 'Người khai' : '';
   });
 
   // Hành vi theo điều luật: ai thực hiện (người được nhắc trong đoạn trích), số tiền.
@@ -170,14 +199,14 @@ export function buildCaseMap({ sources = [], known = [], primary = null } = {}) 
   edges.filter((e) => e.type === 'tien').slice(0, 4).forEach((e) => banChat.push(`Dòng tiền: ${e.from.ten} → ${e.to.ten}${e.amount ? `: ${e.amount.raw}` : ''}${e.n > 1 ? ` (${e.n} lần nêu)` : ''}.`));
   edges.filter((e) => e.type === 'chi-dao').slice(0, 3).forEach((e) => banChat.push(`${e.from.ten} ${e.verb} ${e.to.ten}.`));
   if (main.length) banChat.push(`Người được nhắc đến nhiều nhất: ${main.slice(0, 4).map((p) => `${p.ten} (${p.mentions} lần)`).join(', ')}.`);
-  if (amounts.length) banChat.push(`Số tiền lớn nhất được nêu: ${fmtMoney(amounts[0].v)}${amounts.length > 1 ? `; các mức khác: ${amounts.slice(1, 5).map((m) => m.raw).join(', ')}` : ''}.`);
+  if (amounts.length) banChat.push(`Số tiền lớn nhất được nêu: ${amounts[0].raw}${amounts.length > 1 ? `; các mức khác: ${amounts.slice(1, 5).map((m) => m.raw).join(', ')}` : ''}.`);
   if (timeline.length) banChat.push(`Khoảng thời gian: ${timeline[0].thoiGian}${timeline.length > 1 ? ` – ${timeline.at(-1).thoiGian}` : ''} (${timeline.length} mốc).`);
 
   return {
     tomTat: short(an.tomTat, 700),
     banChat,
     crimes,
-    people: people.filter((p) => p.mentions || p.known).map(({ ten, vaiTro, mentions, speaker, known: k }) => ({ ten, vaiTro, mentions, speaker: !!speaker, known: !!k })),
+    people: people.filter((p) => p.mentions || p.known).map(({ ten, vaiTro, chucVu, chucVuTrich, suyRa, mentions, speaker, known: k }) => ({ ten, vaiTro, chucVu: chucVu || '', chucVuTrich: chucVuTrich || '', suyRa: suyRa || '', mentions, speaker: !!speaker, known: !!k })),
     edges: edges.map((e) => ({ tu: e.from.ten, den: e.to.ten, loai: e.type, noiDung: e.verb, soTien: e.amount?.raw || '', trich: e.trich, src: e.src, n: e.n })),
     timeline,
     amounts: amounts.map((m) => m.raw),
@@ -195,9 +224,9 @@ export function caseMapPrompt(text, { known = [], primary = null, part = null } 
   const stable = `${primary ? `Điều luật đang xem xét: Điều ${primary} BLHS.\n` : ''}${known.length ? `Người trong hồ sơ: ${known.map((p) => `${p.ten}${p.vaiTro ? ` (${p.vaiTro})` : ''}`).join('; ')}\n` : ''}Đọc NỘI DUNG ở cuối, trả về JSON:
 {"tomTat":"bản chất vụ việc 3–5 câu",
  "banChat":["các ý then chốt, mỗi ý một câu ngắn"],
- "nguoi":[{"ten":"họ tên","vaiTro":"vai trò trong vụ việc"}],
- "hanhVi":[{"ten":"hành vi","dieu":"số điều BLHS","nguoi":["ai thực hiện"],"soTien":"nếu có","trich":"trích nguyên văn ngắn"}],
- "quanHe":[{"tu":"người A","den":"người B","loai":"tien|chi-dao|khac","noiDung":"A làm gì với B","soTien":"nếu có"}],
+ "nguoi":[{"ten":"họ tên","vaiTro":"chức vụ CHÉP NGUYÊN VĂN trong nội dung — không có thì để trống, không tự suy ra"}],
+ "hanhVi":[{"ten":"hành vi","dieu":"số điều BLHS","nguoi":["ai thực hiện"],"soTien":"số tiền CHÉP NGUYÊN VĂN trong nội dung — không có thì để trống","trich":"trích nguyên văn ngắn"}],
+ "quanHe":[{"tu":"người A","den":"người B","loai":"tien|chi-dao|khac","noiDung":"A làm gì với B","soTien":"số tiền CHÉP NGUYÊN VĂN — không có thì để trống"}],
  "moc":[{"thoiGian":"dd/mm/yyyy hoặc mô tả","suKien":"sự kiện"}]}
 `;
   return withCache(stable, `${part ? `\nĐÂY LÀ PHẦN ${part[0]}/${part[1]} CỦA NỘI DUNG — chỉ trích xuất những gì có trong phần này, trả lời ngắn gọn.\n` : ''}
@@ -226,6 +255,7 @@ export function caseMapToAiJson(m) {
 export function caseMapRefinePrompt(m, request, { source = '', primary = null, max = 12000 } = {}) {
   const cur = JSON.stringify(caseMapToAiJson(m));
   const stable = `${primary ? `Điều luật đang xem xét: Điều ${primary} BLHS.\n` : ''}Nhiệm vụ: thực hiện YÊU CẦU CỦA ĐIỀU TRA VIÊN (ở cuối) trên SƠ ĐỒ VỤ VIỆC HIỆN TẠI: giữ nguyên những gì đúng, sửa / bổ sung / bỏ theo yêu cầu, không suy diễn ngoài tài liệu.
+Chức vụ, số tiền, trích dẫn phải CHÉP NGUYÊN VĂN trong tài liệu; không có thì để trống, tuyệt đối không tự suy ra.
 Trả về TOÀN BỘ sơ đồ sau khi sửa, cùng định dạng JSON:
 {"tomTat":"…","banChat":["…"],"nguoi":[{"ten":"…","vaiTro":"…"}],"hanhVi":[{"ten":"…","dieu":"…","nguoi":["…"],"soTien":"…","trich":"…"}],"quanHe":[{"tu":"…","den":"…","loai":"tien|chi-dao|khac","noiDung":"…","soTien":"…"}],"moc":[{"thoiGian":"…","suKien":"…"}],"ghiChu":"1 câu: đã thay đổi gì"}
 `;
@@ -243,9 +273,11 @@ ${String(request).slice(0, 2000)}
  * Ghép kết quả AI vào cấu trúc sơ đồ; điều luật được kiểm tra với Bộ luật trong phần mềm.
  * append = true: cộng dồn kết quả của phần tài liệu tiếp theo vào sơ đồ AI đã có (tài liệu dài chia nhiều phần).
  */
-export function mergeAiCaseMap(base, raw, { append = false, replace = false } = {}) {
+export function mergeAiCaseMap(base, raw, { append = false, replace = false, source = '' } = {}) {
   const j = typeof raw === 'string' ? extractJson(raw) : raw;
   if (!j || (!Array.isArray(j.hanhVi) && !Array.isArray(j.quanHe))) throw new Error('AI trả về kết quả không đúng định dạng — đang dùng sơ đồ phân tích trên máy');
+  if (source) verifyAiAgainstSource(j, source);
+  const verifyDropped = j._dropped || null;
   const byDieu = new Map();
   (j.hanhVi || []).forEach((h) => {
     const d = String(h.dieu || '').replace(/\D+$/, '').replace(/^Điều\s*/i, '').trim();
@@ -257,8 +289,14 @@ export function mergeAiCaseMap(base, raw, { append = false, replace = false } = 
   // replace: sơ đồ AI trả về (khi làm tiếp theo yêu cầu) thay thế hoàn toàn — người bị AI bỏ thì bỏ.
   const people = new Map(replace ? [] : base.people.map((p) => [key(p.ten), p]));
   const before = new Map(base.people.map((p) => [key(p.ten), p]));
-  (j.nguoi || []).forEach((p) => p?.ten && people.set(key(p.ten), { ...(people.get(key(p.ten)) || before.get(key(p.ten)) || { mentions: 1 }), ten: p.ten, vaiTro: p.vaiTro || people.get(key(p.ten))?.vaiTro || '' }));
-  const edges = (j.quanHe || []).filter((e) => e?.tu && e?.den).map((e) => ({ tu: e.tu, den: e.den, loai: ['tien', 'chi-dao'].includes(e.loai) ? e.loai : 'khac', noiDung: e.noiDung || '', soTien: e.soTien || '', trich: '', src: 'AI', n: 1 }));
+  (j.nguoi || []).forEach((p) => p?.ten && people.set(key(p.ten), { ...(people.get(key(p.ten)) || before.get(key(p.ten)) || { mentions: 1 }), ten: p.ten, vaiTro: p.vaiTro || people.get(key(p.ten))?.vaiTro || before.get(key(p.ten))?.vaiTro || '' }));
+  // AI không ghi (hoặc ghi sai) số tiền → giữ số tiền nguyên văn, căn cứ của cùng quan hệ đã có từ phân tích trên máy.
+  const baseEdge = (e) => (base.edges || []).find((x) => key(x.tu) === key(e.tu) && key(x.den) === key(e.den) && x.loai === e.loai);
+  const edges = (j.quanHe || []).filter((e) => e?.tu && e?.den).map((e) => {
+    const loai = ['tien', 'chi-dao'].includes(e.loai) ? e.loai : 'khac';
+    const b0 = baseEdge({ ...e, loai });
+    return { tu: e.tu, den: e.den, loai, noiDung: e.noiDung || b0?.noiDung || '', soTien: e.soTien || b0?.soTien || '', trich: b0?.trich || '', src: b0 ? b0.src : 'AI', n: 1 };
+  });
   edges.forEach((e) => [e.tu, e.den].forEach((t) => !people.has(key(t)) && people.set(key(t), { ten: t, vaiTro: 'Người liên quan', mentions: 1 })));
   const timeline = (j.moc || []).filter((m) => m?.suKien).map((m) => ({ ts: parseDate(String(m.thoiGian || ''))?.ts ?? Number.MAX_SAFE_INTEGER, thoiGian: m.thoiGian || '', suKien: m.suKien, src: 'AI' })).sort((a, b) => a.ts - b.ts);
   if (append && base.ai) {
@@ -280,10 +318,11 @@ export function mergeAiCaseMap(base, raw, { append = false, replace = false } = 
       edges: uniq([...base.edges, ...edges], ek),
       timeline: uniq([...base.timeline, ...timeline], tk).sort((a, b) => a.ts - b.ts),
       ai: true,
+      verifyDropped,
     };
   }
   if (replace) {
-    return { ...base, tomTat: j.tomTat || '', banChat: j.banChat || [], crimes: [...byDieu.values()], people: [...people.values()], edges, timeline, ai: true, note: String(j.ghiChu || '').slice(0, 300) };
+    return { ...base, tomTat: j.tomTat || '', banChat: j.banChat || [], crimes: [...byDieu.values()], people: [...people.values()], edges, timeline, ai: true, note: String(j.ghiChu || '').slice(0, 300), verifyDropped };
   }
   return {
     ...base,
@@ -294,7 +333,42 @@ export function mergeAiCaseMap(base, raw, { append = false, replace = false } = 
     edges: edges.length ? edges : base.edges,
     timeline: timeline.length ? timeline : base.timeline,
     ai: true,
+    verifyDropped,
   };
+}
+
+/**
+ * Đối chiếu kết quả AI với lời khai / tài liệu gốc (sửa trực tiếp j): chức vụ, số tiền, trích dẫn chỉ giữ khi có
+ * NGUYÊN VĂN trong nguồn; số tiền khớp giá trị thì dùng đúng cách ghi trong nguồn. Ghi lại số mục đã bỏ (j._dropped).
+ */
+export function verifyAiAgainstSource(j, source) {
+  const src = key(source);
+  const amounts = amountsIn(source);
+  const dropped = { chucVu: 0, soTien: 0, trich: 0 };
+  const money = (v) => {
+    if (!v) return '';
+    const val = amountsIn(String(v))[0]?.v;
+    const hit = val ? amounts.find((a) => a.v === val) : null;
+    if (!hit) dropped.soTien++;
+    return hit ? hit.raw : '';
+  };
+  (j.nguoi || []).forEach((p) => {
+    if (p?.vaiTro && !src.includes(key(p.vaiTro))) {
+      dropped.chucVu++;
+      p.vaiTro = '';
+    }
+  });
+  (j.hanhVi || []).forEach((h) => {
+    if (!h) return;
+    h.soTien = money(h.soTien);
+    if (h.trich && !src.includes(key(h.trich).slice(0, 80))) {
+      dropped.trich++;
+      h.trich = '';
+    }
+  });
+  (j.quanHe || []).forEach((e) => e && (e.soTien = money(e.soTien)));
+  j._dropped = dropped;
+  return j;
 }
 
 /* ---------------- Sơ đồ cây ---------------- */

@@ -212,7 +212,7 @@ test('v2.25 sơ đồ tư duy: chủ đề trung tâm → điều luật → hà
   assert.ok(big.lh > z0.lh);
 });
 
-test('v2.26 sơ đồ hành vi, quan hệ, dòng tiền: dựng sẵn từ phân tích, bố cục riêng, tổng tiền từng người', async () => {
+test('v2.26 sơ đồ hành vi, quan hệ, dòng tiền: dựng sẵn từ phân tích, bố cục riêng', async () => {
   const { moneyValue, formatMoney, PRESETS, isTreeLayout, nodeSize: ns } = await import('../../assets/js/legal/diagram.js');
   const m = buildCaseMap({ sources: SRC, primary: '353' });
   const hv = diagramFromCaseMap(m, { title: 'Vụ A', preset: 'hanh-vi' });
@@ -230,7 +230,7 @@ test('v2.26 sơ đồ hành vi, quan hệ, dòng tiền: dựng sẵn từ phân
   const giver = dt.nodes.find((n) => dt.edges.some((e) => e.from === n.id));
   const taker = dt.nodes.find((n) => dt.edges.some((e) => e.to === n.id));
   assert.ok(giver.x < taker.x, 'dòng tiền chảy trái → phải');
-  assert.match(taker.sub, /Nhận 100 triệu/);
+  assert.ok(!/Nhận|Đưa/.test(taker.sub || ''), 'không ghi tổng tiền tự cộng lên hình');
   for (const d of [qh, dt])
     for (const a of d.nodes)
       for (const b of d.nodes) {

@@ -88,6 +88,11 @@ Phân tích tài liệu (Thêm hành vi từ tài liệu, Phân tích vụ việ
 
 Tab **Vẽ & chỉnh sửa** của Sơ đồ vụ việc (`assets/js/legal/diagram.js`, `assets/js/views/diagram-editor.js`): sơ đồ dựng sẵn có **chủ đề trung tâm** (vụ việc) → điều luật → hành vi → người thực hiện; khung cây lấy theo liên kết “thuộc / thực hiện”, quan hệ tiền / chỉ đạo là liên kết chéo vẽ vòng cung (ẩn / hiện được). Ba kiểu bố cục (`d.layout`): `mindmap` (hai bên, cân theo chiều cao nhánh), `cay` (cây ngang), `tang` (theo tầng, như v2.24). Thu gọn nhánh (`collapsed`), kéo to nhỏ (`w`, `h`), cỡ chữ (`fs`), Tab / Enter thêm nhánh, chụm 2 ngón để thu phóng. Gợi ý trên từng hình (`nodeIdeas`): đầu mục điều tra theo loại hình, dấu hiệu định tội của điều luật, người / dòng tiền liên quan chưa có trên sơ đồ; **AI gợi ý thêm** gửi tóm tắt vụ việc (phần cố định, đọc lại từ cache) + đường đi tới hình đang xét.
 
+## Nguyên văn lời khai; lưu / mở lại (v2.27)
+
+- `buildCaseMap`: `vaiTro` chỉ là chức vụ có nguyên văn trong lời khai (trước tên: “Giám đốc Trần Văn Bình”; sau tên: “ông An, kế toán Ban QLDA huyện X”, “bà Cúc (thủ quỹ)”, kèm `chucVuTrich`) hoặc tư cách trong hồ sơ; vai trò suy ra từ quan hệ để ở `suyRa`. `verifyAiAgainstSource`: chức vụ, số tiền, trích dẫn AI trả về phải có nguyên văn trong nguồn (số tiền so theo giá trị, ghi đúng cách viết trong nguồn), không có thì bỏ và báo; quan hệ AI thiếu số tiền giữ số tiền nguyên văn đã có. Tổng tiền theo người chỉ ở bảng, ghi rõ máy cộng.
+- Lưu kết quả phân tích (`case-map-saves`, tự lưu sau mỗi lần phân tích / AI làm tiếp, nút **Lưu** để đặt tên) và mở lại ở “Kết quả đã lưu”; mỗi sơ đồ có **Lưu / mở bản** (`diagram-library`), tải ra / mở từ tệp `.json`.
+
 ## Sơ đồ hành vi, quan hệ, dòng tiền sửa được (v2.26)
 
 Các tab Sơ đồ hành vi, Quan hệ, Dòng tiền dùng chung trình sửa sơ đồ với Sơ đồ tư duy; mỗi tab là một `preset` của `diagramFromCaseMap` (`hanh-vi` → bố cục `cay`; `quan-he` → `vong` (vòng tròn); `dong-tien` → `dong` (dòng chảy trái → phải theo đường đi dài nhất), có tổng tiền đã đưa / đã nhận từng người — `moneyValue`, `formatMoney`). Mỗi sơ đồ lưu riêng (`diagrams[<hồ sơ>#<preset>]`), cập nhật theo phân tích / AI làm tiếp mà giữ phần đã sửa.

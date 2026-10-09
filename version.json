@@ -1,7 +1,7 @@
 {
-  "version": "2.26.0",
+  "version": "2.27.0",
   "date": "2026-10-09",
   "notes": [
-    "Sơ đồ hành vi, quan hệ, dòng tiền đều sửa được như sơ đồ tư duy: thêm bớt người, hành vi, nối quan hệ, sửa số tiền, gợi ý trên hình, vẽ tay, toàn màn hình, xuất ảnh; mỗi sơ đồ lưu riêng; quan hệ xếp vòng tròn, dòng tiền chảy trái sang phải có tổng đưa / nhận từng người"
+    "Chức vụ, số tiền, trích dẫn chỉ lấy đúng nguyên văn lời khai — AI nêu mà không có nguyên văn thì bỏ và báo; vai trò suy ra ghi riêng; tổng tiền chỉ ở bảng, ghi rõ máy cộng. Lưu kết quả phân tích và mở lại không cần phân tích lại; mỗi sơ đồ lưu nhiều bản có tên, tải ra / mở từ tệp"
   ]
 }

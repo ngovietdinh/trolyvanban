@@ -4,7 +4,7 @@ import { $, $$, icon, toast, escapeHtml, downloadBlob } from '../ui.js';
 import { casesRepo, recordsRepo } from '../legal/repo.js';
 import { getRole } from '../legal/roles.js';
 import { buildCaseMap, caseMapPrompt, caseMapRefinePrompt, relevantText, mergeAiCaseMap, CASE_MAP_SYSTEM } from '../legal/case-map.js';
-import { diagramFromCaseMap, syncFromCaseMap, emptyDiagram, PRESETS } from '../legal/diagram.js';
+import { diagramFromCaseMap, syncFromCaseMap, emptyDiagram, PRESETS, moneyValue, formatMoney } from '../legal/diagram.js';
 import { mountDiagram } from './diagram-editor.js';
 import { refineHtml, bindRefine } from './ai-refine.js';
 import { streamClaude, extractJson } from '../lib/ai.js';
@@ -74,7 +74,8 @@ export function relationSvg(m, { narrow = false } = {}) {
     .map(({ x, y, p }, i) => {
       const name = p.ten.length > 22 ? `${p.ten.slice(0, 20)}…` : p.ten;
       const role = (p.vaiTro || '').length > 26 ? `${p.vaiTro.slice(0, 24)}…` : p.vaiTro || '';
-      const cls = /chỉ đạo/i.test(p.vaiTro) ? 'boss' : /nhận tiền/i.test(p.vaiTro) ? 'recv' : /bị can|bị tạm giữ|tố giác/i.test(p.vaiTro) ? 'suspect' : '';
+      const r = `${p.vaiTro || ''} ${p.suyRa || ''}`;
+      const cls = /chỉ đạo/i.test(r) ? 'boss' : /nhận tiền/i.test(r) ? 'recv' : /bị can|bị tạm giữ|tố giác/i.test(r) ? 'suspect' : '';
       return `<g class="cm-node ${cls}" data-node="${escapeHtml(p.ten)}" tabindex="0" role="button" aria-label="${escapeHtml(`${p.ten}${p.vaiTro ? ` — ${p.vaiTro}` : ''}`)}" style="--i:${i}">
         <rect x="${(x - 78).toFixed(1)}" y="${(y - 24).toFixed(1)}" width="156" height="48" rx="12" />
         <text x="${x.toFixed(1)}" y="${(y - 3).toFixed(1)}" text-anchor="middle" class="cm-name">${escapeHtml(name)}</text>
@@ -101,7 +102,7 @@ function mapDoc(m, title, org = {}) {
   body.push(head('III. QUAN HỆ, DÒNG TIỀN'));
   body.push(m.edges.length ? { table: { widths: [0.2, 0.2, 0.16, 0.16, 0.28], header: ['Từ', 'Đến', 'Nội dung', 'Số tiền', 'Căn cứ'], rows: m.edges.map((e) => [e.tu, e.den, `${LOAI[e.loai]}: ${e.noiDung}`, e.soTien || '', e.trich || e.src || '']) } } : p('Chưa xác định được quan hệ giữa các người.'));
   body.push(head('IV. NGƯỜI LIÊN QUAN'));
-  body.push(m.people.length ? { table: { widths: [0.35, 0.45, 0.2], header: ['Họ tên', 'Vai trò', 'Số lần được nhắc'], rows: m.people.map((x) => [x.ten, x.vaiTro || '', String(x.mentions || '')]) } } : p('Chưa xác định.'));
+  body.push(m.people.length ? { table: { widths: [0.28, 0.32, 0.25, 0.15], header: ['Họ tên', 'Chức vụ / tư cách (nguyên văn)', 'Vai trò suy ra từ quan hệ', 'Số lần được nhắc'], rows: m.people.map((x) => [x.ten, x.vaiTro || '', x.suyRa ? `${x.suyRa} (suy ra)` : '', String(x.mentions || '')]) } } : p('Chưa xác định.'));
   body.push(head('V. DÒNG THỜI GIAN'));
   body.push(m.timeline.length ? { table: { widths: [0.16, 0.6, 0.24], header: ['Thời gian', 'Sự kiện', 'Nguồn'], rows: m.timeline.map((t) => [t.thoiGian, t.suKien, t.src || '']) } } : p('Chưa có mốc thời gian.'));
   body.push(p(`Sơ đồ được lập ${m.ai ? 'bằng AI kết hợp phân tích trên máy' : 'bằng phân tích trên máy'} từ nội dung đã chọn — chỉ để tham khảo, cần đối chiếu với tài liệu, chứng cứ.`, { r: { italic: true } }));
@@ -118,6 +119,9 @@ function mapDoc(m, title, org = {}) {
   };
 }
 
+/** Thông báo các mục AI nêu nhưng không có nguyên văn trong lời khai (đã bỏ). */
+const droppedMsg = (d) => `Đã bỏ ${[d.chucVu && `${d.chucVu} chức vụ`, d.soTien && `${d.soTien} số tiền`, d.trich && `${d.trich} trích dẫn`].filter(Boolean).join(', ')} do AI nêu nhưng không có nguyên văn trong lời khai / tài liệu.`;
+
 /** Tab → loại sơ đồ sửa được. */
 const EDITABLE = { ve: 'tong-hop', cay: 'hanh-vi', 'quan-he': 'quan-he', 'dong-tien': 'dong-tien' };
 
@@ -125,7 +129,16 @@ const EDITABLE = { ve: 'tong-hop', cay: 'hanh-vi', 'quan-he': 'quan-he', 'dong-t
 function relTable(m, moneyOnly) {
   const list = m.edges.filter((e) => !moneyOnly || e.loai === 'tien');
   if (!list.length) return `<p class="muted">${moneyOnly ? 'Chưa xác định được dòng tiền (cần câu có hai người và hành động đưa, nhận, chuyển tiền…).' : 'Chưa xác định được quan hệ giữa các người (cần câu có ít nhất hai người cùng hành động: đưa, nhận, chuyển, chỉ đạo…).'} Có thể tự thêm trên sơ đồ.</p>`;
-  return `<h3 class="tk-h">${icon('layers', 'ic-sm')}Bảng ${moneyOnly ? 'dòng tiền' : 'quan hệ'} từ phân tích</h3><div class="tk-table-wrap"><table class="tk-table"><thead><tr><th>Từ</th><th>Đến</th><th>Nội dung</th><th>Số tiền</th><th>Căn cứ</th></tr></thead><tbody>${list.map((e) => `<tr><td data-l="Từ">${escapeHtml(e.tu)}</td><td data-l="Đến">${escapeHtml(e.den)}</td><td data-l="Nội dung"><span class="cm-tag cm-l-${e.loai}">${LOAI[e.loai]}</span> ${escapeHtml(e.noiDung || '')}</td><td data-l="Số tiền">${escapeHtml(e.soTien || '')}</td><td data-l="Căn cứ"><small>${escapeHtml(e.trich || e.src || '')}</small></td></tr>`).join('')}</tbody></table></div>`;
+  // Dòng tiền: tổng theo người do máy cộng từ các khoản trên (ghi rõ, không phải số liệu trong lời khai).
+  let totals = '';
+  if (moneyOnly) {
+    const names = [...new Set(list.flatMap((e) => [e.tu, e.den]))];
+    const rows = names
+      .map((n) => ({ n, out: list.filter((e) => e.tu === n).reduce((s, e) => s + moneyValue(e.soTien), 0), inn: list.filter((e) => e.den === n).reduce((s, e) => s + moneyValue(e.soTien), 0) }))
+      .filter((r) => r.out || r.inn);
+    if (rows.length) totals = `<h3 class="tk-h">${icon('hash', 'ic-sm')}Tổng theo người <small class="hint">(máy cộng các khoản có số tiền ở bảng trên — để đối chiếu, không phải số liệu trong lời khai)</small></h3><div class="tk-table-wrap"><table class="tk-table"><thead><tr><th>Người</th><th>Tổng đã đưa / chuyển</th><th>Tổng đã nhận</th></tr></thead><tbody>${rows.map((r) => `<tr><td data-l="Người">${escapeHtml(r.n)}</td><td data-l="Đã đưa">${r.out ? formatMoney(r.out) : ''}</td><td data-l="Đã nhận">${r.inn ? formatMoney(r.inn) : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  return `<h3 class="tk-h">${icon('layers', 'ic-sm')}Bảng ${moneyOnly ? 'dòng tiền' : 'quan hệ'} từ phân tích</h3><div class="tk-table-wrap"><table class="tk-table"><thead><tr><th>Từ</th><th>Đến</th><th>Nội dung</th><th>Số tiền (nguyên văn)</th><th>Căn cứ</th></tr></thead><tbody>${list.map((e) => `<tr><td data-l="Từ">${escapeHtml(e.tu)}</td><td data-l="Đến">${escapeHtml(e.den)}</td><td data-l="Nội dung"><span class="cm-tag cm-l-${e.loai}">${LOAI[e.loai]}</span> ${escapeHtml(e.noiDung || '')}</td><td data-l="Số tiền">${escapeHtml(e.soTien || '')}</td><td data-l="Căn cứ"><small>${escapeHtml(e.trich || e.src || '')}</small></td></tr>`).join('')}</tbody></table></div>${totals}`;
 }
 
 /* ---------------- Màn hình ---------------- */
@@ -155,6 +168,7 @@ export function render(ctx, params = []) {
         <button class="btn btn-primary" type="button" data-cm-run>${icon('chart', 'ic-sm')}Vẽ sơ đồ</button>
       </div>
       <p class="hint" data-cm-say aria-live="polite"></p>
+      <div class="cm-saved" data-cm-saved></div>
     </section>
     <section class="panel cm-result" data-result hidden></section>
     <section class="panel cm-refine" data-cm-refine hidden></section>
@@ -190,7 +204,7 @@ export function render(ctx, params = []) {
     host.hidden = false;
     const money = m.edges.filter((e) => e.loai === 'tien').length;
     const TABS = [['ban-chat', 'Bản chất'], ['ve', 'Sơ đồ tư duy'], ['cay', 'Sơ đồ hành vi'], ['quan-he', `Quan hệ (${m.edges.length})`], ['dong-tien', `Dòng tiền (${money})`], ['thoi-gian', `Dòng thời gian (${m.timeline.length})`]];
-    host.innerHTML = `<div class="cm-res-head"><div><h2>${icon('chart', 'ic-sm')}${escapeHtml(st.title)}</h2><small>${m.ai ? `AI kết hợp phân tích trên máy${m.aiProgress ? ` (đã xong phần ${m.aiProgress})` : ''}` : 'Phân tích trên máy'} · ${m.people.length} người · ${m.crimes.reduce((s, c) => s + c.items.length, 0)} hành vi · ${m.edges.length} quan hệ · ${m.timeline.length} mốc</small></div><span class="spacer"></span><button class="btn btn-sm btn-ghost" type="button" data-cm-preview>${icon('eye', 'ic-sm')}Xem bản in</button><button class="btn btn-sm" type="button" data-cm-export>${icon('download', 'ic-sm')}Xuất Word</button></div>
+    host.innerHTML = `<div class="cm-res-head"><div><h2>${icon('chart', 'ic-sm')}${escapeHtml(st.title)}</h2><small>${m.ai ? `AI kết hợp phân tích trên máy${m.aiProgress ? ` (đã xong phần ${m.aiProgress})` : ''}` : 'Phân tích trên máy'} · ${m.people.length} người · ${m.crimes.reduce((s, c) => s + c.items.length, 0)} hành vi · ${m.edges.length} quan hệ · ${m.timeline.length} mốc</small></div><span class="spacer"></span><button class="btn btn-sm btn-ghost" type="button" data-cm-save title="Lưu kết quả phân tích và các sơ đồ để mở lại sau, không cần phân tích lại">${icon('save', 'ic-sm')}Lưu</button><button class="btn btn-sm btn-ghost" type="button" data-cm-preview>${icon('eye', 'ic-sm')}Xem bản in</button><button class="btn btn-sm" type="button" data-cm-export>${icon('download', 'ic-sm')}Xuất Word</button></div>
       <div class="tabs cm-tabs" role="tablist">${TABS.map(([k, l]) => `<button class="tab" role="tab" data-cm-tab="${k}" aria-selected="${st.tab === k}">${l}</button>`).join('')}</div>
       <div class="cm-body" data-cm-body></div>`;
     const body = $('[data-cm-body]', host);
@@ -200,7 +214,7 @@ export function render(ctx, params = []) {
         ${m.tomTat ? `<blockquote class="cm-sum">${escapeHtml(m.tomTat)}</blockquote>` : ''}
         <div class="cm-kpis"><span><strong>${m.crimes.filter((c) => c.dieu).length}</strong>điều luật</span><span><strong>${total}</strong>hành vi</span><span><strong>${m.people.length}</strong>người liên quan</span><span><strong>${m.edges.filter((e) => e.loai === 'tien').length}</strong>dòng tiền</span><span><strong>${m.amounts?.[0] || '—'}</strong>số tiền lớn nhất</span></div>
         <ul class="cm-points">${m.banChat.map((t) => `<li>${escapeHtml(t)}</li>`).join('') || '<li class="muted">Chưa rút ra được nội dung then chốt — thử chọn thêm biên bản hoặc dùng AI.</li>'}</ul>
-        ${m.people.length ? `<h3 class="tk-h">${icon('user', 'ic-sm')}Người liên quan</h3><div class="cm-people">${m.people.map((p) => `<span class="cm-chip"><strong>${escapeHtml(p.ten)}</strong><small>${escapeHtml(p.vaiTro || '')}${p.mentions ? ` · ${p.mentions} lần` : ''}</small></span>`).join('')}</div>` : ''}
+        ${m.people.length ? `<h3 class="tk-h">${icon('user', 'ic-sm')}Người liên quan</h3><div class="cm-people">${m.people.map((p) => `<span class="cm-chip"><strong>${escapeHtml(p.ten)}</strong><small>${p.vaiTro ? `<span title="${escapeHtml(p.chucVuTrich ? `Nguyên văn: “${p.chucVuTrich}”` : 'Chức vụ / tư cách')}">${escapeHtml(p.vaiTro)}</span>` : '<em>chưa có chức vụ trong lời khai</em>'}${p.suyRa ? ` · <span class="cm-infer" title="Suy ra từ quan hệ trong lời khai — không phải chức vụ">theo quan hệ: ${escapeHtml(p.suyRa.toLowerCase())}</span>` : ''}${p.mentions ? ` · ${p.mentions} lần` : ''}</small></span>`).join('')}</div><p class="hint">Chức vụ, số tiền chỉ lấy đúng nguyên văn trong lời khai / tài liệu; vai trò “theo quan hệ” là máy suy ra, không phải chức vụ.</p>` : ''}
       </div>`;
     } else if (EDITABLE[st.tab]) {
       // Sơ đồ tư duy, hành vi, quan hệ, dòng tiền: đều dựng sẵn từ phân tích và sửa được (thêm, bớt, nối, vẽ…).
@@ -276,6 +290,7 @@ export function render(ctx, params = []) {
     Object.assign(st, { sources, known, primary });
     st.map = offline;
     syncSaved();
+    saveResult();
     if (!EDITABLE[st.tab]) st.tab = 'ban-chat';
     drawResult();
     drawRefine();
@@ -299,12 +314,15 @@ export function render(ctx, params = []) {
     const chunks = splitText(focusText(full, { min: size }), size);
     let acc = offline;
     let done = 0;
+    const dropped = { chucVu: 0, soTien: 0, trich: 0 };
+    const addDropped = (d) => d && Object.keys(dropped).forEach((k) => (dropped[k] += d[k] || 0));
     try {
       const run = await runChunks(
         chunks,
         async (chunk, i, n) => {
           const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, effort: 'medium', maxTokens: n > 1 ? 2500 : 4000, cache: true, signal: ctl.signal, timeoutRetry: n > 1 ? false : undefined, messages: [{ role: 'user', content: caseMapPrompt(chunk, { known, primary, part: n > 1 ? [i + 1, n] : null }) }] });
-          acc = mergeAiCaseMap(acc, out, { append: done > 0 });
+          acc = mergeAiCaseMap(acc, out, { append: done > 0, source: full });
+          addDropped(acc.verifyDropped);
           done++;
           // Vẽ lại ngay sau mỗi phần để người dùng thấy sơ đồ đầy dần.
           st.map = { ...acc, aiProgress: n > 1 ? `${i + 1}/${n}` : '' };
@@ -312,6 +330,7 @@ export function render(ctx, params = []) {
         },
         { signal: ctl.signal, concurrency: concurrencyFor(ai), minSize: Math.round(size / 4), onProgress: (i, n) => say(n > 1 ? `${who} đang bổ sung phần ${i}/${n} (nội dung dài được chia nhỏ để không bị hết thời gian chờ) — sơ đồ trên máy đã hiện ở dưới.` : `${who} đang phân tích sâu — sơ đồ trên máy đã hiện ở dưới.`) },
       );
+      if (dropped.chucVu + dropped.soTien + dropped.trich) toast(droppedMsg(dropped), { type: 'info', timeout: 7000 });
       if (run.errors.length) toast(`AI không trả lời ${run.errors.length}/${run.total} phần — sơ đồ dùng kết quả trên máy cho các phần đó.`, { type: 'info', timeout: 6000 });
       if (ctl.signal.aborted && done) toast(`Đã dừng AI sau ${done}/${chunks.length} phần — giữ kết quả đã có.`, { type: 'info' });
     } catch (err) {
@@ -319,6 +338,7 @@ export function render(ctx, params = []) {
     }
     st.map = { ...acc, aiProgress: '' };
     syncSaved();
+    saveResult();
     drawResult();
     stop.remove();
     btn.disabled = false;
@@ -349,6 +369,7 @@ export function render(ctx, params = []) {
         st.map = o.map;
         (o.ds || []).forEach(([p, d]) => d && saveDiagram(d, p));
         drawResult();
+        saveResult();
       },
       run: async (request, { signal, say }) => {
         const who = ai.local ? 'AI trên máy' : ai.label;
@@ -356,7 +377,9 @@ export function render(ctx, params = []) {
         const full = st.sources.map((x) => `${x.speaker ? `[Lời khai của ${x.speaker} — ${x.label}]` : `[${x.label}]`}\n${x.text}`).join('\n\n');
         say(`${who} đang thực hiện yêu cầu trên sơ đồ hiện tại…`);
         const out = await streamClaude({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: CASE_MAP_SYSTEM, effort: 'medium', maxTokens: 5000, signal, messages: [{ role: 'user', content: caseMapRefinePrompt(st.map, request, { source: relevantText(full, request, max), primary: st.primary, max }) }] });
-        const next = mergeAiCaseMap(st.map, out, { replace: true });
+        const next = mergeAiCaseMap(st.map, out, { replace: true, source: full });
+        const dr = next.verifyDropped;
+        if (dr && dr.chucVu + dr.soTien + dr.trich) toast(droppedMsg(dr), { type: 'info', timeout: 7000 });
         const before = st.map;
         st.map = { ...next, aiProgress: '' };
         // Các sơ đồ đã sửa (tư duy, hành vi, quan hệ, dòng tiền) cập nhật theo, giữ vị trí, nhãn đã sửa và phần tự thêm.
@@ -366,12 +389,49 @@ export function render(ctx, params = []) {
         const acts = (m) => m.crimes.reduce((n, c) => n + c.items.length, 0);
         const summary = [diff(before.people.length, st.map.people.length, 'người'), diff(acts(before), acts(st.map), 'hành vi'), diff(before.edges.length, st.map.edges.length, 'quan hệ'), diff(before.timeline.length, st.map.timeline.length, 'mốc')].filter(Boolean).join(', ');
         toast('AI đã cập nhật sơ đồ theo yêu cầu');
+        saveResult();
         return [next.note, summary].filter(Boolean).join(' · ') || 'Đã cập nhật sơ đồ';
       },
     });
   }
 
   /** Sơ đồ tự vẽ đã lưu của hồ sơ này: cập nhật phần tự sinh theo sơ đồ vụ việc mới (giữ phần đã sửa / tự thêm). */
+  /* ---------- Lưu / mở lại kết quả phân tích (kèm các sơ đồ đã sửa theo hồ sơ) ---------- */
+  const SAVES = 'case-map-saves';
+  function saveResult(name) {
+    if (!st.map || !st.dkey) return;
+    const { aiProgress, verifyDropped, ...map } = st.map;
+    // Giữ nội dung nguồn (rút gọn) để AI làm tiếp vẫn đối chiếu được lời khai khi mở lại.
+    let budget = 120000;
+    const sources = (st.sources || []).map((x) => {
+      const text = String(x.text || '').slice(0, Math.max(0, Math.min(40000, budget)));
+      budget -= text.length;
+      return { ...x, text };
+    });
+    const all = store.get(SAVES, []) || [];
+    const old = all.find((x) => x.id === st.dkey);
+    const item = { id: st.dkey, title: name || old?.title || st.title, map, sources, known: st.known, primary: st.primary, at: Date.now(), manual: !!name || !!old?.manual };
+    store.set(SAVES, [item, ...all.filter((x) => x.id !== st.dkey)].slice(0, 40));
+    drawSaved();
+  }
+  function drawSaved() {
+    const host = $('[data-cm-saved]', v);
+    const all = store.get(SAVES, []) || [];
+    if (!all.length) return (host.innerHTML = '');
+    const when = (t) => new Date(t).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+    host.innerHTML = `<details class="cm-saved-box" ${host.querySelector('details')?.open ? 'open' : ''}><summary>${icon('save', 'ic-sm')}Kết quả đã lưu (${all.length}) <small>— mở lại bản chất, sơ đồ tư duy, hành vi, quan hệ, dòng tiền mà không cần phân tích lại</small></summary>
+      <ul class="cm-saved-list">${all.map((x) => `<li data-save-id="${escapeHtml(x.id)}"><span><strong>${escapeHtml(x.title)}</strong><small>${when(x.at)} · ${x.map?.people?.length || 0} người · ${(x.map?.crimes || []).reduce((n, c) => n + c.items.length, 0)} hành vi · ${x.map?.edges?.length || 0} quan hệ${x.map?.ai ? ' · có AI' : ''}</small></span><button type="button" class="btn btn-sm" data-save-open>Mở</button><button type="button" class="btn btn-ghost btn-sm btn-icon" data-save-del aria-label="Xóa kết quả đã lưu">${icon('trash', 'ic-sm')}</button></li>`).join('')}</ul></details>`;
+  }
+  function openSaved(id) {
+    const x = (store.get(SAVES, []) || []).find((y) => y.id === id);
+    if (!x) return;
+    Object.assign(st, { map: x.map, sources: x.sources || [], known: x.known || [], primary: x.primary || null, title: x.title, dkey: x.id, tab: 'ban-chat' });
+    drawResult();
+    drawRefine();
+    $('[data-result]', v).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast(`Đã mở “${x.title}”`);
+  }
+
   function syncSaved() {
     for (const p of Object.values(EDITABLE)) {
       const d = loadDiagram(p);
@@ -411,6 +471,33 @@ export function render(ctx, params = []) {
 
   v.addEventListener('click', (e) => {
     if (e.target.closest('[data-cm-blank]')) return startBlank();
+    const sv = e.target.closest('[data-save-id]');
+    if (sv && e.target.closest('[data-save-open]')) return openSaved(sv.dataset.saveId);
+    if (sv && e.target.closest('[data-save-del]')) {
+      const all = store.get(SAVES, []) || [];
+      const x = all.find((y) => y.id === sv.dataset.saveId);
+      store.set(SAVES, all.filter((y) => y.id !== sv.dataset.saveId));
+      drawSaved();
+      return toast(`Đã xóa “${x?.title || ''}” khỏi danh sách (các sơ đồ đã sửa vẫn giữ theo hồ sơ)`);
+    }
+    if (e.target.closest('[data-cm-save]')) {
+      return ctx.modal(
+        `<h2 class="modal-title">Lưu kết quả phân tích</h2><p class="hint">Lưu bản chất vụ việc và các sơ đồ (tư duy, hành vi, quan hệ, dòng tiền) để mở lại sau, không cần phân tích lại.</p><form class="auth-form" data-f><div class="field"><label for="cm-save-name">Tên</label><input class="input" id="cm-save-name" name="ten" value="${escapeHtml(st.title)}" maxlength="150" /></div><div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="submit">${icon('save', 'ic-sm')}Lưu</button></div></form>`,
+        {
+          label: 'Lưu kết quả phân tích',
+          onMount(box, close) {
+            box.querySelector('[name="ten"]').select();
+            box.querySelector('[data-f]').addEventListener('submit', (ev) => {
+              ev.preventDefault();
+              const name = new FormData(ev.target).get('ten').trim() || st.title;
+              saveResult(name);
+              close();
+              toast(`Đã lưu “${name}” — mở lại ở mục “Kết quả đã lưu”`);
+            });
+          },
+        },
+      );
+    }
     const s = e.target.closest('[data-src]');
     if (s) {
       st.src = s.dataset.src;
@@ -437,6 +524,7 @@ export function render(ctx, params = []) {
     }
   });
   drawSource();
+  drawSaved();
   return () => {
     dgCtl?.destroy();
     refineCtl?.destroy();

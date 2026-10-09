@@ -2,6 +2,7 @@
 // hoàn tác / làm lại, sắp xếp tự động, thu phóng, toàn màn hình, xuất PNG / SVG. Tự lưu sau mỗi thay đổi.
 import { $, $$, icon, toast, escapeHtml, downloadBlob } from '../ui.js';
 import { attachSuggest } from '../lib/suggest.js';
+import { store, uid } from '../lib/store.js';
 import { NODE_KINDS, EDGE_KINDS, PEN_COLORS, LAYOUTS, FONT_STEPS, newId, layoutDiagram, bounds, simplify, strokeAt, diagramSvgBody, diagramToSvg, labelSuggestions, nodeIdeas, treeOf, hiddenSet, fontScale, nodeSize, isTreeLayout } from '../legal/diagram.js';
 
 const MODES = [
@@ -63,10 +64,12 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
         <svg class="dg-svg" data-dg-svg xmlns="http://www.w3.org/2000/svg" role="application" aria-label="Sơ đồ logic — kéo thả để sắp xếp, bấm đúp để sửa"></svg>
         <p class="dg-tip" data-dg-tip></p>
         <div class="dg-pop" data-dg-pop hidden role="dialog" aria-label="Gợi ý nhánh"></div>
+        <div class="dg-pop dg-lib" data-dg-libp hidden role="dialog" aria-label="Lưu và mở sơ đồ"></div>
+        <input type="file" accept=".json,application/json" data-dg-file hidden />
       </div>
       <aside class="dg-props" data-dg-props></aside>
     </div>
-    <div class="dg-foot"><small data-dg-stat></small><span class="spacer"></span>${onRebuild ? `<button type="button" class="btn btn-ghost btn-sm" data-dg-rebuild title="Cập nhật nút, mũi tên từ sơ đồ vụ việc hiện tại — giữ vị trí, nhãn đã sửa và mọi thứ tự thêm">${icon('refresh', 'ic-sm')}Cập nhật từ sơ đồ vụ việc</button>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-dg-clear>${icon('trash', 'ic-sm')}Xóa nét vẽ</button><button type="button" class="btn btn-sm" data-dg-png>${icon('download', 'ic-sm')}PNG</button><button type="button" class="btn btn-sm" data-dg-svgx>${icon('download', 'ic-sm')}SVG</button></div>
+    <div class="dg-foot"><small data-dg-stat></small><span class="spacer"></span>${onRebuild ? `<button type="button" class="btn btn-ghost btn-sm" data-dg-rebuild title="Cập nhật nút, mũi tên từ sơ đồ vụ việc hiện tại — giữ vị trí, nhãn đã sửa và mọi thứ tự thêm">${icon('refresh', 'ic-sm')}Cập nhật từ sơ đồ vụ việc</button>` : ''}<button type="button" class="btn btn-sm" data-dg-lib title="Lưu bản sơ đồ có tên, mở bản đã lưu, tải ra / mở từ tệp">${icon('save', 'ic-sm')}Lưu / mở bản</button><button type="button" class="btn btn-ghost btn-sm" data-dg-clear>${icon('trash', 'ic-sm')}Xóa nét vẽ</button><button type="button" class="btn btn-sm" data-dg-png>${icon('download', 'ic-sm')}PNG</button><button type="button" class="btn btn-sm" data-dg-svgx>${icon('download', 'ic-sm')}SVG</button></div>
   </div>`;
   const root = $('[data-dg]', host);
   const svg = $('[data-dg-svg]', root);
@@ -88,9 +91,11 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     commit(before);
     draw();
   };
+  let savedAt = null;
   function changed() {
     ideaCache = null;
     onChange(d);
+    savedAt = new Date();
     stat();
   }
   // Số gợi ý trên từng hình (tính lại khi sơ đồ đổi cấu trúc, không tính lại khi đang kéo).
@@ -181,7 +186,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
   }
   function stat() {
     const hid = d.nodes.some((n) => n.collapsed) ? hiddenSet(d).size : 0;
-    $('[data-dg-stat]', root).textContent = `${d.nodes.length} nút${hid ? ` (${hid} đang thu gọn)` : ''} · ${d.edges.length} mũi tên · ${d.strokes.length} nét vẽ · tự lưu`;
+    $('[data-dg-stat]', root).textContent = `${d.nodes.length} nút${hid ? ` (${hid} đang thu gọn)` : ''} · ${d.edges.length} mũi tên · ${d.strokes.length} nét vẽ · ${savedAt ? `đã tự lưu lúc ${savedAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : 'tự lưu'}`;
     $('[data-dg-lmode]', root).value = d.layout || 'tang';
     $('[data-dg-cross]', root).setAttribute('aria-pressed', String(!d.hideCross));
     $('[data-dg-cross]', root).hidden = !isTree();
@@ -337,13 +342,28 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       // Sơ đồ quan hệ / dòng tiền: nhánh mới là một quan hệ (tiền) để sửa nhãn, số tiền ngay.
       d.edges.push({ id: newId('e'), from: host.id, to: n.id, label: '', kind: d.preset === 'dong-tien' ? 'tien' : d.preset === 'quan-he' ? 'khac' : 'thuoc', origin: 'user' });
       relayout();
+      // Sơ đồ quan hệ / dòng tiền: sắp lại để người mới vào đúng vị trí (vòng tròn / dòng chảy).
+      if (d.layout === 'dong' || d.layout === 'vong') layoutDiagram(d);
     });
+    ensureVisible(n);
     if (edit) {
       sel = { type: 'node', id: n.id };
       draw();
       drawProps(true);
     }
     return n;
+  }
+  /** Đưa hình vào tầm nhìn (dời khung nếu hình nằm ngoài). */
+  function ensureVisible(n) {
+    if (!view || !n) return;
+    const z = nodeSize(n);
+    const pad = 30;
+    if (n.x - z.w / 2 < view.x + pad || n.x + z.w / 2 > view.x + view.w - pad || n.y - z.h / 2 < view.y + pad || n.y + z.h / 2 > view.y + view.h - pad) {
+      const b = bounds(d, 50);
+      if (b.w <= view.w && b.h <= view.h) view = { ...view, x: b.x + b.w / 2 - view.w / 2, y: b.y + b.h / 2 - view.h / 2 };
+      else view = { ...view, x: n.x - view.w / 2, y: n.y - view.h / 2 };
+      applyView();
+    }
   }
   const pop = $('[data-dg-pop]', root);
   let popFor = null;
@@ -683,6 +703,91 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     { passive: false },
   );
 
+  /* ---------- Lưu bản có tên, mở bản đã lưu, tệp sơ đồ ---------- */
+  const LIB = 'diagram-library';
+  const libPanel = $('[data-dg-libp]', root);
+  const fileInput = $('[data-dg-file]', root);
+  const PRESET_LABEL = { 'tong-hop': 'Sơ đồ tư duy', 'hanh-vi': 'Sơ đồ hành vi', 'quan-he': 'Quan hệ', 'dong-tien': 'Dòng tiền' };
+  const clean = () => ({ nodes: d.nodes, edges: d.edges, strokes: d.strokes, layout: d.layout, hideCross: d.hideCross, preset: d.preset });
+  const stamp = (t) => new Date(t).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+  function loadInto(o, what) {
+    if (!o || !Array.isArray(o.nodes) || !Array.isArray(o.edges)) return toast('Tệp không phải sơ đồ của phần mềm', { type: 'error' });
+    mutate(() => {
+      d.nodes = o.nodes.filter((n) => n && n.id).map((n) => ({ ...n }));
+      const ids = new Set(d.nodes.map((n) => n.id));
+      d.edges = o.edges.filter((e) => e && ids.has(e.from) && ids.has(e.to)).map((e) => ({ ...e }));
+      d.strokes = Array.isArray(o.strokes) ? o.strokes : [];
+      d.layout = o.layout || d.layout;
+      d.hideCross = !!o.hideCross;
+    });
+    sel = null;
+    closeLib();
+    drawProps();
+    fit();
+    toast(`Đã mở ${what} — bấm Hoàn tác nếu muốn quay lại sơ đồ trước`);
+  }
+  function closeLib() {
+    libPanel.hidden = true;
+  }
+  function openLib() {
+    closeIdeas();
+    const all = store.get(LIB, []) || [];
+    const list = [...all].sort((a, b) => (a.preset === d.preset ? -1 : 0) - (b.preset === d.preset ? -1 : 0) || b.at - a.at);
+    const now = new Date();
+    libPanel.innerHTML = `<div class="dg-pop-head"><strong>${icon('save', 'ic-sm')} Lưu &amp; mở sơ đồ</strong><button type="button" class="btn btn-ghost btn-sm btn-icon" data-lib-x aria-label="Đóng">${icon('x', 'ic-sm')}</button></div>
+      <p class="hint">Sơ đồ đang sửa luôn tự lưu. Lưu thêm bản có tên để giữ các phương án, mở lại bất cứ lúc nào; tải ra tệp để chuyển sang máy khác.</p>
+      <form class="dg-lib-save" data-lib-save><input class="input input-sm" name="ten" maxlength="120" aria-label="Tên bản lưu" value="${escapeHtml(`${title} — ${now.toLocaleDateString('vi-VN')} ${now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`)}" /><button class="btn btn-sm btn-primary" type="submit">${icon('save', 'ic-sm')}Lưu bản này</button></form>
+      ${list.length ? `<ul class="dg-lib-list">${list.map((x) => `<li data-lib-id="${escapeHtml(x.id)}"><span><strong>${escapeHtml(x.name)}</strong><small>${escapeHtml(PRESET_LABEL[x.preset] || 'Sơ đồ')} · ${x.diagram?.nodes?.length || 0} hình · ${stamp(x.at)}</small></span><button type="button" class="btn btn-sm" data-lib-open>Mở</button><button type="button" class="btn btn-ghost btn-sm btn-icon" data-lib-del aria-label="Xóa bản lưu">${icon('trash', 'ic-sm')}</button></li>`).join('')}</ul>` : '<p class="hint">Chưa có bản lưu nào.</p>'}
+      <div class="dg-actions"><button type="button" class="btn btn-sm btn-ghost" data-lib-export>${icon('download', 'ic-sm')}Tải tệp sơ đồ (.json)</button><button type="button" class="btn btn-sm btn-ghost" data-lib-import>${icon('upload', 'ic-sm')}Mở từ tệp…</button></div>`;
+    libPanel.hidden = false;
+    const cr = canvas.getBoundingClientRect();
+    const pw = Math.min(380, cr.width - 16);
+    libPanel.style.width = `${pw}px`;
+    libPanel.style.left = `${Math.max(8, cr.width - pw - 12)}px`;
+    libPanel.style.top = '8px';
+    $('[data-lib-save] input', libPanel)?.select();
+  }
+  libPanel.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+  libPanel.addEventListener('keydown', (ev) => ev.key === 'Escape' && (ev.stopPropagation(), closeLib(), root.focus({ preventScroll: true })));
+  libPanel.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const name = ev.target.querySelector('input').value.trim() || title;
+    const all = store.get(LIB, []) || [];
+    store.set(LIB, [{ id: uid(), name, preset: d.preset || 'tong-hop', title, at: Date.now(), diagram: JSON.parse(JSON.stringify(clean())) }, ...all].slice(0, 100));
+    toast(`Đã lưu bản “${name}”`);
+    openLib();
+  });
+  libPanel.addEventListener('click', (ev) => {
+    const t = ev.target;
+    if (t.closest('[data-lib-x]')) return closeLib();
+    const li = t.closest('[data-lib-id]');
+    const all = store.get(LIB, []) || [];
+    const item = li && all.find((x) => x.id === li.dataset.libId);
+    if (item && t.closest('[data-lib-open]')) return loadInto(item.diagram, `bản “${item.name}”`);
+    if (item && t.closest('[data-lib-del]')) {
+      store.set(LIB, all.filter((x) => x.id !== item.id));
+      toast(`Đã xóa bản “${item.name}”`);
+      return openLib();
+    }
+    if (t.closest('[data-lib-export]')) {
+      const blob = new Blob([JSON.stringify({ app: 'tro-ly-van-ban', type: 'so-do', v: 1, title, savedAt: new Date().toISOString(), diagram: clean() }, null, 1)], { type: 'application/json' });
+      downloadBlob(blob, `${fileBase()}.json`, 'application/json');
+      return toast('Đã tải tệp sơ đồ (.json) — mở lại bằng “Mở từ tệp…”');
+    }
+    if (t.closest('[data-lib-import]')) fileInput.click();
+  });
+  fileInput.addEventListener('change', async () => {
+    const f = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!f) return;
+    try {
+      const o = JSON.parse(await f.text());
+      loadInto(o.diagram || o, `tệp “${f.name}”`);
+    } catch {
+      toast('Không đọc được tệp sơ đồ (.json)', { type: 'error' });
+    }
+  });
+
   /* ---------- Thanh công cụ ---------- */
   root.addEventListener('click', (ev) => {
     const t = ev.target;
@@ -734,6 +839,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
       return toast('Đã xuất sơ đồ (.svg)');
     }
     if (t.closest('[data-dg-png]')) return exportPng();
+    if (t.closest('[data-dg-lib]')) return libPanel.hidden ? openLib() : closeLib();
     if (t.closest('[data-dg-rebuild]') && onRebuild) {
       const before = snap();
       const nd = onRebuild();

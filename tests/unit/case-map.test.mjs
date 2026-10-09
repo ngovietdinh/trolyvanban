@@ -22,8 +22,11 @@ test('sơ đồ vụ việc trên máy: điều luật, hành vi, dòng tiền, 
   assert.equal(e('Nguyễn Văn An', 'Trần Văn Bình', 'tien').soTien, '100 triệu đồng');
   assert.ok(e('Trần Văn Bình', 'Nguyễn Văn An', 'chi-dao'));
   assert.ok(e('Nguyễn Văn An', 'Lê Thị Cúc', 'tien'));
-  assert.equal(m.people.find((p) => p.ten === 'Trần Văn Bình').vaiTro, 'Người chỉ đạo');
-  assert.equal(m.people.find((p) => p.ten === 'Lê Thị Cúc').vaiTro, 'Người nhận tiền');
+  // Vai trò suy ra từ quan hệ để riêng (suyRa), không ghi vào chức vụ; chức vụ chỉ lấy nguyên văn.
+  assert.equal(m.people.find((p) => p.ten === 'Trần Văn Bình').suyRa, 'Người chỉ đạo');
+  assert.equal(m.people.find((p) => p.ten === 'Lê Thị Cúc').suyRa, 'Người nhận tiền');
+  assert.equal(m.people.find((p) => p.ten === 'Trần Văn Bình').vaiTro, '');
+  assert.equal(m.people.find((p) => p.ten === 'Nguyễn Văn An').vaiTro, 'Bị can', 'tư cách trong hồ sơ giữ nguyên');
   assert.deepEqual(m.timeline.map((t) => t.thoiGian), ['05/03/2025', '10/04/2025', '06/2025']);
   assert.ok(m.banChat.some((t) => /Dòng tiền: Nguyễn Văn An → Trần Văn Bình: 100 triệu đồng/.test(t)));
   assert.ok(m.banChat.some((t) => /Điều 353/.test(t)));
@@ -45,4 +48,23 @@ test('ghép kết quả AI: điều luật kiểm tra với Bộ luật, quan h�
   assert.equal(m.edges[0].tu, 'Phạm D');
   assert.equal(m.timeline[0].suKien, 'Bắt đầu');
   assert.throws(() => mergeAiCaseMap(base, 'không phải JSON'));
+});
+
+test('chức vụ, số tiền chỉ lấy NGUYÊN VĂN: AI tự thêm chức vụ / số tiền không có trong lời khai bị bỏ', () => {
+  const src = 'Ngày 05/3/2025 ông Nguyễn Văn An, kế toán Ban QLDA huyện X lập chứng từ chi khống rút 300 triệu đồng. Sau đó ông An chuyển cho Giám đốc Trần Văn Bình 100 triệu đồng. Bà Lê Thị Cúc (thủ quỹ) nhận 20 triệu đồng của ông An.';
+  const m = buildCaseMap({ sources: [{ label: 'BB', text: src }] });
+  const by = (n) => m.people.find((p) => p.ten === n);
+  assert.equal(by('Nguyễn Văn An').vaiTro, 'Kế toán Ban QLDA huyện X');
+  assert.equal(by('Trần Văn Bình').vaiTro, 'Giám đốc');
+  assert.equal(by('Lê Thị Cúc').vaiTro, 'Thủ quỹ');
+  assert.match(by('Trần Văn Bình').chucVuTrich, /Giám đốc Trần Văn Bình/);
+  const out = mergeAiCaseMap(m, JSON.stringify({ nguoi: [{ ten: 'Trần Văn Bình', vaiTro: 'Chủ tịch' }, { ten: 'Lê Thị Cúc', vaiTro: 'Thủ quỹ' }], hanhVi: [{ ten: 'Chi khống', dieu: '353', nguoi: ['Nguyễn Văn An'], soTien: '300.000.000 đồng', trich: 'nội dung bịa ra không có trong lời khai' }], quanHe: [{ tu: 'Nguyễn Văn An', den: 'Trần Văn Bình', loai: 'tien', noiDung: 'chuyển', soTien: '150 triệu' }, { tu: 'Nguyễn Văn An', den: 'Lê Thị Cúc', loai: 'tien', noiDung: 'đưa', soTien: '20.000.000 đồng' }] }), { replace: true, source: src });
+  assert.equal(out.people.find((p) => p.ten === 'Trần Văn Bình').vaiTro, 'Giám đốc', 'chức vụ AI bịa bị bỏ, giữ nguyên văn');
+  const act = out.crimes[0].items[0];
+  assert.equal(act.soTien, '300 triệu đồng', 'số tiền khớp giá trị → dùng đúng cách ghi trong lời khai');
+  assert.equal(act.trich, '');
+  // Số tiền AI bịa (150 triệu) bị bỏ; quan hệ giữ số tiền nguyên văn đã có trong lời khai.
+  assert.equal(out.edges.find((e) => e.den === 'Trần Văn Bình').soTien, '100 triệu đồng');
+  assert.equal(out.edges.find((e) => e.den === 'Lê Thị Cúc').soTien, '20 triệu đồng');
+  assert.deepEqual(out.verifyDropped, { chucVu: 1, soTien: 1, trich: 1 });
 });

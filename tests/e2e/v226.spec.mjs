@@ -19,7 +19,9 @@ test.describe('v2.26 — sơ đồ hành vi, quan hệ, dòng tiền sửa đư�
     await page.click('[data-cm-tab="dong-tien"]');
     const dg = res.locator('[data-dg]');
     await expect(dg.locator('[data-dg-lmode]')).toHaveValue('dong');
-    await expect(dg.locator('.dg-node', { hasText: 'Trần Văn Bình' })).toContainText('Nhận 100 triệu');
+    // Tổng tiền không ghi lên hình (không phải nguyên văn) — chỉ ở bảng, ghi rõ máy cộng.
+    await expect(dg.locator('.dg-node', { hasText: 'Trần Văn Bình' })).not.toContainText('Nhận 100 triệu');
+    await expect(res).toContainText('máy cộng');
     await dg.locator('.dg-node', { hasText: 'Trần Văn Bình' }).click();
     await page.keyboard.press('Tab');
     await page.locator('[data-dg-label]').fill('Hoàng Văn Em');
