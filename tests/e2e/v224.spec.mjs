@@ -222,7 +222,7 @@ test.describe('v2.24 — sơ đồ logic tùy chỉnh, AI làm tiếp', () => {
     await expect(res.locator('[data-dg] .dg-node', { hasText: 'Lê Thị Cúc' })).toHaveCount(1);
     expect(await res.locator('[data-dg] .dg-node').count()).toBeGreaterThanOrEqual(n0);
     await page.click('[data-cm-tab="quan-he"]');
-    await expect(res.locator('.cm-node', { hasText: 'Lê Thị Cúc' })).toHaveCount(1);
+    await expect(res.locator('[data-dg] .dg-node', { hasText: 'Lê Thị Cúc' })).toHaveCount(1);
     await page.click('[data-cm-tab="ban-chat"]');
     await expect(res.locator('.cm-sum')).toContainText('Bổ sung bà Cúc');
     // Hoàn tác.

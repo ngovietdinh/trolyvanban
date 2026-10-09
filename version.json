@@ -1,7 +1,7 @@
 {
-  "version": "2.25.0",
-  "date": "2026-10-08",
+  "version": "2.26.0",
+  "date": "2026-10-09",
   "notes": [
-    "Sơ đồ tư duy: vụ việc ở giữa, nhánh màu tỏa hai bên, quan hệ tiền/chỉ đạo dạng vòng cung; đổi kiểu (tư duy, cây ngang, theo tầng); thu gọn nhánh; kéo to nhỏ từng hình, đổi cỡ chữ; Tab/Enter thêm nhánh; gợi ý ngay trên từng hình và AI gợi ý thêm; chụm 2 ngón thu phóng; toàn màn hình"
+    "Sơ đồ hành vi, quan hệ, dòng tiền đều sửa được như sơ đồ tư duy: thêm bớt người, hành vi, nối quan hệ, sửa số tiền, gợi ý trên hình, vẽ tay, toàn màn hình, xuất ảnh; mỗi sơ đồ lưu riêng; quan hệ xếp vòng tròn, dòng tiền chảy trái sang phải có tổng đưa / nhận từng người"
   ]
 }

@@ -29,7 +29,19 @@ export const EDGE_KINDS = {
 export const PEN_COLORS = ['#c0392b', '#2f5bd3', '#1f8a4c', '#b7791f', '#111111'];
 /** Màu các nhánh của sơ đồ tư duy (mỗi nhánh cấp 1 một màu, nhánh con theo màu nhánh mẹ). */
 export const BRANCH_COLORS = ['#e8590c', '#1c7ed6', '#2b8a3e', '#ae3ec9', '#f08c00', '#0c8599', '#c2255c', '#5c940d'];
-export const LAYOUTS = { mindmap: 'Sơ đồ tư duy', cay: 'Cây ngang', tang: 'Theo tầng' };
+export const LAYOUTS = { mindmap: 'Sơ đồ tư duy', cay: 'Cây ngang', tang: 'Theo tầng', vong: 'Vòng tròn (quan hệ)', dong: 'Dòng chảy (dòng tiền)' };
+/** Kiểu bố cục dạng cây (nhánh cong, thu gọn nhánh, quan hệ chéo). */
+export const isTreeLayout = (layout) => layout === 'mindmap' || layout === 'cay';
+/**
+ * Các sơ đồ dựng sẵn từ sơ đồ vụ việc (đều sửa được như nhau): tổng hợp (sơ đồ tư duy), hành vi (điều luật → hành vi
+ * → người, trích dẫn), quan hệ (người – người, mọi quan hệ), dòng tiền (chỉ quan hệ tiền, tài sản).
+ */
+export const PRESETS = {
+  'tong-hop': { label: 'Sơ đồ tư duy', layout: 'mindmap' },
+  'hanh-vi': { label: 'Sơ đồ hành vi', layout: 'cay' },
+  'quan-he': { label: 'Quan hệ', layout: 'vong' },
+  'dong-tien': { label: 'Dòng tiền', layout: 'dong' },
+};
 export const FONT_STEPS = [0.85, 1, 1.2, 1.45, 1.7];
 
 const key = (s) => String(s || '').normalize('NFC').toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ').trim();
@@ -95,7 +107,8 @@ export function borderPoint(n, tx, ty) {
 /* ---------------- Dựng từ sơ đồ vụ việc ---------------- */
 
 /** Sơ đồ vụ việc (buildCaseMap / AI) → nút và mũi tên tự sinh. */
-export function autoFromCaseMap(m, { title = '' } = {}) {
+export function autoFromCaseMap(m, { title = '', preset = 'tong-hop' } = {}) {
+  if (preset === 'quan-he' || preset === 'dong-tien') return relationFromCaseMap(m, { money: preset === 'dong-tien' });
   const nodes = [];
   const edges = [];
   const byId = new Map();
@@ -114,8 +127,10 @@ export function autoFromCaseMap(m, { title = '' } = {}) {
   const personId = (t) => `p:${key(t)}`;
   // Chủ đề trung tâm: vụ việc → các điều luật → hành vi → người thực hiện; người không gắn hành vi nối thẳng vào giữa.
   const acts = (m.crimes || []).reduce((s, c) => s + (c.items || []).length, 0);
-  add({ id: 'root', kind: 'root', label: title || 'Vụ việc', sub: [acts && `${acts} hành vi`, (m.people || []).length && `${m.people.length} người`].filter(Boolean).join(' · ') });
-  for (const p of m.people || []) add({ id: personId(p.ten), kind: 'person', label: p.ten, sub: p.vaiTro || '' });
+  const behaviour = preset === 'hanh-vi';
+  add({ id: 'root', kind: 'root', label: title || 'Vụ việc', sub: [acts && `${acts} hành vi`, !behaviour && (m.people || []).length && `${m.people.length} người`].filter(Boolean).join(' · ') });
+  const vai = new Map((m.people || []).map((p) => [key(p.ten), p.vaiTro || '']));
+  if (!behaviour) for (const p of m.people || []) add({ id: personId(p.ten), kind: 'person', label: p.ten, sub: p.vaiTro || '' });
   for (const c of m.crimes || []) {
     const cid = `c:${c.dieu || 'khac'}`;
     add({ id: cid, kind: 'crime', label: c.dieu ? `Điều ${c.dieu}` : 'Chưa xác định điều luật', sub: String(c.ten || '').replace(/^Tội /, '') });
@@ -126,11 +141,18 @@ export function autoFromCaseMap(m, { title = '' } = {}) {
       edge(cid, aid, '', 'thuoc');
       for (const who of it.nguoi || []) {
         if (!who) continue;
-        add({ id: personId(who), kind: 'person', label: who, sub: '' });
+        add({ id: personId(who), kind: 'person', label: who, sub: vai.get(key(who)) || '' });
         edge(personId(who), aid, 'thực hiện', 'khac');
+      }
+      // Sơ đồ hành vi: trích dẫn làm căn cứ gắn dưới hành vi.
+      if (behaviour && it.trich) {
+        const qid = `q:${aid}`;
+        add({ id: qid, kind: 'note', label: `“${String(it.trich).slice(0, 160)}”`, sub: '' });
+        edge(aid, qid, '', 'thuoc');
       }
     }
   }
+  if (behaviour) return { nodes, edges };
   for (const e of m.edges || []) {
     if (!e.tu || !e.den) continue;
     add({ id: personId(e.tu), kind: 'person', label: e.tu, sub: '' });
@@ -143,9 +165,64 @@ export function autoFromCaseMap(m, { title = '' } = {}) {
   return { nodes, edges };
 }
 
-/** Sơ đồ mới từ sơ đồ vụ việc (đã sắp xếp). */
-export function diagramFromCaseMap(m, { title = '', layout = 'mindmap' } = {}) {
-  return layoutDiagram({ ...emptyDiagram(), layout, ...autoFromCaseMap(m, { title }) });
+/** Sơ đồ quan hệ / dòng tiền: người – người theo các quan hệ (money: chỉ tiền, tài sản). */
+function relationFromCaseMap(m, { money = false } = {}) {
+  const nodes = [];
+  const edges = [];
+  const ids = new Set();
+  const vai = new Map((m.people || []).map((p) => [key(p.ten), p.vaiTro || '']));
+  const person = (t) => {
+    const id = `p:${key(t)}`;
+    if (!ids.has(id)) {
+      ids.add(id);
+      nodes.push({ id, kind: 'person', label: t, sub: vai.get(key(t)) || '', origin: 'auto', x: 0, y: 0 });
+    }
+    return id;
+  };
+  for (const e of m.edges || []) {
+    if (!e.tu || !e.den || (money && e.loai !== 'tien')) continue;
+    const a = person(e.tu);
+    const b = person(e.den);
+    const label = money ? `${e.soTien || e.noiDung || ''}` : `${e.noiDung || ''}${e.soTien ? ` ${e.soTien}` : ''}`.trim();
+    const kind = ['tien', 'chi-dao'].includes(e.loai) ? e.loai : 'khac';
+    const id = `e:${a}>${b}:${key(label).slice(0, 40)}:${kind}`;
+    if (a !== b && !edges.some((x) => x.id === id)) edges.push({ id, from: a, to: b, label, kind, origin: 'auto' });
+  }
+  // Quan hệ: cả người chưa có quan hệ nào (để nối tay).
+  if (!money) (m.people || []).forEach((p) => person(p.ten));
+  // Dòng tiền: tổng đã đưa / đã nhận của từng người.
+  if (money) {
+    for (const n of nodes) {
+      const out = edges.filter((e) => e.from === n.id).reduce((s, e) => s + moneyValue(e.label), 0);
+      const inn = edges.filter((e) => e.to === n.id).reduce((s, e) => s + moneyValue(e.label), 0);
+      const parts = [out && `Đưa ${formatMoney(out)}`, inn && `Nhận ${formatMoney(inn)}`].filter(Boolean);
+      if (parts.length) n.sub = [n.sub, parts.join(' · ')].filter(Boolean).join(' — ');
+    }
+  }
+  return { nodes, edges };
+}
+
+/** “100 triệu đồng”, “1,5 tỷ”, “20.000.000 đồng” → số đồng (0 nếu không đọc được). */
+export function moneyValue(text) {
+  const m = String(text || '').match(/(\d[\d.,]*)\s*(tỷ|tỉ|triệu|nghìn|ngàn)?/i);
+  if (!m) return 0;
+  const unit = { tỷ: 1e9, tỉ: 1e9, triệu: 1e6, nghìn: 1e3, ngàn: 1e3 }[(m[2] || '').toLowerCase()] || 1;
+  // Có đơn vị: “1,5” là thập phân; không đơn vị: “20.000.000” là phân cách hàng nghìn.
+  const raw = m[1];
+  const num = unit > 1 ? parseFloat(raw.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) : parseFloat(raw.replace(/[.,](?=\d{3}(\D|$))/g, '').replace(',', '.'));
+  return Number.isFinite(num) ? num * unit : 0;
+}
+export function formatMoney(v) {
+  const f = (x) => (Math.round(x * 100) / 100).toLocaleString('vi-VN');
+  if (v >= 1e9) return `${f(v / 1e9)} tỷ`;
+  if (v >= 1e6) return `${f(v / 1e6)} triệu`;
+  if (v >= 1e3) return `${f(v / 1e3)} nghìn`;
+  return `${f(v)} đồng`;
+}
+
+/** Sơ đồ mới từ sơ đồ vụ việc (đã sắp xếp). preset: tong-hop | hanh-vi | quan-he | dong-tien. */
+export function diagramFromCaseMap(m, { title = '', preset = 'tong-hop', layout = PRESETS[preset]?.layout || 'mindmap' } = {}) {
+  return layoutDiagram({ ...emptyDiagram(), layout, preset, ...autoFromCaseMap(m, { title, preset }) });
 }
 
 /**
@@ -154,7 +231,7 @@ export function diagramFromCaseMap(m, { title = '', layout = 'mindmap' } = {}) {
  * (kèm mũi tên nối tới nó). Nút mới được đặt theo bố cục tự động quanh các nút cũ.
  */
 export function syncFromCaseMap(d, m, { title = '' } = {}) {
-  const auto = autoFromCaseMap(m, { title: title || d.nodes.find((n) => n.id === 'root')?.label || '' });
+  const auto = autoFromCaseMap(m, { title: title || d.nodes.find((n) => n.id === 'root')?.label || '', preset: d.preset || 'tong-hop' });
   const old = new Map(d.nodes.map((n) => [n.id, n]));
   const keepUser = d.nodes.filter((n) => n.origin !== 'auto');
   const nodes = auto.nodes.map((n) => {
@@ -303,7 +380,74 @@ export function hiddenSet(d, t = treeOf(d)) {
 
 /** Bố cục theo kiểu của sơ đồ (d.layout). */
 export function layoutDiagram(d) {
-  return (d.layout || 'tang') === 'tang' ? autoLayout(d) : mindmapLayout(d, { both: d.layout !== 'cay' });
+  const l = d.layout || 'tang';
+  if (l === 'vong') return circleLayout(d);
+  if (l === 'dong') return flowLayout(d);
+  return l === 'tang' ? autoLayout(d) : mindmapLayout(d, { both: l !== 'cay' });
+}
+
+/** Vòng tròn: các nút xếp đều trên vòng (người nhiều quan hệ ở trên cùng) — hợp với sơ đồ quan hệ. */
+export function circleLayout(d) {
+  const deg = new Map(d.nodes.map((n) => [n.id, 0]));
+  d.edges.forEach((e) => (deg.set(e.from, (deg.get(e.from) || 0) + 1), deg.set(e.to, (deg.get(e.to) || 0) + 1)));
+  const list = [...d.nodes].sort((a, b) => deg.get(b.id) - deg.get(a.id));
+  const n = list.length;
+  if (!n) return d;
+  if (n === 1) return ((list[0].x = 0), (list[0].y = 0), d);
+  const maxW = Math.max(...list.map((x) => nodeSize(x).w));
+  // Bán kính đủ để các nút không chạm nhau, chừa chỗ cho nhãn mũi tên.
+  const R = Math.max(200, (n * (maxW + 70)) / (2 * Math.PI));
+  list.forEach((node, i) => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    node.x = Math.round(R * 1.35 * Math.cos(a));
+    node.y = Math.round(R * Math.sin(a));
+  });
+  return d;
+}
+
+/**
+ * Dòng chảy trái → phải: cột theo đường đi dài nhất từ nguồn (người chỉ đưa / chuyển) tới đích (người chỉ nhận);
+ * trong cột sắp theo trọng tâm các nút nối tới — hợp với sơ đồ dòng tiền.
+ */
+export function flowLayout(d, { gapX = 150, gapY = 46 } = {}) {
+  const ids = d.nodes.map((n) => n.id);
+  const rank = new Map(ids.map((id) => [id, 0]));
+  for (let k = 0; k < ids.length; k++) {
+    let moved = false;
+    for (const e of d.edges) {
+      if (!rank.has(e.from) || !rank.has(e.to) || e.from === e.to) continue;
+      if (rank.get(e.to) < rank.get(e.from) + 1 && rank.get(e.from) + 1 < ids.length) {
+        rank.set(e.to, rank.get(e.from) + 1);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  const cols = [];
+  d.nodes.forEach((n) => (cols[rank.get(n.id)] ||= []).push(n));
+  const pos = new Map();
+  let x = 0;
+  cols.forEach((col) => {
+    if (!col?.length) return;
+    col.forEach((n, i) => {
+      const ys = d.edges.filter((e) => e.to === n.id && pos.has(e.from)).map((e) => pos.get(e.from));
+      n._o = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : i * 1000;
+    });
+    col.sort((a, b) => a._o - b._o);
+    const w = Math.max(...col.map((n) => nodeSize(n).w));
+    const total = col.reduce((s, n) => s + nodeSize(n).h, 0) + gapY * (col.length - 1);
+    let y = -total / 2;
+    col.forEach((n) => {
+      const h = nodeSize(n).h;
+      n.x = Math.round(x + w / 2);
+      n.y = Math.round(y + h / 2);
+      pos.set(n.id, n.y);
+      y += h + gapY;
+      delete n._o;
+    });
+    x += w + gapX;
+  });
+  return d;
 }
 
 /**
@@ -539,7 +683,7 @@ function branchPath(a, b) {
  */
 export function diagramSvgBody(d, { sel = null, ui = false, ideas = null } = {}) {
   let crossN = 0;
-  const tree = (d.layout || 'tang') !== 'tang';
+  const tree = isTreeLayout(d.layout);
   const t = treeOf(d);
   const hidden = hiddenSet(d, t);
   const byId = new Map(d.nodes.map((n) => [n.id, n]));
@@ -574,7 +718,7 @@ export function diagramSvgBody(d, { sel = null, ui = false, ideas = null } = {})
         const c = colorOf(ch.id);
         const wdt = Math.max(1.8, 5 - (t.depth.get(ch.id) || 1) * 1.1);
         const arrow = e.kind === 'tien' || e.kind === 'chi-dao' ? ` marker-end="url(#dg-arr-${e.kind})"` : '';
-        return `<g class="dg-edge dg-branch${isSel ? ' sel' : ''}" data-edge="${esc(e.id)}"><path class="dg-hit" d="${g.path}" stroke="transparent" stroke-width="14" fill="none"/><path d="${g.path}" stroke="${isSel ? '#2563eb' : c}" stroke-width="${isSel ? wdt + 1 : wdt}" fill="none" stroke-linecap="round"${arrow}><title>${esc(e.label || k.label)}</title></path>${label(e.label && e.label !== 'thực hiện' ? e.label : '', g.lx, g.ly, c)}</g>`;
+        return `<g class="dg-edge dg-branch dg-e-${e.kind}${isSel ? ' sel' : ''}" data-edge="${esc(e.id)}"><path class="dg-hit" d="${g.path}" stroke="transparent" stroke-width="14" fill="none"/><path d="${g.path}" stroke="${isSel ? '#2563eb' : c}" stroke-width="${isSel ? wdt + 1 : wdt}" fill="none" stroke-linecap="round"${arrow}><title>${esc(e.label || k.label)}</title></path>${label(e.label && e.label !== 'thực hiện' ? e.label : '', g.lx, g.ly, c)}</g>`;
       }
       // Sơ đồ tư duy: quan hệ chéo (tiền, chỉ đạo… giữa các nhánh) vẽ thành vòng cung tránh trục chính, có thể ẩn.
       if (tree && d.hideCross) return '';
@@ -582,7 +726,7 @@ export function diagramSvgBody(d, { sel = null, ui = false, ideas = null } = {})
       const g = edgeGeom(d, e, tree ? { arc: (crossN++ % 2 ? -1 : 1) * Math.max(50, len * 0.28) } : {});
       if (!g) return '';
       const cross = tree ? ' dg-cross' : '';
-      return `<g class="dg-edge${cross}${isSel ? ' sel' : ''}" data-edge="${esc(e.id)}"><path class="dg-hit" d="${g.path}" stroke="transparent" stroke-width="14" fill="none"/><path d="${g.path}" stroke="${isSel ? '#2563eb' : k.color}" stroke-width="${isSel ? 2.6 : 1.8}" fill="none" ${k.dash || tree ? 'stroke-dasharray="6 4"' : ''} marker-end="url(#dg-arr-${e.kind in EDGE_KINDS ? e.kind : 'khac'})"><title>${esc(e.label || k.label)}</title></path>${label(e.label, g.lx, g.ly, k.color)}</g>`;
+      return `<g class="dg-edge dg-e-${e.kind}${cross}${isSel ? ' sel' : ''}" data-edge="${esc(e.id)}"><path class="dg-hit" d="${g.path}" stroke="transparent" stroke-width="14" fill="none"/><path d="${g.path}" stroke="${isSel ? '#2563eb' : k.color}" stroke-width="${isSel ? 2.6 : e.kind === 'tien' && !tree ? 2.4 : 1.8}" fill="none" ${k.dash || tree ? 'stroke-dasharray="6 4"' : ''} marker-end="url(#dg-arr-${e.kind in EDGE_KINDS ? e.kind : 'khac'})"><title>${esc(e.label || k.label)}</title></path>${label(e.label, g.lx, g.ly, k.color)}</g>`;
     })
     .join('');
   const nodes = d.nodes
@@ -604,13 +748,13 @@ export function diagramSvgBody(d, { sel = null, ui = false, ideas = null } = {})
       const bodyH = 16 + lines.length * lh + sub.length * sh + (sub.length ? 4 : 0);
       let ty = y + (h - bodyH) / 2 + 8 + lh * 0.78;
       const tl = lines.map((l) => {
-        const out = `<text x="${n.x.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" font-size="${(14 * fs).toFixed(1)}" font-weight="${n.kind === 'note' ? 400 : isRoot || depth <= 1 ? 700 : 600}" fill="${ink}" font-family="system-ui, sans-serif">${esc(l)}</text>`;
+        const out = `<text x="${n.x.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" font-size="${(14 * fs).toFixed(1)}" font-weight="${n.kind === 'note' ? 400 : isRoot || depth <= 1 ? 700 : 600}" fill="${ink}" font-family="system-ui, sans-serif">${esc(l)} </text>`;
         ty += lh;
         return out;
       });
       ty += sub.length ? 3 : 0;
       const sl = sub.map((l) => {
-        const out = `<text x="${n.x.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" font-size="${(12 * fs).toFixed(1)}" fill="${subInk}" font-family="system-ui, sans-serif">${esc(l)}</text>`;
+        const out = `<text x="${n.x.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" font-size="${(12 * fs).toFixed(1)}" fill="${subInk}" font-family="system-ui, sans-serif">${esc(l)} </text>`;
         ty += sh;
         return out;
       });

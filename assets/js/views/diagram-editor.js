@@ -2,7 +2,7 @@
 // hoàn tác / làm lại, sắp xếp tự động, thu phóng, toàn màn hình, xuất PNG / SVG. Tự lưu sau mỗi thay đổi.
 import { $, $$, icon, toast, escapeHtml, downloadBlob } from '../ui.js';
 import { attachSuggest } from '../lib/suggest.js';
-import { NODE_KINDS, EDGE_KINDS, PEN_COLORS, LAYOUTS, FONT_STEPS, newId, layoutDiagram, bounds, simplify, strokeAt, diagramSvgBody, diagramToSvg, labelSuggestions, nodeIdeas, treeOf, hiddenSet, fontScale, nodeSize } from '../legal/diagram.js';
+import { NODE_KINDS, EDGE_KINDS, PEN_COLORS, LAYOUTS, FONT_STEPS, newId, layoutDiagram, bounds, simplify, strokeAt, diagramSvgBody, diagramToSvg, labelSuggestions, nodeIdeas, treeOf, hiddenSet, fontScale, nodeSize, isTreeLayout } from '../legal/diagram.js';
 
 const MODES = [
   ['select', 'move', 'Chọn, kéo thả (V)', 'Chọn'],
@@ -101,7 +101,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     if (!ideaCache.has(n.id)) ideaCache.set(n.id, ideasOf(n).length);
     return ideaCache.get(n.id);
   };
-  const isTree = () => (d.layout || 'tang') !== 'tang';
+  const isTree = () => isTreeLayout(d.layout);
   /** Sắp lại theo cây (sơ đồ tư duy / cây ngang) — giữ chủ đề trung tâm tại chỗ. */
   const relayout = () => isTree() && layoutDiagram(d);
   function restore(s) {
@@ -123,6 +123,12 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     const r = canvas.getBoundingClientRect();
     const ratio = r.width && r.height ? r.width / r.height : 1.6;
     let { x, y, w, h } = b;
+    // Sơ đồ ít hình: không phóng quá 100% (hình không to quá khổ, còn chỗ trống để thêm).
+    const minW = Math.max(r.width || 900, 600);
+    if (w < minW) {
+      x -= (minW - w) / 2;
+      w = minW;
+    }
     if (w / h > ratio) {
       const nh = w / ratio;
       y -= (nh - h) / 2;
@@ -179,6 +185,7 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     $('[data-dg-lmode]', root).value = d.layout || 'tang';
     $('[data-dg-cross]', root).setAttribute('aria-pressed', String(!d.hideCross));
     $('[data-dg-cross]', root).hidden = !isTree();
+    $$('[data-dg-collapse]', root).forEach((b) => (b.hidden = !isTree()));
     $('[data-dg-undo]', root).disabled = !undo.length;
     $('[data-dg-redo]', root).disabled = !redo.length;
   }
@@ -315,10 +322,11 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
 
   /* ---------- Nhánh, gợi ý ngay trên hình ---------- */
   const CHILD_KIND = { root: 'box', crime: 'act', act: 'box', person: 'box', money: 'box', box: 'box', note: 'note' };
+  const childKind = (host) => (d.preset === 'quan-he' || d.preset === 'dong-tien' ? 'person' : CHILD_KIND[host.kind] || 'box');
   function addChild(parent, label, { kind, edit = false, sibling = false } = {}) {
     const t = treeOf(d);
     const host = sibling ? d.nodes.find((x) => x.id === t.parent.get(parent.id)) || parent : parent;
-    const k = kind || CHILD_KIND[host.kind] || 'box';
+    const k = kind || childKind(host);
     const kids = (t.children.get(host.id) || []).map((id) => d.nodes.find((x) => x.id === id));
     const right = host.kind === 'root' ? kids.filter((x) => x.x >= host.x).length <= kids.filter((x) => x.x < host.x).length : host.x >= (d.nodes.find((x) => x.id === t.parent.get(host.id))?.x ?? host.x - 1);
     const below = kids.length ? Math.max(...kids.map((x) => x.y + nodeSize(x).h / 2)) + 40 : host.y;
@@ -326,7 +334,8 @@ export function mountDiagram(host, { diagram, title = 'Sơ đồ', map = null, o
     mutate(() => {
       host.collapsed = false;
       d.nodes.push(n);
-      d.edges.push({ id: newId('e'), from: host.id, to: n.id, label: '', kind: 'thuoc', origin: 'user' });
+      // Sơ đồ quan hệ / dòng tiền: nhánh mới là một quan hệ (tiền) để sửa nhãn, số tiền ngay.
+      d.edges.push({ id: newId('e'), from: host.id, to: n.id, label: '', kind: d.preset === 'dong-tien' ? 'tien' : d.preset === 'quan-he' ? 'khac' : 'thuoc', origin: 'user' });
       relayout();
     });
     if (edit) {

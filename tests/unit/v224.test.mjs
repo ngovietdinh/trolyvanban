@@ -211,3 +211,38 @@ test('v2.25 sơ đồ tư duy: chủ đề trung tâm → điều luật → hà
   assert.equal(big.w, z0.w + 120);
   assert.ok(big.lh > z0.lh);
 });
+
+test('v2.26 sơ đồ hành vi, quan hệ, dòng tiền: dựng sẵn từ phân tích, bố cục riêng, tổng tiền từng người', async () => {
+  const { moneyValue, formatMoney, PRESETS, isTreeLayout, nodeSize: ns } = await import('../../assets/js/legal/diagram.js');
+  const m = buildCaseMap({ sources: SRC, primary: '353' });
+  const hv = diagramFromCaseMap(m, { title: 'Vụ A', preset: 'hanh-vi' });
+  assert.equal(hv.layout, 'cay');
+  assert.equal(hv.preset, 'hanh-vi');
+  assert.ok(hv.nodes.some((n) => n.kind === 'act'));
+  assert.ok(!hv.edges.some((e) => e.kind === 'tien'), 'sơ đồ hành vi không có quan hệ tiền');
+  const qh = diagramFromCaseMap(m, { preset: 'quan-he' });
+  assert.equal(qh.layout, 'vong');
+  assert.ok(qh.nodes.every((n) => n.kind === 'person'));
+  assert.ok(qh.edges.length >= 1);
+  const dt = diagramFromCaseMap(m, { preset: 'dong-tien' });
+  assert.equal(dt.layout, 'dong');
+  assert.ok(dt.edges.every((e) => e.kind === 'tien'));
+  const giver = dt.nodes.find((n) => dt.edges.some((e) => e.from === n.id));
+  const taker = dt.nodes.find((n) => dt.edges.some((e) => e.to === n.id));
+  assert.ok(giver.x < taker.x, 'dòng tiền chảy trái → phải');
+  assert.match(taker.sub, /Nhận 100 triệu/);
+  for (const d of [qh, dt])
+    for (const a of d.nodes)
+      for (const b of d.nodes) {
+        if (a === b) continue;
+        assert.ok(!(Math.abs(a.x - b.x) < (ns(a).w + ns(b).w) / 2 && Math.abs(a.y - b.y) < (ns(a).h + ns(b).h) / 2), `${a.label} chồng ${b.label}`);
+      }
+  // Cập nhật theo phân tích mới vẫn đúng loại sơ đồ.
+  const again = syncFromCaseMap(dt, m);
+  assert.ok(again.edges.every((e) => e.kind === 'tien'));
+  assert.equal(moneyValue('1,5 tỷ đồng'), 1.5e9);
+  assert.equal(moneyValue('20.000.000 đồng'), 2e7);
+  assert.equal(formatMoney(2.5e8), '250 triệu');
+  assert.equal(Object.keys(PRESETS).length, 4);
+  assert.equal(isTreeLayout('vong'), false);
+});

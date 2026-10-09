@@ -4802,7 +4802,7 @@ body.dg-lock { overflow: hidden; }
 .dg-canvas { height: min(78vh, 780px); }
 .dg-props { max-height: min(78vh, 780px); }
 .dg-view { gap: 4px; }
-.dg-view .dg-sel { max-width: 150px; }
+.dg-view .dg-sel { max-width: 210px; }
 .dg-toggle { cursor: pointer; }
 .dg-toggle:hover circle { fill: #eef2ff; }
 .dg-idea { cursor: pointer; opacity: 0.55; transition: opacity 0.15s; }
@@ -4828,3 +4828,5 @@ body.dg-lock { overflow: hidden; }
   .dg-view .dg-btn span { display: none; }
   .dg-pop { left: 8px !important; right: 8px; width: auto !important; }
 }
+
+.cm-dg-intro { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 10px; }

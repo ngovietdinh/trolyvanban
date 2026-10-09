@@ -32,17 +32,19 @@ test.describe('Sơ đồ vụ việc', () => {
     await expect(res.locator('.cm-points')).toContainText('Điều 353');
     await expect(res.locator('.cm-people')).toContainText('Người chỉ đạo');
 
+    // Sơ đồ hành vi, quan hệ, dòng tiền: đều là sơ đồ sửa được.
     await page.click('[data-cm-tab="cay"]');
-    await expect(res.locator('.pt-crime').first()).toContainText('Điều 353');
-    await expect(res.locator('.pt-person', { hasText: 'Trần Văn Bình' }).first()).toBeVisible();
-    await expect(res.locator('[data-pt-full]')).toBeVisible();
+    await expect(res.locator('[data-dg] .dg-node.dg-k-crime')).toContainText('Điều 353');
+    await expect(res.locator('[data-dg] .dg-node.dg-k-act').first()).toBeVisible();
+    await expect(res.locator('[data-dg-lmode]')).toHaveValue('cay');
 
     await page.click('[data-cm-tab="quan-he"]');
-    await expect(res.locator('.cm-node')).toHaveCount(3);
-    await expect(res.locator('.cm-edge.cm-e-tien')).toHaveCount(2);
-    await res.locator('.cm-node[data-node="Trần Văn Bình"]').click();
-    await expect(res.locator('.cm-svg')).toHaveClass(/focus/);
-    await expect(res.locator('.cm-edge.hl')).toHaveCount(2);
+    await expect(res.locator('[data-dg] .dg-node.dg-k-person')).toHaveCount(3);
+    await expect(res.locator('[data-dg] .dg-edge.dg-e-tien')).toHaveCount(2);
+    await expect(res.locator('[data-dg-lmode]')).toHaveValue('vong');
+    await page.click('[data-cm-tab="dong-tien"]');
+    await expect(res.locator('[data-dg] .dg-edge.dg-e-tien')).toHaveCount(2);
+    await expect(res.locator('[data-dg] .dg-edge:not(.dg-e-tien)')).toHaveCount(0);
 
     await page.click('[data-cm-tab="thoi-gian"]');
     await expect(res.locator('.cm-time li')).toHaveCount(2);
@@ -70,7 +72,8 @@ test.describe('Sơ đồ vụ việc', () => {
     await expect(res.locator('.cm-sum')).toContainText('tham ô 300 triệu');
     expect(calls.length).toBe(1);
     await page.click('[data-cm-tab="quan-he"]');
-    await expect(res.locator('.cm-node')).toHaveCount(2);
+    await expect(res.locator('[data-dg] .dg-node', { hasText: 'Trần Văn Bình' })).toHaveCount(1);
+    await expect(res.locator('[data-dg] .dg-edge.dg-e-tien')).toHaveCount(1);
     t.assertClean();
   });
 

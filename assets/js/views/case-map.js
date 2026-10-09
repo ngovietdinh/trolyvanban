@@ -3,8 +3,8 @@
 import { $, $$, icon, toast, escapeHtml, downloadBlob } from '../ui.js';
 import { casesRepo, recordsRepo } from '../legal/repo.js';
 import { getRole } from '../legal/roles.js';
-import { buildCaseMap, caseMapPrompt, caseMapRefinePrompt, relevantText, mergeAiCaseMap, caseMapToTree, CASE_MAP_SYSTEM } from '../legal/case-map.js';
-import { diagramFromCaseMap, syncFromCaseMap, emptyDiagram } from '../legal/diagram.js';
+import { buildCaseMap, caseMapPrompt, caseMapRefinePrompt, relevantText, mergeAiCaseMap, CASE_MAP_SYSTEM } from '../legal/case-map.js';
+import { diagramFromCaseMap, syncFromCaseMap, emptyDiagram, PRESETS } from '../legal/diagram.js';
 import { mountDiagram } from './diagram-editor.js';
 import { refineHtml, bindRefine } from './ai-refine.js';
 import { streamClaude, extractJson } from '../lib/ai.js';
@@ -14,7 +14,6 @@ import { focusText, splitText, runChunks, chunkSizeFor, concurrencyFor, ctxFor }
 import { buildDocx, safeFileName } from '../lib/docx.js';
 import { renderDocumentHtml } from '../lib/render-html.js';
 import { store } from '../lib/store.js';
-import { mountTree } from './plan-tree.js';
 import { dropzoneHtml, bindDropzone, readAll } from './acts-review.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -119,15 +118,26 @@ function mapDoc(m, title, org = {}) {
   };
 }
 
+/** Tab → loại sơ đồ sửa được. */
+const EDITABLE = { ve: 'tong-hop', cay: 'hanh-vi', 'quan-he': 'quan-he', 'dong-tien': 'dong-tien' };
+
+/** Bảng quan hệ / dòng tiền từ phân tích (đối chiếu căn cứ). */
+function relTable(m, moneyOnly) {
+  const list = m.edges.filter((e) => !moneyOnly || e.loai === 'tien');
+  if (!list.length) return `<p class="muted">${moneyOnly ? 'Chưa xác định được dòng tiền (cần câu có hai người và hành động đưa, nhận, chuyển tiền…).' : 'Chưa xác định được quan hệ giữa các người (cần câu có ít nhất hai người cùng hành động: đưa, nhận, chuyển, chỉ đạo…).'} Có thể tự thêm trên sơ đồ.</p>`;
+  return `<h3 class="tk-h">${icon('layers', 'ic-sm')}Bảng ${moneyOnly ? 'dòng tiền' : 'quan hệ'} từ phân tích</h3><div class="tk-table-wrap"><table class="tk-table"><thead><tr><th>Từ</th><th>Đến</th><th>Nội dung</th><th>Số tiền</th><th>Căn cứ</th></tr></thead><tbody>${list.map((e) => `<tr><td data-l="Từ">${escapeHtml(e.tu)}</td><td data-l="Đến">${escapeHtml(e.den)}</td><td data-l="Nội dung"><span class="cm-tag cm-l-${e.loai}">${LOAI[e.loai]}</span> ${escapeHtml(e.noiDung || '')}</td><td data-l="Số tiền">${escapeHtml(e.soTien || '')}</td><td data-l="Căn cứ"><small>${escapeHtml(e.trich || e.src || '')}</small></td></tr>`).join('')}</tbody></table></div>`;
+}
+
 /* ---------------- Màn hình ---------------- */
 export function render(ctx, params = []) {
   const st = { src: 'records', caseId: params[0] && casesRepo.get(params[0]) ? params[0] : store.get('case-map-case', '') || '', picked: null, tab: 'ban-chat', map: null, title: '', sources: [], known: [], primary: null, dkey: '' };
-  let treeCtl = null;
   let dgCtl = null;
   let refineCtl = null;
   // Sơ đồ tùy chỉnh lưu theo hồ sơ (hoặc theo tên tài liệu) — mở lại vẫn còn.
-  const loadDiagram = () => store.get('diagrams', {})[st.dkey] || null;
-  const saveDiagram = (d) => store.set('diagrams', { ...store.get('diagrams', {}), [st.dkey]: { ...d, at: Date.now(), title: st.title } });
+  // Mỗi sơ đồ (tư duy, hành vi, quan hệ, dòng tiền) lưu riêng: khóa hồ sơ + loại sơ đồ.
+  const dkeyOf = (preset = 'tong-hop') => (preset === 'tong-hop' ? st.dkey : `${st.dkey}#${preset}`);
+  const loadDiagram = (preset) => store.get('diagrams', {})[dkeyOf(preset)] || null;
+  const saveDiagram = (d, preset = d?.preset || 'tong-hop') => store.set('diagrams', { ...store.get('diagrams', {}), [dkeyOf(preset)]: { ...d, preset, at: Date.now(), title: st.title } });
   let drop = null;
   const cases = casesRepo.list();
   const recsOf = () => recordsRepo.list((r) => (st.caseId === '' ? true : st.caseId === '-' ? !r.caseId : r.caseId === st.caseId) && (r.qa || []).some((x) => String(x.a || '').trim()));
@@ -173,14 +183,13 @@ export function render(ctx, params = []) {
 
   function drawResult() {
     const host = $('[data-result]', v);
-    treeCtl?.destroy();
-    treeCtl = null;
     dgCtl?.destroy();
     dgCtl = null;
     const m = st.map;
     if (!m) return (host.hidden = true);
     host.hidden = false;
-    const TABS = [['ban-chat', 'Bản chất'], ['cay', 'Sơ đồ hành vi'], ['quan-he', `Quan hệ – dòng tiền (${m.edges.length})`], ['thoi-gian', `Dòng thời gian (${m.timeline.length})`], ['ve', 'Vẽ & chỉnh sửa']];
+    const money = m.edges.filter((e) => e.loai === 'tien').length;
+    const TABS = [['ban-chat', 'Bản chất'], ['ve', 'Sơ đồ tư duy'], ['cay', 'Sơ đồ hành vi'], ['quan-he', `Quan hệ (${m.edges.length})`], ['dong-tien', `Dòng tiền (${money})`], ['thoi-gian', `Dòng thời gian (${m.timeline.length})`]];
     host.innerHTML = `<div class="cm-res-head"><div><h2>${icon('chart', 'ic-sm')}${escapeHtml(st.title)}</h2><small>${m.ai ? `AI kết hợp phân tích trên máy${m.aiProgress ? ` (đã xong phần ${m.aiProgress})` : ''}` : 'Phân tích trên máy'} · ${m.people.length} người · ${m.crimes.reduce((s, c) => s + c.items.length, 0)} hành vi · ${m.edges.length} quan hệ · ${m.timeline.length} mốc</small></div><span class="spacer"></span><button class="btn btn-sm btn-ghost" type="button" data-cm-preview>${icon('eye', 'ic-sm')}Xem bản in</button><button class="btn btn-sm" type="button" data-cm-export>${icon('download', 'ic-sm')}Xuất Word</button></div>
       <div class="tabs cm-tabs" role="tablist">${TABS.map(([k, l]) => `<button class="tab" role="tab" data-cm-tab="${k}" aria-selected="${st.tab === k}">${l}</button>`).join('')}</div>
       <div class="cm-body" data-cm-body></div>`;
@@ -193,44 +202,21 @@ export function render(ctx, params = []) {
         <ul class="cm-points">${m.banChat.map((t) => `<li>${escapeHtml(t)}</li>`).join('') || '<li class="muted">Chưa rút ra được nội dung then chốt — thử chọn thêm biên bản hoặc dùng AI.</li>'}</ul>
         ${m.people.length ? `<h3 class="tk-h">${icon('user', 'ic-sm')}Người liên quan</h3><div class="cm-people">${m.people.map((p) => `<span class="cm-chip"><strong>${escapeHtml(p.ten)}</strong><small>${escapeHtml(p.vaiTro || '')}${p.mentions ? ` · ${p.mentions} lần` : ''}</small></span>`).join('')}</div>` : ''}
       </div>`;
-    } else if (st.tab === 'cay') {
-      if (!m.crimes.length && !m.people.length && !m.timeline.length) body.innerHTML = '<p class="muted">Chưa đủ dữ liệu để vẽ sơ đồ cây.</p>';
-      else {
-        const tree = caseMapToTree(m, st.title);
-        treeCtl = mountTree(body, tree, {
-          initialOpen: ['root', ...tree.children.filter((c) => c.kind === 'crime').map((c) => c.id), 'people'],
-          title: `Sơ đồ vụ việc — ${st.title}`,
-          subtitle: m.crimes.filter((c) => c.dieu).map((c) => `Điều ${c.dieu} — ${c.ten.replace(/^Tội /, '')}`).join(' · '),
-          legendHtml: `<span class="lg-k pt-k-crime">Điều luật</span><span class="lg-k pt-k-act">Hành vi</span><span class="lg-k pt-k-person">Người</span><span class="lg-k pt-k-q">Trích dẫn, quan hệ</span><small>Bấm vào nút để mở / thu gọn · nút Toàn màn hình để trình bày</small>`,
-        });
-      }
-    } else if (st.tab === 'quan-he') {
-      const svg = relationSvg(m, { narrow: body.clientWidth < 600 });
-      body.innerHTML = svg
-        ? `<div class="cm-legend"><span class="cm-l-tien">Tiền, tài sản</span><span class="cm-l-chi-dao">Chỉ đạo, yêu cầu</span><span class="cm-l-khac">Quan hệ khác</span><small>Bấm vào một người để làm nổi các quan hệ của người đó · rê chuột lên mũi tên để xem căn cứ</small></div><div class="cm-graph" data-cm-graph>${svg}</div>
-          <div class="tk-table-wrap"><table class="tk-table"><thead><tr><th>Từ</th><th>Đến</th><th>Nội dung</th><th>Số tiền</th><th>Căn cứ</th></tr></thead><tbody>${m.edges.map((e) => `<tr><td data-l="Từ">${escapeHtml(e.tu)}</td><td data-l="Đến">${escapeHtml(e.den)}</td><td data-l="Nội dung"><span class="cm-tag cm-l-${e.loai}">${LOAI[e.loai]}</span> ${escapeHtml(e.noiDung || '')}</td><td data-l="Số tiền">${escapeHtml(e.soTien || '')}</td><td data-l="Căn cứ"><small>${escapeHtml(e.trich || e.src || '')}</small></td></tr>`).join('')}</tbody></table></div>`
-        : '<p class="muted">Chưa xác định được quan hệ giữa các người (cần câu có ít nhất hai người cùng hành động: đưa, nhận, chuyển, chỉ đạo…).</p>';
-      $('[data-cm-graph]', body)?.addEventListener('click', (e) => {
-        const n = e.target.closest('[data-node]');
-        const g = $('.cm-svg', body);
-        const name = n?.dataset.node;
-        const on = name && g.dataset.focus !== name;
-        g.dataset.focus = on ? name : '';
-        g.classList.toggle('focus', !!on);
-        $$('.cm-edge', g).forEach((x) => x.classList.toggle('hl', !!on && (x.dataset.from === name || x.dataset.to === name)));
-        $$('.cm-node', g).forEach((x) => x.classList.toggle('hl', !!on && (x.dataset.node === name || $$(`.cm-edge.hl`, g).some((y) => y.dataset.from === x.dataset.node || y.dataset.to === x.dataset.node))));
-      });
-    } else if (st.tab === 've') {
-      let d = loadDiagram();
+    } else if (EDITABLE[st.tab]) {
+      // Sơ đồ tư duy, hành vi, quan hệ, dòng tiền: đều dựng sẵn từ phân tích và sửa được (thêm, bớt, nối, vẽ…).
+      const preset = EDITABLE[st.tab];
+      let d = loadDiagram(preset);
       if (!d) {
-        d = diagramFromCaseMap(m, { title: st.title });
-        saveDiagram(d);
+        d = diagramFromCaseMap(m, { title: st.title, preset });
+        saveDiagram(d, preset);
       }
-      dgCtl = mountDiagram(body, {
+      const intro = { 'hanh-vi': 'Điều luật → hành vi → người thực hiện, kèm trích dẫn làm căn cứ.', 'quan-he': 'Quan hệ giữa các người: tiền, tài sản (vàng), chỉ đạo (đỏ), khác (xám). Chọn một người → “Thêm nhánh con” để thêm người có quan hệ; chọn mũi tên để sửa nội dung, số tiền.', 'dong-tien': 'Dòng tiền chảy từ trái sang phải: người đưa / chuyển ở bên trái, người nhận ở bên phải; nhãn mũi tên là số tiền.' }[preset];
+      body.innerHTML = `${intro ? `<p class="hint cm-dg-intro">${icon('info', 'ic-sm')}${escapeHtml(intro)}</p>` : ''}<div data-cm-dg></div>${preset === 'quan-he' || preset === 'dong-tien' ? relTable(m, preset === 'dong-tien') : ''}`;
+      dgCtl = mountDiagram($('[data-cm-dg]', body), {
         diagram: d,
-        title: st.title,
+        title: `${PRESETS[preset].label} — ${st.title}`,
         map: m,
-        onChange: saveDiagram,
+        onChange: (x) => saveDiagram(x, preset),
         onRebuild: st.sources.length ? () => syncFromCaseMap(dgCtl.get(), st.map, { title: st.title }) : null,
         crimeOf: findCrime,
         aiIdeas: ctx.hasAI('legal') ? (node, o) => aiIdeas(node, o) : null,
@@ -290,7 +276,7 @@ export function render(ctx, params = []) {
     Object.assign(st, { sources, known, primary });
     st.map = offline;
     syncSaved();
-    if (st.tab !== 've') st.tab = 'ban-chat';
+    if (!EDITABLE[st.tab]) st.tab = 'ban-chat';
     drawResult();
     drawRefine();
     $('[data-result]', v).scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -357,11 +343,11 @@ export function render(ctx, params = []) {
     if (!ai) return;
     refineCtl = bindRefine(box, {
       context: () => ({ people: st.map.people.map((p) => p.ten), extra: ['Bổ sung hành vi còn thiếu theo điều luật', 'Gộp các hành vi trùng nhau'] }),
-      snapshot: () => JSON.stringify({ map: st.map, d: loadDiagram() }),
+      snapshot: () => JSON.stringify({ map: st.map, ds: Object.values(EDITABLE).map((p) => [p, loadDiagram(p)]) }),
       restore: (snapStr) => {
         const o = JSON.parse(snapStr);
         st.map = o.map;
-        if (o.d) saveDiagram(o.d);
+        (o.ds || []).forEach(([p, d]) => d && saveDiagram(d, p));
         drawResult();
       },
       run: async (request, { signal, say }) => {
@@ -373,9 +359,8 @@ export function render(ctx, params = []) {
         const next = mergeAiCaseMap(st.map, out, { replace: true });
         const before = st.map;
         st.map = { ...next, aiProgress: '' };
-        // Sơ đồ tự vẽ (nếu đã có) cập nhật theo, giữ vị trí, nhãn đã sửa và phần tự thêm.
-        const d = loadDiagram();
-        if (d) saveDiagram(syncFromCaseMap(d, st.map, { title: st.title }));
+        // Các sơ đồ đã sửa (tư duy, hành vi, quan hệ, dòng tiền) cập nhật theo, giữ vị trí, nhãn đã sửa và phần tự thêm.
+        syncSaved();
         drawResult();
         const diff = (a, b, label) => (b - a ? `${b - a > 0 ? '+' : ''}${b - a} ${label}` : '');
         const acts = (m) => m.crimes.reduce((n, c) => n + c.items.length, 0);
@@ -388,8 +373,10 @@ export function render(ctx, params = []) {
 
   /** Sơ đồ tự vẽ đã lưu của hồ sơ này: cập nhật phần tự sinh theo sơ đồ vụ việc mới (giữ phần đã sửa / tự thêm). */
   function syncSaved() {
-    const d = loadDiagram();
-    if (d) saveDiagram(syncFromCaseMap(d, st.map, { title: st.title }));
+    for (const p of Object.values(EDITABLE)) {
+      const d = loadDiagram(p);
+      if (d) saveDiagram(syncFromCaseMap({ preset: p, ...d }, st.map, { title: st.title }), p);
+    }
   }
 
   /** AI gợi ý nhánh con cho một hình của sơ đồ (phần tóm tắt vụ việc cố định → đọc lại từ cache giữa các lần hỏi). */
@@ -451,7 +438,6 @@ export function render(ctx, params = []) {
   });
   drawSource();
   return () => {
-    treeCtl?.destroy();
     dgCtl?.destroy();
     refineCtl?.destroy();
   };
