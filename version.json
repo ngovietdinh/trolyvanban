@@ -1,10 +1,9 @@
 {
-  "version": "2.34.0",
+  "version": "2.35.0",
   "date": "2026-10-12",
   "notes": [
-    "Chế độ bảo mật cho cơ quan: chạy nội bộ, chỉ dùng AI nội bộ (máy chủ do quản trị khai báo), chặn mọi kết nối ra Internet ở 4 lớp",
-    "Mã hóa dữ liệu từng tài khoản AES-256-GCM (khóa bảo vệ bằng mật khẩu và mã khôi phục), cả kho tài liệu và gói biểu mẫu; sao lưu bắt buộc đặt mật khẩu",
-    "Tự khóa khi không thao tác, khóa ngay, tải lại phải nhập lại mật khẩu; mật khẩu mạnh, tạm khóa khi nhập sai nhiều lần",
-    "Trang Bảo mật & an toàn thông tin: kiểm tra an toàn tự chạy, xuất báo cáo; bản cài đặt bảo mật cho Windows (luôn bật, không tự cập nhật qua Internet)"
+    "Chế độ bảo mật là một môi trường dữ liệu riêng, tách biệt hoàn toàn với chế độ bình thường: dữ liệu tạo ở môi trường này không hiện ở môi trường kia",
+    "Nhật ký hoạt động riêng cho từng môi trường; nhật ký môi trường bảo mật không ghi nội dung nghiệp vụ",
+    "Sao lưu môi trường bảo mật không khôi phục được vào chế độ bình thường; tự chuyển dữ liệu đã mã hóa của bản 2.34 sang vùng bảo mật"
   ]
 }
