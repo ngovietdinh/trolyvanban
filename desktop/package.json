@@ -1,7 +1,7 @@
 {
   "name": "trolyvanban-desktop",
   "productName": "Trợ Lý Văn Bản AI",
-  "version": "2.33.0",
+  "version": "2.34.0",
   "description": "Trợ Lý Văn Bản AI — bản cài đặt trên máy tính",
   "author": "Trợ Lý Văn Bản AI",
   "homepage": "https://github.com/ngovietdinh/trolyvanban",
@@ -30,6 +30,7 @@
       "main.cjs",
       "preload.cjs",
       "updater.cjs",
+      "security-forced.json",
       "build/icon.png",
       "web/**/*"
     ],

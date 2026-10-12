@@ -12,6 +12,8 @@ import { APP_VERSION } from '../version.js';
 import { isDesktop } from '../lib/platform.js';
 import { checkForUpdate, applyUpdate } from '../update.js';
 import { openDownloadApp } from '../download-app.js';
+import { securityPolicy, aiEndpointAllowed } from '../lib/security.js';
+import { passphraseSeal, passphraseOpen } from '../lib/cipher.js';
 
 const BACKUP_KEYS = { docs: 'docs', cases: 'cases', records: 'records', plans: 'plans' };
 
@@ -45,6 +47,7 @@ const LEGAL_FIELDS = [
 
 export function render(ctx) {
   const s = ctx.settings();
+  const sec = securityPolicy();
   const providers = { ...ctx.aiProviders() };
   const ONLINE = Object.entries(PROVIDERS).filter(([, p]) => !p.local);
   let activeTab = s.aiProvider && PROVIDERS[s.aiProvider] && !PROVIDERS[s.aiProvider].local ? s.aiProvider : 'anthropic';
@@ -59,7 +62,9 @@ export function render(ctx) {
       <section class="panel" data-ai-panel>
         <div class="panel-head"><h2>${icon('sparkles', 'ic-sm')}Trí tuệ nhân tạo</h2><span class="badge ${ctx.hasAI() ? 'badge-success' : 'badge-warning'}" data-ai-state>${ctx.hasAI() ? `Đang dùng ${escapeHtml(ctx.ai().label)}` : 'Chưa kết nối'}</span></div>
         ${
-          ctx.can('ai') || ctx.can('legal.ai')
+          sec.on
+            ? `<div class="panel-body"><p class="note">${icon('shield', 'ic-sm')}<span><strong>Chế độ bảo mật:</strong> chỉ dùng AI nội bộ${sec.aiBase ? ` của đơn vị (<code>${escapeHtml(sec.aiBase)}</code>)` : ' chạy trên chính máy này'}. Dịch vụ AI công cộng (Claude, ChatGPT, Gemini, Grok, Groq, OpenRouter) bị khóa — lời khai, hồ sơ không ra khỏi mạng nội bộ.</span></p></div>`
+            : ctx.can('ai') || ctx.can('legal.ai')
             ? `<div class="setting-row">
           <div><h3>API key của tôi</h3><p>Mỗi tài khoản tự nhập API key. Khóa được mã hóa (AES-GCM) bằng mật khẩu của bạn — quản trị viên và tài khoản khác không xem được.</p></div>
           <div class="setting-ctl">
@@ -74,7 +79,7 @@ export function render(ctx) {
             : `<div class="panel-body"><p class="note">${icon('lock', 'ic-sm')}<span>Tài khoản chưa được cấp quyền dùng AI trực tuyến. Bạn vẫn có thể dùng <strong>AI chạy trên máy</strong> bên dưới — dữ liệu không gửi ra ngoài.</span></p></div>`
         }
         <div class="setting-row" data-local-row>
-          <div><h3>AI chạy trên máy <span class="badge badge-success">Không gửi ra ngoài</span></h3><p>Kết nối với mô hình AI cài trên máy này, hoặc máy chủ / nền tảng AI trong mạng nội bộ của cơ quan (Ollama, LM Studio, llama.cpp, Jan, BionicGPT…). Không mất phí dịch vụ, dùng được khi mất mạng Internet. ${ctx.can('legal') ? 'Được phép dùng cả trong <strong>phân hệ Tố tụng</strong> vì lời khai, hồ sơ không ra khỏi máy / mạng nội bộ.' : ''}</p></div>
+          <div><h3>${sec.on ? 'AI nội bộ' : 'AI chạy trên máy'} <span class="badge badge-success">Không gửi ra ngoài</span></h3><p>Kết nối với mô hình AI cài trên máy này, hoặc máy chủ / nền tảng AI trong mạng nội bộ của cơ quan (Ollama, LM Studio, llama.cpp, Jan, BionicGPT…). Không mất phí dịch vụ, dùng được khi mất mạng Internet. ${ctx.can('legal') ? 'Được phép dùng cả trong <strong>phân hệ Tố tụng</strong> vì lời khai, hồ sơ không ra khỏi máy / mạng nội bộ.' : ''}</p></div>
           <div class="setting-ctl" data-local-form></div>
         </div>
       </section>
@@ -134,11 +139,12 @@ export function render(ctx) {
         <div class="setting-row">
           <div><h3>Cập nhật phần mềm</h3><p>${isDesktop ? 'Bản cài đặt trên máy, dùng được khi không có mạng. Có bản mới thì bấm Cập nhật ngay: chỉ tải phần thay đổi (vài MB) rồi khởi động lại, không cần tải lại bộ cài — tài khoản, API key và dữ liệu được giữ nguyên.' : 'Ứng dụng chạy cục bộ và lưu bộ nhớ đệm để dùng ngoại tuyến. Cập nhật chỉ thay mã nguồn — tài khoản, API key và dữ liệu trên máy được giữ nguyên.'}</p></div>
           <div class="setting-ctl">
-            <div class="inline"><button class="btn btn-sm" type="button" data-check-update>${icon('refresh', 'ic-sm')}Kiểm tra cập nhật</button></div>
+            ${sec.on && isDesktop ? `<p class="note">${icon('shield', 'ic-sm')}<span>Chế độ bảo mật: không tải bản cập nhật từ Internet. Cập nhật bằng bộ cài do đơn vị phát hành (cài đè, dữ liệu giữ nguyên).</span></p>` : ''}
+            <div class="inline" ${sec.on && isDesktop ? 'hidden' : ''}><button class="btn btn-sm" type="button" data-check-update>${icon('refresh', 'ic-sm')}Kiểm tra cập nhật</button></div>
             <div data-update-out></div>
           </div>
         </div>
-        ${isDesktop ? '' : `<div class="setting-row">
+        ${isDesktop || sec.on ? '' : `<div class="setting-row">
           <div><h3>Bản cài đặt cho máy tính</h3><p>Cài ứng dụng trên Windows hoặc macOS: chạy như phần mềm riêng, dùng được khi không có mạng, tài khoản tạo mới có toàn quyền (kể cả phân hệ Tố tụng).</p></div>
           <div class="setting-ctl"><button class="btn btn-sm btn-primary" type="button" data-desktop-dl>${icon('download', 'ic-sm')}Tải ứng dụng Windows / macOS</button></div>
         </div>`}
@@ -147,10 +153,10 @@ export function render(ctx) {
       <section class="panel">
         <div class="panel-head"><h2>${icon('folder', 'ic-sm')}Dữ liệu</h2></div>
         <div class="setting-row">
-          <div><h3>Sao lưu &amp; khôi phục</h3><p>Xuất dữ liệu của tài khoản (văn bản${ctx.can('legal') ? ', hồ sơ vụ án, biên bản, kế hoạch hỏi' : ''}) thành tệp JSON. Tệp sao lưu không chứa mật khẩu và API key.</p></div>
+          <div><h3>Sao lưu &amp; khôi phục</h3><p>Xuất dữ liệu của tài khoản (văn bản${ctx.can('legal') ? ', hồ sơ vụ án, biên bản, kế hoạch hỏi' : ''}) thành tệp JSON. Tệp sao lưu không chứa mật khẩu và API key.${sec.on || ctx.user().encrypted ? ' <strong>Dữ liệu đã mã hóa: tệp sao lưu bắt buộc đặt mật khẩu</strong> (AES-256-GCM).' : ''}</p></div>
           <div class="setting-ctl"><div class="inline">
             <button class="btn btn-sm" type="button" data-backup>${icon('download', 'ic-sm')}Xuất sao lưu</button>
-            <label class="btn btn-sm" style="position:relative;overflow:hidden">${icon('upload', 'ic-sm')}Khôi phục<input type="file" accept="application/json,.json" data-restore style="position:absolute;inset:0;opacity:0;cursor:pointer" aria-label="Chọn tệp sao lưu" /></label>
+            <label class="btn btn-sm" style="position:relative;overflow:hidden">${icon('upload', 'ic-sm')}Khôi phục<input type="file" accept="application/json,.json,.tlvb" data-restore style="position:absolute;inset:0;opacity:0;cursor:pointer" aria-label="Chọn tệp sao lưu" /></label>
           </div></div>
         </div>
         <div class="setting-row">
@@ -349,11 +355,14 @@ export function render(ctx) {
     const preset = LOCAL_PRESETS.find((x) => x.id === cur.preset) || LOCAL_PRESETS.find((x) => x.base === base);
     const models = [...new Set([...(cur.models || []), ...(cur.model ? [cur.model] : [])])];
     const priv = isPrivateEndpoint(base);
+    // Chế độ bảo mật có khai báo máy chủ AI nội bộ: địa chỉ cố định theo chính sách, người dùng chỉ chọn mô hình.
+    const fixed = sec.on && sec.aiBase ? normalizeLocalBase(sec.aiBase) : '';
+    const shown = fixed || base;
     host.innerHTML = `
-      <div class="seg local-presets" role="group" aria-label="Phần mềm chạy AI trên máy">${LOCAL_PRESETS.map((x) => `<button type="button" data-local-preset="${x.id}" aria-pressed="${preset?.id === x.id}">${x.label}</button>`).join('')}</div>
+      ${fixed ? '' : `<div class="seg local-presets" role="group" aria-label="Phần mềm chạy AI trên máy">${LOCAL_PRESETS.map((x) => `<button type="button" data-local-preset="${x.id}" aria-pressed="${preset?.id === x.id}">${x.label}</button>`).join('')}</div>`}
       <div class="field"><label for="local-base">Địa chỉ máy chủ</label>
-        <input class="input" id="local-base" data-local-base value="${escapeHtml(base)}" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false" />
-        <span class="hint" data-local-hint>${preset ? escapeHtml(preset.hint) + '. ' : ''}${priv ? 'Địa chỉ trên máy / mạng nội bộ — dữ liệu không ra Internet.' : '<strong>Địa chỉ ngoài mạng nội bộ</strong>: được coi như dịch vụ trực tuyến (cần quyền AI trực tuyến).'}</span></div>
+        <input class="input" id="local-base" data-local-base value="${escapeHtml(shown)}" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false" ${fixed ? 'readonly' : ''} />
+        <span class="hint" data-local-hint>${fixed ? 'Máy chủ AI nội bộ do quản trị khai báo trong chính sách bảo mật.' : sec.on ? 'Chế độ bảo mật: chỉ dùng được AI trên chính máy này (localhost) hoặc máy chủ quản trị đã khai báo.' : `${preset ? escapeHtml(preset.hint) + '. ' : ''}${priv ? 'Địa chỉ trên máy / mạng nội bộ — dữ liệu không ra Internet.' : '<strong>Địa chỉ ngoài mạng nội bộ</strong>: được coi như dịch vụ trực tuyến (cần quyền AI trực tuyến).'}`}</span></div>
       <div class="field"><label for="local-model-sel">Mô hình</label>
         <div class="model-row">
           <select class="select" id="local-model-sel" data-local-model-sel>${models.length ? models.map((m) => `<option value="${escapeHtml(m)}" ${m === cur.model ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('') : '<option value="">— Bấm “Tải danh sách” —</option>'}<option value="__custom">Khác — tự nhập tên mô hình…</option></select>
@@ -392,7 +401,14 @@ export function render(ctx) {
       }
       return false;
     };
-    const readBase = () => normalizeLocalBase(baseInput.value);
+    const readBase = () => {
+      const b = normalizeLocalBase(baseInput.value);
+      if (b && sec.on && !aiEndpointAllowed(b)) {
+        toast('Chế độ bảo mật: địa chỉ này không phải máy chủ AI nội bộ được khai báo', { type: 'error', timeout: 6000 });
+        return '';
+      }
+      return b;
+    };
     $$('[data-local-preset]', host).forEach((b) =>
       b.addEventListener('click', () => {
         const x = LOCAL_PRESETS.find((y) => y.id === b.dataset.localPreset);
@@ -597,14 +613,31 @@ export function render(ctx) {
       data.legalDocs = store.get('legal-docs', []);
       data.customActs = store.get('legal-custom-acts', {});
     }
-    downloadBlob(JSON.stringify(data, null, 2), `tro-ly-van-ban-sao-luu-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
-    toast(`Đã xuất ${data.docs.length} tài liệu${data.cases ? `, ${data.cases.length} hồ sơ, ${data.records.length} biên bản` : ''}`);
+    const day = new Date().toISOString().slice(0, 10);
+    const done = () => toast(`Đã xuất ${data.docs.length} tài liệu${data.cases ? `, ${data.cases.length} hồ sơ, ${data.records.length} biên bản` : ''}`);
+    if (!(sec.on || ctx.user().encrypted)) {
+      downloadBlob(JSON.stringify(data, null, 2), `tro-ly-van-ban-sao-luu-${day}.json`, 'application/json');
+      return done();
+    }
+    // Dữ liệu đã mã hóa: không xuất bản rõ — tệp sao lưu mã hóa bằng mật khẩu riêng.
+    backupPass(ctx, true).then(async (pass) => {
+      if (!pass) return;
+      const box = await passphraseSeal(JSON.stringify(data), pass);
+      downloadBlob(JSON.stringify({ app: 'tro-ly-van-ban', encrypted: true, exportedAt: data.exportedAt, enc: box }), `tro-ly-van-ban-sao-luu-${day}.tlvb`, 'application/json');
+      audit('Xuất sao lưu mã hóa', `${data.docs.length} tài liệu${data.cases ? `, ${data.cases.length} hồ sơ` : ''}`);
+      done();
+    });
   });
   $('[data-restore]', root).addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
-      const data = JSON.parse(await file.text());
+      let data = JSON.parse(await file.text());
+      if (data.app === 'tro-ly-van-ban' && data.encrypted && data.enc) {
+        const pass = await backupPass(ctx, false);
+        if (!pass) return (e.target.value = '');
+        data = JSON.parse(await passphraseOpen(data.enc, pass));
+      }
       if (data.app !== 'tro-ly-van-ban' || !Array.isArray(data.docs)) throw new Error('Tệp sao lưu không hợp lệ');
       const merge = (key, items, ok) => {
         const existing = new Map(store.get(key, []).map((d) => [d.id, d]));
@@ -660,5 +693,43 @@ export function render(ctx) {
     document.dispatchEvent(new CustomEvent('docs-changed'));
     toast('Đã xóa toàn bộ dữ liệu (tài khoản được giữ lại)');
     ctx.navigate('#dashboard');
+  });
+}
+
+/** Hỏi mật khẩu tệp sao lưu (xuất: nhập 2 lần, ≥ 10 ký tự). */
+function backupPass(ctx, isNew) {
+  return new Promise((resolve) => {
+    let done = false;
+    ctx.modal(
+      `<h2 class="modal-title">${isNew ? 'Đặt mật khẩu cho tệp sao lưu' : 'Mở tệp sao lưu đã mã hóa'}</h2>
+       <p class="hint">${isNew ? 'Tệp được mã hóa AES-256-GCM (khóa sinh từ mật khẩu bằng PBKDF2 310.000 vòng). Quên mật khẩu này thì không ai mở được tệp.' : 'Nhập mật khẩu đã đặt khi xuất tệp.'}</p>
+       <form class="auth-form" data-f novalidate>
+         <div class="field"><label for="bk-p1">Mật khẩu tệp</label><input class="input" type="password" id="bk-p1" name="p1" autocomplete="new-password" /></div>
+         ${isNew ? '<div class="field"><label for="bk-p2">Nhập lại</label><input class="input" type="password" id="bk-p2" name="p2" autocomplete="new-password" /></div>' : ''}
+         <div class="auth-err" role="alert" hidden></div>
+         <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="submit">${isNew ? 'Mã hóa và tải xuống' : 'Mở tệp'}</button></div>
+       </form>`,
+      {
+        label: 'Mật khẩu tệp sao lưu',
+        onMount(box, close) {
+          box.querySelector('[data-close]').addEventListener('click', () => !done && resolve(null));
+          box.querySelector('[data-f]').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const p1 = box.querySelector('[name="p1"]').value;
+            const p2 = box.querySelector('[name="p2"]')?.value;
+            const err = box.querySelector('.auth-err');
+            const problem = !p1 ? 'Nhập mật khẩu' : isNew && p1.length < 10 ? 'Mật khẩu tệp tối thiểu 10 ký tự' : isNew && p1 !== p2 ? 'Hai lần nhập không khớp' : '';
+            if (problem) {
+              err.textContent = problem;
+              err.hidden = false;
+              return;
+            }
+            done = true;
+            close();
+            resolve(p1);
+          });
+        },
+      },
+    );
   });
 }

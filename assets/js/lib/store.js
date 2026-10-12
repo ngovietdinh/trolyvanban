@@ -34,15 +34,47 @@ export function setScope(userId) {
 export const getScope = () => scope;
 const resolve = (key) => (SCOPED.has(key) ? `u:${scope || 'anon'}:${key}` : key);
 
+/** Hộp dữ liệu đã mã hóa trong localStorage: {"$e":1,"iv":"…","ct":"…"} (xem lib/cipher.js). */
+export const isEnvelope = (v) => !!v && typeof v === 'object' && v.$e === 1 && typeof v.ct === 'string';
+
+// Lớp mã hóa (lib/cipher.js) gắn vào khi tài khoản đã mở khóa: dữ liệu theo tài khoản được đọc từ bộ nhớ đệm đã
+// giải mã, ghi vào thì mã hóa AES-GCM rồi mới lưu xuống máy.
+let cipher = null;
+export function setCipher(c) {
+  cipher = c;
+}
+const viaCipher = (key, full) => cipher && SCOPED.has(key) && cipher.owns(full);
+
 export const store = {
   get(key, fallback = null) {
-    return rawStore.get(resolve(key), fallback);
+    const full = resolve(key);
+    if (viaCipher(key, full)) {
+      const raw = cipher.get(full);
+      if (raw == null) return fallback;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return fallback;
+      }
+    }
+    const v = rawStore.get(full, fallback);
+    // Dữ liệu đã mã hóa mà chưa mở khóa: không trả bản mã cho màn hình.
+    return isEnvelope(v) ? fallback : v;
   },
   set(key, value) {
-    return rawStore.set(resolve(key), value);
+    const full = resolve(key);
+    if (viaCipher(key, full)) {
+      cipher.set(full, JSON.stringify(value));
+      return value;
+    }
+    // Đang khóa: không ghi đè dữ liệu đã mã hóa bằng bản rõ.
+    if (SCOPED.has(key) && isEnvelope(rawStore.get(full))) return value;
+    return rawStore.set(full, value);
   },
   remove(key) {
-    rawStore.remove(resolve(key));
+    const full = resolve(key);
+    if (viaCipher(key, full)) cipher.remove(full);
+    else rawStore.remove(full);
   },
   update(key, fn, fallback = null) {
     return this.set(key, fn(this.get(key, fallback)));
@@ -76,6 +108,23 @@ export const rawStore = {
       /* bỏ qua */
     }
     memory.delete(PREFIX + key);
+  },
+  /** Chuỗi JSON nguyên trạng (không giải mã). */
+  getRaw(key) {
+    try {
+      return ls ? ls.getItem(PREFIX + key) : (memory.get(PREFIX + key) ?? null);
+    } catch {
+      return null;
+    }
+  },
+  /** Mọi khóa (bỏ tiền tố) đang lưu. */
+  keys() {
+    try {
+      if (ls) return Object.keys(ls).filter((k) => k.startsWith(PREFIX)).map((k) => k.slice(PREFIX.length));
+    } catch {
+      /* bỏ qua */
+    }
+    return [...memory.keys()].filter((k) => k.startsWith(PREFIX)).map((k) => k.slice(PREFIX.length));
   },
   has(key) {
     try {

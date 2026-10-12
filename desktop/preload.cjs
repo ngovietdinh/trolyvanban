@@ -11,6 +11,11 @@ contextBridge.exposeInMainWorld(
     /** Mã web khởi động xong (xác nhận bản cập nhật tại chỗ chạy được). */
     ready: () => ipcRenderer.send('tlvb:ready'),
     version: () => ipcRenderer.invoke('tlvb:version'),
+    /** Chế độ bảo mật: vỏ ứng dụng chặn mọi yêu cầu mạng ra ngoài (xem desktop/main.cjs). */
+    security: Object.freeze({
+      set: (p) => ipcRenderer.invoke('tlvb:security-set', p),
+      status: () => ipcRenderer.invoke('tlvb:security-status'),
+    }),
     /** Cập nhật tại chỗ: chỉ tải các tệp mã web thay đổi. */
     update: Object.freeze({
       check: () => ipcRenderer.invoke('tlvb:update-check'),

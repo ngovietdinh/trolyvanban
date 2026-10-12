@@ -14,6 +14,11 @@ for (const f of FILES) {
   cpSync(root + f, `${out}/${f}`, { recursive: true });
 }
 
+// Bản cài "bảo mật" (TLVB_SECURE=1): chế độ bảo mật luôn bật ở cả mã web lẫn vỏ ứng dụng.
+const SECURE = process.env.TLVB_SECURE === '1';
+if (SECURE) writeFileSync(`${out}/assets/js/security-build.js`, readFileSync(`${out}/assets/js/security-build.js`, 'utf8').replace('SECURE_BUILD = false', 'SECURE_BUILD = true'));
+writeFileSync(`${root}desktop/security-forced.json`, JSON.stringify({ on: SECURE }) + '\n');
+
 const { version } = JSON.parse(readFileSync(`${root}version.json`, 'utf8'));
 const pkgPath = `${root}desktop/package.json`;
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
@@ -21,4 +26,4 @@ if (pkg.version !== version) {
   pkg.version = version;
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 }
-console.log(`Đã chuẩn bị desktop/web (v${version}).`);
+console.log(`Đã chuẩn bị desktop/web (v${version})${SECURE ? ' — BẢN BẢO MẬT (chế độ bảo mật luôn bật)' : ''}.`);

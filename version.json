@@ -1,10 +1,10 @@
 {
-  "version": "2.33.0",
+  "version": "2.34.0",
   "date": "2026-10-12",
   "notes": [
-    "Biểu mẫu chính thức TT 128/2025/TT-BCA: nạp gói riêng (không nằm trong phần mềm hay kho công khai), lưu trên máy, tách theo tài khoản",
-    "Tự nhận diện mọi chỗ chấm “……” và tab dẫn chấm của file gốc thành ô điền; tự điền cơ quan, ngày, vụ án, tội danh, từng người từ hồ sơ",
-    "Xuất Word giữ nguyên bố cục, phông chữ, khung, bảng của mẫu gốc; bỏ dấu chú thích (1), (2)… và phần chú thích (tùy chọn giữ)",
-    "Danh mục 13 nhóm, tìm theo số mẫu, lọc mẫu Công an cấp xã; mẫu cũ vẫn còn"
+    "Chế độ bảo mật cho cơ quan: chạy nội bộ, chỉ dùng AI nội bộ (máy chủ do quản trị khai báo), chặn mọi kết nối ra Internet ở 4 lớp",
+    "Mã hóa dữ liệu từng tài khoản AES-256-GCM (khóa bảo vệ bằng mật khẩu và mã khôi phục), cả kho tài liệu và gói biểu mẫu; sao lưu bắt buộc đặt mật khẩu",
+    "Tự khóa khi không thao tác, khóa ngay, tải lại phải nhập lại mật khẩu; mật khẩu mạnh, tạm khóa khi nhập sai nhiều lần",
+    "Trang Bảo mật & an toàn thông tin: kiểm tra an toàn tự chạy, xuất báo cáo; bản cài đặt bảo mật cho Windows (luôn bật, không tự cập nhật qua Internet)"
   ]
 }

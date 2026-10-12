@@ -87,6 +87,23 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           node --test tests/desktop/update.mjs
+      # Bản cài "bảo mật" cho máy trạm trong cơ quan (Windows): chế độ bảo mật luôn bật, chặn kết nối ra Internet ở
+      # tầng ứng dụng, không tự cập nhật qua Internet, không mở công cụ nhà phát triển. Kiểm thử trước khi đóng gói.
+      - name: Kiểm thử bản bảo mật
+        if: matrix.target == 'win'
+        shell: bash
+        run: node --test tests/desktop/security.mjs
+      - name: Đóng gói bản bảo mật (Windows)
+        if: matrix.target == 'win'
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          TLVB_SECURE: '1'
+        run: |
+          node scripts/desktop.mjs
+          cd desktop
+          npx electron-builder --win --publish never -c.artifactName='TroLyVanBan-${version}-bao-mat-${os}-${arch}.${ext}'
+          ls dist/*.exe
       - uses: actions/upload-artifact@v4
         with:
           name: tlvb-${{ matrix.target }}
@@ -139,7 +156,7 @@ jobs:
           cat >> notes.md <<'TXT'
 
           ### Cài đặt
-          - **Windows**: tải `TroLyVanBan-…-win-x64.exe`, chạy và làm theo hướng dẫn. Nếu Windows SmartScreen cảnh báo, chọn *Thông tin thêm → Vẫn chạy*.
+          - **Windows**: tải `TroLyVanBan-…-win-x64.exe`, chạy và làm theo hướng dẫn. Máy trạm trong cơ quan dùng bản **`TroLyVanBan-…-bao-mat-win-x64.exe`**: chế độ bảo mật luôn bật (mã hóa dữ liệu, chỉ AI nội bộ, chặn kết nối ra Internet, không tự cập nhật). Nếu Windows SmartScreen cảnh báo, chọn *Thông tin thêm → Vẫn chạy*.
           - **macOS**: chip Apple (M1, M2…) tải bản `mac-arm64.dmg`, máy Intel tải `mac-x64.dmg`. Kéo ứng dụng vào Applications. Lần đầu mở, macOS báo *không thể mở vì Apple không thể kiểm tra phần mềm độc hại*: bấm *OK*, vào *Cài đặt hệ thống → Quyền riêng tư & Bảo mật*, kéo xuống, bấm *Vẫn mở* (Open Anyway) và nhập mật khẩu máy — chỉ làm một lần. Hoặc chạy trong Terminal: `xattr -cr "/Applications/Tro Ly Van Ban AI.app"`.
           - Bản cài đặt: tài khoản tạo mới có toàn quyền; dữ liệu, tài khoản và API key chỉ lưu trên máy. Cài bản mới đè lên bản cũ, dữ liệu được giữ nguyên.
           - Đã cài từ v2.16.0 trở lên: không cần tải lại bộ cài — ứng dụng tự báo “Đã có phiên bản mới”, bấm **Cập nhật ngay** để tải phần thay đổi (vài MB) rồi khởi động lại.

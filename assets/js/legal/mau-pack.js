@@ -5,6 +5,7 @@ import { createZip, readZip } from '../lib/docx.js';
 import { parseTemplateDocx } from '../lib/tpl-docx.js';
 import { fillMauDocx } from '../lib/mau-docx.js';
 import { getScope } from '../lib/store.js';
+import { cipher } from '../lib/cipher.js';
 import { analyzeMau, isFrameForm, loaiOf, norm } from './mau-analyze.js';
 
 export const PACK_VERSION = 1;
@@ -116,7 +117,7 @@ async function tx(mode, fn) {
   return new Promise((resolve, reject) => {
     const t = db.transaction(STORE, mode);
     const out = fn(t.objectStore(STORE));
-    t.oncomplete = () => resolve(out?.result ?? out);
+    t.oncomplete = () => resolve(typeof IDBRequest !== 'undefined' && out instanceof IDBRequest ? out.result : out);
     t.onerror = () => reject(t.error);
     t.onabort = () => reject(t.error || new Error('Không lưu được gói biểu mẫu (có thể trình duyệt đã hết dung lượng)'));
   });
@@ -124,27 +125,41 @@ async function tx(mode, fn) {
 const kMeta = () => `${owner()}|meta`;
 const kFile = (id) => `${owner()}|f|${id}`;
 
+// Chế độ bảo mật: danh mục và tệp mẫu được mã hóa AES-GCM như dữ liệu khác của tài khoản.
+const sealMeta = async (meta) => (cipher.active() ? { $e: await cipher.sealJson(meta, 'mau:meta') } : { meta });
+const sealFile = async (id, data) => (cipher.active() ? { $b: await cipher.sealBytes(data, `mau:${id}`) } : { data });
+async function rawGet(k) {
+  return !hasIDB() ? mem.get(k) || null : (await tx('readonly', (s) => s.get(k))) || null;
+}
+
 export const mauDb = {
   /** Lưu gói đã đọc (thay thế gói cũ của tài khoản). */
   async save({ meta, files }) {
     await this.clear();
+    const recs = [{ k: kMeta(), ...(await sealMeta(meta)) }];
+    for (const [id, data] of Object.entries(files)) recs.push({ k: kFile(id), ...(await sealFile(id, data)) });
     if (!hasIDB()) {
-      mem.set(kMeta(), meta);
-      for (const [id, data] of Object.entries(files)) mem.set(kFile(id), data);
+      for (const r of recs) mem.set(r.k, r);
       return;
     }
-    await tx('readwrite', (s) => {
-      s.put({ k: kMeta(), meta });
-      for (const [id, data] of Object.entries(files)) s.put({ k: kFile(id), data });
-    });
+    await tx('readwrite', (s) => recs.forEach((r) => s.put(r)));
   },
   async meta() {
-    if (!hasIDB()) return mem.get(kMeta()) || null;
-    return (await tx('readonly', (s) => s.get(kMeta())))?.meta || null;
+    const r = await rawGet(kMeta());
+    if (!r) return null;
+    if (r.$e) return cipher.active() ? cipher.openJson(r.$e, 'mau:meta') : null;
+    return r.meta || null;
   },
   async docx(id) {
-    if (!hasIDB()) return mem.get(kFile(id)) || null;
-    return (await tx('readonly', (s) => s.get(kFile(id))))?.data || null;
+    const r = await rawGet(kFile(id));
+    if (!r) return null;
+    if (r.$b) return cipher.active() ? cipher.openBytes(r.$b, `mau:${id}`) : null;
+    return r.data || null;
+  },
+  /** Gói đã nạp có được mã hóa không (null nếu chưa nạp). */
+  async sealed() {
+    const r = await rawGet(kMeta());
+    return r ? !!r.$e : null;
   },
   async clear() {
     const prefix = `${owner()}|`;
@@ -163,6 +178,18 @@ export const mauDb = {
     });
   },
 };
+
+// Mở khóa dữ liệu → gói mẫu nạp trước đó (dạng rõ) được mã hóa lại.
+cipher.onOpen(async () => {
+  const r = await rawGet(kMeta());
+  if (!r || r.$e) return;
+  const files = {};
+  for (const f of r.meta.forms || []) {
+    const d = await rawGet(kFile(f.id));
+    if (d?.data) files[f.id] = d.data;
+  }
+  await mauDb.save({ meta: r.meta, files });
+});
 
 /* ---------------- Giá trị, tự điền ---------------- */
 

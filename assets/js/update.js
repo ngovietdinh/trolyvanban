@@ -2,6 +2,7 @@
 import { APP_VERSION } from './version.js';
 import { icon, escapeHtml, toast } from './ui.js';
 import { isDesktop, desktop } from './lib/platform.js';
+import { secureOn } from './lib/security.js';
 
 // Bản cài đặt trên máy: cập nhật tại chỗ (chỉ tải tệp mã web thay đổi) qua vỏ ứng dụng; vỏ cũ hoặc bản mới cần vỏ
 // mới thì mở trang tải bộ cài. Vỏ cũ (trước v2.16) không có desktop.update → so với version.json trên main.
@@ -64,6 +65,8 @@ function banner(version, notes = []) {
 
 /** Kiểm tra version.json trên máy chủ. Trả về { available, latest, notes }. */
 export async function checkForUpdate() {
+  // Chế độ bảo mật trên bản cài đặt: không liên lạc máy chủ phát hành trên Internet.
+  if (isDesktop && secureOn()) throw new Error('Chế độ bảo mật: không kiểm tra bản cập nhật qua Internet — cài bộ cài do đơn vị phát hành.');
   if (inPlace()) {
     try {
       const r = await desktop.update.check();
@@ -163,6 +166,7 @@ function notifyIfNewer(reg) {
 }
 
 export function initUpdates() {
+  if (isDesktop && secureOn()) return;
   if (inPlace()) {
     // Bản cài đặt: kiểm tra bản mới khi mở và mỗi 6 giờ (app.js báo “sẵn sàng” cho vỏ ứng dụng sau khi khởi động).
     const run = () => checkForUpdate().then((r) => r.available && banner(r.latest, r.notes)).catch(() => {});

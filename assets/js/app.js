@@ -1,8 +1,9 @@
 // Ứng dụng chính: khung giao diện, điều hướng theo hash, tài khoản, bảng lệnh.
 import { $, $$, icon, toast, bindThemeToggles, escapeHtml } from './ui.js';
 import { store, docsRepo } from './lib/store.js';
-import { PROVIDERS, setAIHooks, setLocalEndpoint, isPrivateEndpoint, isOffline } from './lib/ai.js';
-import { accounts, vault, systemConfig } from './lib/accounts.js';
+import { PROVIDERS, setAIHooks, setLocalEndpoint, isPrivateEndpoint, isOffline, normalizeLocalBase } from './lib/ai.js';
+import { accounts, vault, systemConfig, audit } from './lib/accounts.js';
+import { applyNetworkGuard, secureOn, securityPolicy, aiEndpointAllowed, setSecurityBlockHook } from './lib/security.js';
 import { initUpdates } from './update.js';
 import { desktop, isDesktop } from './lib/platform.js';
 import { openDownloadApp } from './download-app.js';
@@ -30,6 +31,7 @@ import * as pdf from './views/pdf.js';
 import * as tracking from './views/tracking.js';
 import * as caseMap from './views/case-map.js';
 import * as statements from './views/statements.js';
+import * as security from './views/security.js';
 import { makeResizable } from './lib/resizer.js';
 import { openFeatureCatalog } from './features.js';
 import { guideForRoute, visibleGuides, findGuide } from './guide/guides.js';
@@ -58,6 +60,7 @@ const ROUTES = {
   docs: { mod: docs, title: 'Tài liệu của tôi', perm: 'docs' },
   admin: { mod: admin, title: 'Quản trị tài khoản', perm: 'users' },
   settings: { mod: settings, title: 'Cài đặt' },
+  'bao-mat': { mod: security, title: 'Bảo mật & an toàn thông tin' },
   help: { mod: help, title: 'Hướng dẫn sử dụng' },
 };
 
@@ -68,6 +71,8 @@ let aiCache = { providers: {} }; // Kho API key đã giải mã của tài kho�
 /** Đã cấu hình nhà cung cấp: dịch vụ trực tuyến cần API key; AI trên máy chỉ cần địa chỉ và mô hình. */
 const aiConfigured = (p) => {
   const c = aiCache.providers?.[p];
+  // Chế độ bảo mật: chỉ AI nội bộ, đúng máy chủ quản trị khai báo.
+  if (secureOn()) return p === 'local' && !!(c?.base && c?.model) && aiEndpointAllowed(c.base);
   return p === 'local' ? !!(c?.base && c?.model) : !!c?.key;
 };
 const aiEntry = (p) => {
@@ -76,6 +81,12 @@ const aiEntry = (p) => {
 };
 function loadAiCache(data) {
   aiCache = data && typeof data === 'object' ? { providers: {}, ...data } : { providers: {} };
+  // Chế độ bảo mật có khai báo máy chủ AI nội bộ: mọi tài khoản dùng đúng máy chủ đó (mô hình mặc định do quản trị đặt).
+  const sp = securityPolicy();
+  if (sp.on && sp.aiBase && data) {
+    const l = aiCache.providers.local || {};
+    aiCache.providers = { ...aiCache.providers, local: { ...l, base: normalizeLocalBase(sp.aiBase), model: l.model || sp.aiModel || '' } };
+  }
   setLocalEndpoint(aiCache.providers?.local?.base);
 }
 
@@ -146,7 +157,7 @@ export const ctx = {
     const user = accounts.current();
     if (!user) return null;
     const online = user.permSet.has(scope === 'legal' ? 'legal.ai' : 'ai');
-    const localPrivate = aiConfigured('local') && isPrivateEndpoint(aiCache.providers.local.base);
+    const localPrivate = aiConfigured('local') && (secureOn() || isPrivateEndpoint(aiCache.providers.local.base));
     const allowed = Object.keys(PROVIDERS).filter((p) => aiConfigured(p) && (online || (p === 'local' && localPrivate && user.permSet.has(scope === 'legal' ? 'legal' : 'docs'))));
     const pref = this.settings().aiProvider;
     // Mất mạng: dùng ngay AI trên máy (nếu có) thay cho dịch vụ trực tuyến.
@@ -170,6 +181,7 @@ export const ctx = {
   },
   handoff: null, // Dữ liệu chuyển giữa các màn hình (vd: bản nháp từ Trợ lý sang Soạn thảo).
   refreshChrome: () => refreshChrome(),
+  lock: (reason) => lockApp(reason),
   modal,
   confirm,
   openAuth,
@@ -184,6 +196,7 @@ function parseHash() {
 
 function route() {
   if (!accounts.current()) return showGate();
+  if (accounts.needsUnlock()) return showGate('unlock');
   let { name, params } = parseHash();
   if (name === 'login' || name === 'register') {
     name = currentRoute || 'dashboard';
@@ -307,10 +320,27 @@ function refreshChrome() {
   const st = $('[data-ai-status]');
   const ai = ctx.ai();
   st.classList.toggle('on', !!ai);
-  st.querySelector('strong').textContent = ai ? (ai.local ? (isOffline() ? 'Mất mạng · AI trên máy' : 'AI trên máy đã bật') : `AI ${ai.label} đã bật`) : user.permSet.has('ai') ? 'Chế độ cơ bản' : 'AI trực tuyến bị tắt';
-  st.querySelector('small').textContent = ai ? ai.model : user.permSet.has('ai') ? 'Thêm API key để bật AI' : 'Có thể dùng AI trên máy';
+  const sec = secureOn();
+  st.querySelector('strong').textContent = ai ? (sec ? 'AI nội bộ đã bật' : ai.local ? (isOffline() ? 'Mất mạng · AI trên máy' : 'AI trên máy đã bật') : `AI ${ai.label} đã bật`) : sec ? 'Chưa kết nối AI nội bộ' : user.permSet.has('ai') ? 'Chế độ cơ bản' : 'AI trực tuyến bị tắt';
+  st.querySelector('small').textContent = ai ? ai.model : sec ? 'Chế độ bảo mật: chỉ AI nội bộ' : user.permSet.has('ai') ? 'Thêm API key để bật AI' : 'Có thể dùng AI trên máy';
+  renderSecurityChip(sec);
   renderUserMenu();
   renderBottomNav();
+}
+
+/** Huy hiệu “Bảo mật” trên thanh trên cùng: bấm để khóa ngay / xem trung tâm bảo mật. */
+function renderSecurityChip(on) {
+  const bar = $('.topbar-actions');
+  let chip = $('[data-sec-chip]', bar);
+  if (!on) return chip?.remove();
+  if (!chip) {
+    chip = document.createElement('div');
+    chip.className = 'sec-chip';
+    chip.dataset.secChip = '';
+    chip.innerHTML = `<a href="#bao-mat" class="sec-chip-link" title="Chế độ bảo mật đang bật: dữ liệu mã hóa, chỉ AI nội bộ, chặn kết nối ra Internet">${icon('shield', 'ic-sm')}<span>Bảo mật</span></a><button type="button" class="btn btn-ghost btn-icon btn-sm" data-sec-lock aria-label="Khóa ngay" title="Khóa ngay">${icon('lock', 'ic-sm')}</button>`;
+    bar.prepend(chip);
+    chip.querySelector('[data-sec-lock]').addEventListener('click', () => lockApp('Khóa phiên làm việc'));
+  }
 }
 
 /* ---------- Thanh điều hướng dưới (điện thoại) ---------- */
@@ -353,6 +383,8 @@ function renderUserMenu() {
       ${user.permSet.has('docs') ? `<a href="#docs" role="menuitem">${icon('folder')}Tài liệu của tôi</a>` : ''}
       ${user.permSet.has('users') ? `<a href="#admin" role="menuitem">${icon('shield')}Quản trị tài khoản</a>` : ''}
       <a href="#settings" role="menuitem">${icon('settings')}Cài đặt</a>
+      <a href="#bao-mat" role="menuitem">${icon('shield')}Bảo mật &amp; an toàn thông tin</a>
+      ${secureOn() || user.encrypted ? `<button type="button" role="menuitem" data-lock-now>${icon('lock')}Khóa ngay</button>` : ''}
       <a href="#help" role="menuitem">${icon('help')}Hướng dẫn sử dụng</a>
       <button type="button" role="menuitem" data-theme-menu>${icon('moon')}Giao diện sáng / tối</button>
       <button type="button" role="menuitem" data-change-pw>${icon('key')}Đổi mật khẩu</button>
@@ -382,6 +414,7 @@ function renderUserMenu() {
     showGate();
   });
   host.querySelector('[data-change-pw]').addEventListener('click', changePasswordDialog);
+  host.querySelector('[data-lock-now]')?.addEventListener('click', () => lockApp('Khóa phiên làm việc'));
   host.querySelector('[data-theme-menu]').addEventListener('click', () => $('[data-theme-toggle]').click());
 }
 
@@ -534,12 +567,16 @@ let gateEl = null;
 function gateHtml(mode) {
   const first = !accounts.hasUsers();
   const signup = systemConfig().allowSignup || !accounts.superExists();
+  const sec = secureOn();
+  if (mode === 'unlock' || mode === 'recover') return lockHtml(mode);
   if (mode === 'register' && !signup) mode = 'login';
   if (first) mode = 'register';
   const isLogin = mode === 'login';
   const title = isLogin ? 'Đăng nhập' : first ? 'Tạo tài khoản đầu tiên' : 'Tạo tài khoản';
   const sub = isLogin
-    ? 'Dữ liệu và API key của mỗi tài khoản được lưu, mã hóa riêng trên máy này.'
+    ? sec
+      ? 'Chế độ bảo mật: dữ liệu mỗi tài khoản được mã hóa AES-256-GCM trên máy này, chỉ dùng AI nội bộ, chặn kết nối ra Internet.'
+      : 'Dữ liệu và API key của mỗi tài khoản được lưu, mã hóa riêng trên máy này.'
     : isDesktop
       ? 'Bản cài đặt trên máy: tài khoản mới có toàn quyền (văn bản, công cụ, AI, Tố tụng). Dữ liệu chỉ lưu trên máy này.'
       : 'Tài khoản mới có quyền Người dùng. Quản trị viên đăng nhập trên máy này để cấp thêm quyền (Tố tụng, AI…).';
@@ -553,7 +590,7 @@ function gateHtml(mode) {
       <form class="auth-form" data-gate-form="${mode}" novalidate>
         ${isLogin ? '' : `<div class="field"><label for="g-name">Họ và tên</label><input class="input" id="g-name" name="name" autocomplete="name" /></div>`}
         <div class="field"><label for="g-email">Email</label><input class="input" id="g-email" name="email" type="email" autocomplete="email" /></div>
-        <div class="field"><label for="g-pass">Mật khẩu</label><input class="input" id="g-pass" name="password" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" />${isLogin ? '' : '<span class="hint">Tối thiểu 8 ký tự. Không có cách khôi phục mật khẩu — hãy ghi nhớ cẩn thận.</span>'}</div>
+        <div class="field"><label for="g-pass">Mật khẩu</label><input class="input" id="g-pass" name="password" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" />${isLogin ? '' : `<span class="hint">${sec ? 'Tối thiểu 10 ký tự, có cả chữ và số.' : 'Tối thiểu 8 ký tự.'} Không có cách khôi phục mật khẩu — hãy ghi nhớ cẩn thận.</span>`}</div>
         <div class="auth-err" role="alert" hidden></div>
         <button class="btn btn-primary btn-lg" type="submit">${isLogin ? 'Đăng nhập' : 'Tạo tài khoản'}</button>
       </form>
@@ -562,8 +599,56 @@ function gateHtml(mode) {
         ${isLogin && !signup ? 'Liên hệ quản trị viên để được cấp tài khoản.' : ''}
         ${!isLogin && !first ? `Đã có tài khoản? <button type="button" data-gate-mode="login">Đăng nhập</button>` : ''}
       </p>
-      <p class="gate-foot">${icon('lock', 'ic-sm')}Chạy cục bộ trên máy${isDesktop ? ` · Bản cài đặt ${desktop.os}` : ' · <a href="index.html">Về trang giới thiệu</a>'}</p>
+      <p class="gate-foot">${icon(sec ? 'shield' : 'lock', 'ic-sm')}${sec ? '<strong>Chế độ bảo mật</strong> · ' : ''}Chạy cục bộ trên máy${isDesktop ? ` · Bản cài đặt ${desktop.os}` : sec ? '' : ' · <a href="index.html">Về trang giới thiệu</a>'}</p>
     </div>`;
+}
+
+/** Màn hình khóa (tự khóa / tải lại trang ở chế độ bảo mật) và nhập mã khôi phục. */
+function lockHtml(mode) {
+  const s = accounts.current();
+  const rec = mode === 'recover';
+  return `
+    <div class="gate-card" data-lock-card>
+      <div class="auth-head">
+        <span class="logo-mark lock-mark">${icon(rec ? 'key' : 'lock')}</span>
+        <h2>${rec ? 'Nhập mã khôi phục' : 'Phiên làm việc đã khóa'}</h2>
+        <p>${rec ? 'Mật khẩu của tài khoản đã được quản trị đặt lại. Dữ liệu đã mã hóa chỉ mở được bằng <strong>mã khôi phục</strong> (24 ký tự) được cấp khi bật mã hóa.' : 'Dữ liệu đã được mã hóa và khóa lại. Nhập mật khẩu để tiếp tục làm việc.'}</p>
+      </div>
+      <form class="auth-form" data-gate-form="${mode}" novalidate>
+        <div class="field"><label>Tài khoản</label><div class="lock-user"><strong>${escapeHtml(s?.name || '')}</strong><small>${escapeHtml(s?.email || '')}</small></div></div>
+        ${rec ? `<div class="field"><label for="g-rec">Mã khôi phục</label><input class="input mono" id="g-rec" name="code" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" /></div>` : `<div class="field"><label for="g-pass">Mật khẩu</label><input class="input" id="g-pass" name="password" type="password" autocomplete="current-password" /></div>`}
+        <div class="auth-err" role="alert" hidden></div>
+        <button class="btn btn-primary btn-lg" type="submit">${rec ? 'Mở dữ liệu' : 'Mở khóa'}</button>
+      </form>
+      <p class="auth-switch"><button type="button" data-gate-logout>Đăng xuất / đổi tài khoản</button></p>
+      <p class="gate-foot">${icon('shield', 'ic-sm')}${secureOn() ? '<strong>Chế độ bảo mật</strong> · ' : ''}AES-256-GCM · khóa chỉ nằm trong bộ nhớ khi đang mở</p>
+    </div>`;
+}
+
+/** Mã khôi phục chỉ hiện một lần (ngay trên màn hình đăng nhập): bắt buộc xác nhận đã ghi lại. */
+function showRecoveryCode(code) {
+  return new Promise((resolve) => {
+    gateEl.innerHTML = `
+      <div class="gate-card" data-rec-card>
+        <div class="auth-head"><span class="logo-mark lock-mark">${icon('key')}</span><h2>Mã khôi phục dữ liệu</h2>
+        <p>Dữ liệu của tài khoản đã được <strong>mã hóa AES-256-GCM</strong>. Nếu quên mật khẩu và quản trị đặt lại, chỉ mã này mở được dữ liệu cũ — <strong>không ai khác khôi phục được</strong>. Mã chỉ hiện một lần.</p></div>
+        <div class="rec-code" data-rec-code>${escapeHtml(code)}</div>
+        <ul class="hint rec-tips"><li>Ghi ra giấy hoặc in, cất nơi an toàn theo quy định bảo mật của đơn vị.</li><li>Không lưu trong máy tính, không gửi qua mạng.</li><li>Tạo mã mới tại <em>Bảo mật &amp; an toàn thông tin</em> (mã cũ hết hiệu lực).</li></ul>
+        <label class="check"><input type="checkbox" data-rec-ok /> Tôi đã ghi lại mã khôi phục</label>
+        <div class="modal-actions"><button class="btn" type="button" data-rec-print>${icon('printer', 'ic-sm')}In mã</button><button class="btn btn-primary" type="button" data-rec-done disabled>Tiếp tục</button></div>
+      </div>`;
+    const ok = gateEl.querySelector('[data-rec-ok]');
+    const done = gateEl.querySelector('[data-rec-done]');
+    ok.addEventListener('change', () => (done.disabled = !ok.checked));
+    gateEl.querySelector('[data-rec-print]').addEventListener('click', () => {
+      const w = window.open('', '_blank', 'width=600,height=400');
+      if (!w) return;
+      w.document.write(`<title>Mã khôi phục</title><body style="font-family:serif;padding:40px"><h2>Mã khôi phục dữ liệu — Trợ Lý Văn Bản AI</h2><p>Tài khoản: ${escapeHtml(accounts.current()?.email || '')}</p><p style="font:700 22px monospace;letter-spacing:2px">${escapeHtml(code)}</p><p>Ngày tạo: ${new Date().toLocaleString('vi-VN')}</p></body>`);
+      w.document.close();
+      w.print();
+    });
+    done.addEventListener('click', () => resolve());
+  });
 }
 
 function showGate(mode = 'login') {
@@ -571,7 +656,8 @@ function showGate(mode = 'login') {
   cleanup = null;
   currentRoute = null;
   shell.hidden = true;
-  document.title = 'Đăng nhập — Trợ Lý Văn Bản AI';
+  document.querySelectorAll('.modal-backdrop').forEach((m) => m.remove());
+  document.title = mode === 'unlock' ? 'Đã khóa — Trợ Lý Văn Bản AI' : 'Đăng nhập — Trợ Lý Văn Bản AI';
   if (!gateEl) {
     gateEl = document.createElement('main');
     gateEl.className = 'gate';
@@ -580,21 +666,34 @@ function showGate(mode = 'login') {
   gateEl.hidden = false;
   gateEl.innerHTML = gateHtml(mode);
   const form = $('[data-gate-form]', gateEl);
-  ($('input:not([readonly])', form) || form.querySelector('input'))?.focus();
+  form.querySelector('input')?.focus();
   gateEl.querySelectorAll('[data-gate-mode]').forEach((b) => b.addEventListener('click', () => showGate(b.dataset.gateMode)));
+  gateEl.querySelector('[data-gate-logout]')?.addEventListener('click', () => {
+    accounts.logout();
+    loadAiCache(null);
+    showGate('login');
+  });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form));
     const err = $('.auth-err', form);
     const btn = form.querySelector('[type="submit"]');
     btn.disabled = true;
+    err.hidden = true;
     try {
-      const user = form.dataset.gateForm === 'login' ? await accounts.login(data) : await accounts.register(data);
+      const kind = form.dataset.gateForm;
+      let res = {};
+      if (kind === 'unlock') res = await accounts.unlock(data.password);
+      else if (kind === 'recover') await accounts.recover(data.code);
+      else res = kind === 'login' ? await accounts.login(data) : await accounts.register(data);
+      if (res?.recoveryCode) await showRecoveryCode(res.recoveryCode);
       await enterApp();
-      toast(`Xin chào, ${user.name}!`);
+      if (kind === 'login' || kind === 'register') toast(`Xin chào, ${res.name}!`);
+      else toast(kind === 'recover' ? 'Đã mở dữ liệu bằng mã khôi phục — nên tạo mã khôi phục mới' : 'Đã mở khóa');
       const pending = accounts.can('users') ? accounts.pendingCount() : 0;
-      if (pending) toast(`Có ${pending} tài khoản mới đang chờ cấp quyền — vào Quản trị tài khoản để phân quyền`, { type: 'info', timeout: 6000 });
+      if (pending && (kind === 'login' || kind === 'register')) toast(`Có ${pending} tài khoản mới đang chờ cấp quyền — vào Quản trị tài khoản để phân quyền`, { type: 'info', timeout: 6000 });
     } catch (ex) {
+      if (ex.code === 'NEED_RECOVERY') return showGate('recover');
       err.textContent = ex.message;
       err.hidden = false;
     } finally {
@@ -610,9 +709,37 @@ async function enterApp() {
   loadAiCache(await vault.read());
   if (gateEl) gateEl.hidden = true;
   shell.hidden = false;
+  touchActivity();
   refreshChrome();
   if (/^#(login|register)$/.test(location.hash)) history.replaceState(null, '', '#dashboard');
   route();
+}
+
+/* ---------- Chế độ bảo mật: khóa ngay, tự khóa khi không thao tác ---------- */
+let lastActivity = Date.now();
+const touchActivity = () => (lastActivity = Date.now());
+for (const ev of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.addEventListener(ev, touchActivity, { passive: true, capture: true });
+async function lockApp(reason = 'Khóa phiên làm việc') {
+  if (!accounts.current() || accounts.needsUnlock()) return;
+  showGate('unlock');
+  await accounts.lock(reason);
+  loadAiCache(null);
+}
+setInterval(() => {
+  const p = securityPolicy();
+  if (!p.on || !accounts.current() || accounts.needsUnlock() || shell.hidden) return;
+  if (Date.now() - lastActivity >= p.idleMin * 60000) lockApp(`Tự khóa sau ${p.idleMin} phút không thao tác`);
+}, 15000);
+
+/** Khởi động: phiên còn hiệu lực → mở dữ liệu (chế độ bảo mật: luôn hỏi lại mật khẩu sau khi tải lại trang). */
+async function boot() {
+  if (!accounts.current()) return showGate(/^#register/.test(location.hash) ? 'register' : 'login');
+  try {
+    if (await accounts.resume()) return enterApp();
+    showGate('unlock');
+  } catch (ex) {
+    showGate(ex.code === 'NEED_RECOVERY' ? 'recover' : 'unlock');
+  }
 }
 
 function openAuth() {
@@ -746,12 +873,20 @@ $$('[data-download-app]').forEach((el) => {
 $('[data-features-open]')?.addEventListener('click', () => openFeatureCatalog(ctx));
 
 /* ---------- Khởi động ---------- */
+// Chặn kết nối ra ngoài (chế độ bảo mật) trước mọi thao tác khác; ghi nhật ký mỗi lần chặn.
+applyNetworkGuard();
+const blockSeen = new Map();
+setSecurityBlockHook((r) => {
+  // Mỗi máy chủ ghi nhật ký tối đa một lần mỗi phút.
+  if (Date.now() - (blockSeen.get(r.host) || 0) < 60000) return;
+  blockSeen.set(r.host, Date.now());
+  audit('Chặn kết nối ra ngoài', `${r.host} — ${r.reason}`);
+});
 bindThemeToggles();
 window.addEventListener('hashchange', route);
 window.addEventListener('storage', () => accounts.current() && refreshChrome());
 document.addEventListener('docs-changed', refreshChrome);
 initUpdates();
-if (accounts.current()) enterApp();
-else showGate(/^#register/.test(location.hash) ? 'register' : 'login');
+boot();
 // Bản cài đặt: mã web khởi động được → xác nhận bản cập nhật tại chỗ (không báo thì vỏ ứng dụng tự quay về bản trước).
 desktop?.ready?.();

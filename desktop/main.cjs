@@ -4,6 +4,7 @@
 const { app, BrowserWindow, protocol, shell, Menu, dialog, session, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 
 const SCHEME = 'app';
 const HOST = 'trolyvanban';
@@ -11,6 +12,79 @@ const ORIGIN = `${SCHEME}://${HOST}`;
 const WEB = path.join(__dirname, 'web');
 const { createUpdater, WATCHDOG_MS } = require('./updater.cjs');
 const updater = createUpdater(WEB);
+
+/* ---------------- Chế độ bảo mật ở tầng ứng dụng ----------------
+ * Mã web báo chính sách (lib/security.js → tlvb:security-set); vỏ ứng dụng lưu vào security.json để áp dụng ngay
+ * từ lần mở sau, trước khi trang kịp chạy. Bản cài "bảo mật" có security-forced.json { on: true }: luôn bật,
+ * chỉ phục vụ mã web trong bộ cài (bỏ qua bản cập nhật tại chỗ), không tải cập nhật, không mở công cụ nhà phát triển.
+ */
+const FORCED = (() => {
+  try {
+    return JSON.parse(fsSync.readFileSync(path.join(__dirname, 'security-forced.json'), 'utf8')).on === true;
+  } catch {
+    return false;
+  }
+})();
+let sec = { on: FORCED, hosts: [], strict: true };
+let blocked = 0;
+const secFile = () => path.join(app.getPath('userData'), 'security.json');
+function loadSecurity() {
+  try {
+    sec = { ...sec, ...JSON.parse(fsSync.readFileSync(secFile(), 'utf8')) };
+  } catch {}
+  if (FORCED) sec.on = true;
+}
+function saveSecurity() {
+  try {
+    fsSync.writeFileSync(secFile(), JSON.stringify(sec));
+  } catch {}
+}
+const cleanHost = (h) => String(h || '').replace(/^\[|\]$/g, '').toLowerCase();
+const isLoopback = (h) => h === 'localhost' || h.endsWith('.localhost') || h === '::1' || /^127\.\d+\.\d+\.\d+$/.test(h);
+function isPrivate(h) {
+  if (isLoopback(h) || /\.(local|lan|internal|intranet|home\.arpa)$/.test(h)) return true;
+  const m = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (m) {
+    const [a, b] = [+m[1], +m[2]];
+    return a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
+  }
+  return /^f[cd][0-9a-f]{2}:/.test(h) || /^fe[89ab][0-9a-f]:/.test(h);
+}
+const listed = (h, list) =>
+  list.some((e) => {
+    const x = cleanHost(e).replace(/^https?:\/\//, '').replace(/[:/].*$/, '');
+    if (x.startsWith('*.') || x.startsWith('.')) {
+      const sfx = x.replace(/^\*/, '');
+      return h.endsWith(sfx) || h === sfx.slice(1);
+    }
+    return !!x && h === x;
+  });
+/** Yêu cầu mạng có được phép không (chế độ bảo mật: chỉ máy này, máy chủ khai báo, tùy chọn cả mạng nội bộ). */
+function allowedRequest(url) {
+  if (!sec.on) return true;
+  let h;
+  try {
+    h = cleanHost(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+  return isLoopback(h) || listed(h, sec.hosts || []) || (!sec.strict && isPrivate(h));
+}
+const secStatus = () => ({ on: !!sec.on, forced: FORCED, blocked, hosts: sec.hosts || [], strict: sec.strict !== false });
+
+function guardNetwork(ses) {
+  ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (d, cb) => {
+    if (allowedRequest(d.url)) return cb({});
+    blocked++;
+    cb({ cancel: true });
+  });
+}
+
+/** Bản cài bảo mật: chỉ phục vụ mã web nằm trong bộ cài. */
+function packagedFile(rel) {
+  const f = path.normalize(path.join(WEB, rel));
+  return f === WEB || f.startsWith(WEB + path.sep) ? f : null;
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -42,8 +116,8 @@ async function serve(request) {
   if (url.host !== HOST) return new Response('Not found', { status: 404 });
   let rel = decodeURIComponent(url.pathname);
   if (rel === '/' || rel === '') rel = '/app.html';
-  // Bản cập nhật tại chỗ (nếu có) được ưu tiên, còn lại lấy từ bộ cài.
-  const file = updater.resolve(rel);
+  // Bản cập nhật tại chỗ (nếu có) được ưu tiên, còn lại lấy từ bộ cài (bản cài bảo mật: chỉ lấy từ bộ cài).
+  const file = FORCED ? packagedFile(rel) : updater.resolve(rel);
   if (!file) return new Response('Forbidden', { status: 403 });
   try {
     const body = await fs.readFile(file);
@@ -111,15 +185,28 @@ function createWindow() {
   win.once('ready-to-show', () => win.show());
 
   // Liên kết ra ngoài (trang tải bộ cài, tài liệu nhà cung cấp AI…) mở bằng trình duyệt mặc định.
+  // Chế độ bảo mật: không mở liên kết ra Internet.
+  const openOut = (url) => {
+    if (!isExternal(url)) return;
+    if (sec.on && !/^(mailto|tel):/i.test(url) && !allowedRequest(url)) {
+      dialog.showMessageBox(win, { type: 'info', message: 'Chế độ bảo mật: không mở liên kết ra Internet.', detail: url });
+      return;
+    }
+    shell.openExternal(url);
+  };
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isExternal(url)) shell.openExternal(url);
+    openOut(url);
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e, url) => {
     if (!url.startsWith(ORIGIN)) {
       e.preventDefault();
-      if (isExternal(url)) shell.openExternal(url);
+      openOut(url);
     }
+  });
+  // Chế độ bảo mật: không cho mở công cụ nhà phát triển (xem được bộ nhớ, khóa đang mở).
+  win.webContents.on('devtools-opened', () => {
+    if (sec.on) win.webContents.closeDevTools();
   });
 
   // Bản vừa cập nhật phải báo “sẵn sàng” (mã web khởi động xong) — nếu không, quay về bản trước.
@@ -139,8 +226,20 @@ function createWindow() {
 
 let watchdog = null;
 function bindUpdater() {
-  ipcMain.handle('tlvb:update-check', () => updater.check());
-  ipcMain.handle('tlvb:update-apply', (e) => updater.apply((p) => !e.sender.isDestroyed() && e.sender.send('tlvb:update-progress', p)));
+  // Chế độ bảo mật: không liên lạc máy chủ phát hành trên Internet.
+  ipcMain.handle('tlvb:update-check', () => (sec.on ? { available: false, disabled: true, latest: updater.activeVersion(), notes: [] } : updater.check()));
+  ipcMain.handle('tlvb:update-apply', (e) => {
+    if (sec.on) throw new Error('Chế độ bảo mật: không cập nhật qua Internet');
+    return updater.apply((p) => !e.sender.isDestroyed() && e.sender.send('tlvb:update-progress', p));
+  });
+  ipcMain.handle('tlvb:security-status', () => secStatus());
+  ipcMain.handle('tlvb:security-set', (e, p = {}) => {
+    if (!String(e.senderFrame?.url || '').startsWith(ORIGIN)) return secStatus();
+    sec = { on: FORCED || !!p.on, hosts: (Array.isArray(p.hosts) ? p.hosts : []).slice(0, 50).map(String), strict: p.strict !== false };
+    saveSecurity();
+    buildMenu();
+    return secStatus();
+  });
   ipcMain.handle('tlvb:version', () => ({ web: updater.activeVersion(), packaged: updater.packaged(), shell: app.getVersion() }));
   ipcMain.on('tlvb:ready', () => {
     clearTimeout(watchdog);
@@ -175,17 +274,17 @@ function buildMenu() {
         { role: 'zoomOut', label: 'Thu nhỏ' },
         { type: 'separator' },
         { role: 'togglefullscreen', label: 'Toàn màn hình' },
-        { role: 'toggleDevTools', label: 'Công cụ nhà phát triển' },
+        ...(sec.on ? [] : [{ role: 'toggleDevTools', label: 'Công cụ nhà phát triển' }]),
       ],
     },
     {
       label: 'Trợ giúp',
       submenu: [
-        { label: 'Tải bản cài đặt mới nhất', click: () => shell.openExternal('https://github.com/ngovietdinh/trolyvanban/releases/latest') },
+        ...(sec.on ? [] : [{ label: 'Tải bản cài đặt mới nhất', click: () => shell.openExternal('https://github.com/ngovietdinh/trolyvanban/releases/latest') }]),
         { label: 'Mở thư mục dữ liệu', click: () => shell.openPath(app.getPath('userData')) },
         {
           label: 'Phiên bản',
-          click: () => dialog.showMessageBox(win, { type: 'info', title: 'Trợ Lý Văn Bản AI', message: `Trợ Lý Văn Bản AI v${updater.activeVersion()}`, detail: `Bộ cài v${app.getVersion()}${updater.activeVersion() !== updater.packaged() ? ` · đã cập nhật tại chỗ lên v${updater.activeVersion()}` : ''}. Dữ liệu, tài khoản và API key chỉ lưu trên máy này.` }),
+          click: () => dialog.showMessageBox(win, { type: 'info', title: 'Trợ Lý Văn Bản AI', message: `Trợ Lý Văn Bản AI v${FORCED ? updater.packaged() : updater.activeVersion()}${FORCED ? ' — bản bảo mật' : ''}`, detail: `Bộ cài v${app.getVersion()}${!FORCED && updater.activeVersion() !== updater.packaged() ? ` · đã cập nhật tại chỗ lên v${updater.activeVersion()}` : ''}. Dữ liệu, tài khoản và API key chỉ lưu trên máy này.${sec.on ? ' Chế độ bảo mật: đang bật (chặn kết nối ra Internet, không tự cập nhật).' : ''}` }),
         },
       ],
     },
@@ -203,7 +302,9 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    loadSecurity();
     protocol.handle(SCHEME, serve);
+    guardNetwork(session.defaultSession);
     allowCorsForApp(session.defaultSession);
     bindUpdater();
     buildMenu();

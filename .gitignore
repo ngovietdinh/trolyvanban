@@ -9,3 +9,5 @@ mau-pack*.zip
 *.zip.report.json
 bieu-mau-docx/
 
+# Sinh ra khi đóng gói (scripts/desktop.mjs)
+desktop/security-forced.json

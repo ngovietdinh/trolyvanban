@@ -7,6 +7,7 @@ import { checkText, fixAll, ISSUE_LABELS } from './spellcheck.js';
 import { DOC_TYPES, getDocType } from './doc-types.js';
 import { planGroq, groqAdmit, groqReserve, estTokens } from './groq-quota.js';
 import { splitCache, stripCache } from './cache-mark.js';
+import { secureOn, assertAllowedUrl, aiEndpointAllowed, SecurityBlockError } from './security.js';
 
 export const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 — chất lượng cao nhất' },
@@ -106,8 +107,16 @@ export function friendlyError(err, Anthropic) {
  * Gọi Claude ở chế độ streaming. onText nhận từng đoạn chữ.
  * Trả về toàn bộ văn bản. Ném lỗi với thông điệp tiếng Việt thân thiện.
  */
+/** Chế độ bảo mật: chỉ AI nội bộ (đúng máy chủ quản trị khai báo), không gửi gì tới dịch vụ AI công cộng. */
+export function assertAiAllowed(provider) {
+  if (!secureOn()) return;
+  if (provider !== 'local') throw new SecurityBlockError(PROVIDERS[provider]?.label || provider, 'dịch vụ AI công cộng');
+  if (!aiEndpointAllowed(PROVIDERS.local.base)) throw new SecurityBlockError(PROVIDERS.local.base, 'không phải máy chủ AI nội bộ được khai báo');
+}
+
 function streamOnce(opts) {
   const provider = opts.provider || 'anthropic';
+  assertAiAllowed(provider);
   if (provider === 'openai' || provider === 'grok' || provider === 'groq' || provider === 'openrouter' || provider === 'local') return streamOpenAICompatible({ ...opts, provider });
   if (provider === 'gemini') return streamGemini(opts);
   return streamAnthropic(opts);
@@ -470,6 +479,7 @@ async function readSSE(res, onEvent) {
 }
 
 async function doFetch(url, init, provider, signal) {
+  assertAllowedUrl(url);
   let res;
   try {
     res = await fetch(url, { ...init, signal });
@@ -600,6 +610,7 @@ async function streamGemini({ apiKey, model, system = SYSTEM_PROMPT, messages, o
 
 /** Kiểm tra nhanh API key bằng một yêu cầu rất ngắn. */
 export async function testApiKey(apiKey, model, provider = 'anthropic') {
+  assertAiAllowed(provider);
   if (provider !== 'anthropic') {
     await streamOnce({ provider, apiKey, model, system: 'Trả lời ngắn.', messages: [{ role: 'user', content: 'Chào' }], maxTokens: 16 });
     return true;
@@ -618,6 +629,7 @@ export async function testApiKey(apiKey, model, provider = 'anthropic') {
 /** Lấy danh sách mô hình khả dụng của tài khoản từ nhà cung cấp (dùng API key). */
 export async function listModels(provider, apiKey) {
   const cfg = PROVIDERS[provider];
+  assertAiAllowed(provider);
   let res;
   try {
     if (provider === 'anthropic') res = await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } });

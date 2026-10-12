@@ -4,11 +4,17 @@
 // - Mật khẩu: PBKDF2-SHA256 (310.000 vòng, muối ngẫu nhiên). Kết quả 512 bit được tách đôi:
 //   256 bit đầu băm SHA-256 để xác thực, 256 bit sau làm khóa AES-GCM của kho API key.
 //   => Không lưu mật khẩu; không có mật khẩu thì không giải mã được kho khóa (kể cả quản trị viên).
-// - Phiên đăng nhập và khóa giải mã chỉ nằm trong sessionStorage của thẻ trình duyệt hiện tại.
+// - Phiên đăng nhập và khóa giải mã chỉ nằm trong sessionStorage của thẻ trình duyệt hiện tại; chế độ bảo mật: khóa
+//   chỉ nằm trong bộ nhớ (tải lại trang / tự khóa → phải nhập lại mật khẩu).
 // - Quản trị đặt lại mật khẩu → kho API key của tài khoản đó bị xóa (không thể khôi phục).
+// - Mã hóa dữ liệu (chế độ bảo mật): khóa dữ liệu ngẫu nhiên 256 bit của từng tài khoản, bọc bằng khóa mật khẩu
+//   (256 bit sau của PBKDF2) và bằng mã khôi phục (PBKDF2 200.000 vòng). Quản trị đặt lại mật khẩu → người dùng
+//   cần mã khôi phục để mở lại dữ liệu cũ; không có mã khôi phục thì không ai giải mã được (kể cả quản trị).
 
 import { rawStore, sessionStore, setScope, uid, SCOPED_KEYS } from './store.js';
 import { isDesktop } from './platform.js';
+import { cipher, importDataKey, randomBytes } from './cipher.js';
+import { secureOn, passwordProblem, loginBlockedFor, recordLoginFail, clearLoginFails } from './security.js';
 
 export const SUPER_EMAIL = 'gsnvbu@gmail.com';
 const ITER = 310000;
@@ -109,12 +115,91 @@ export function effectivePerms(user) {
 
 function publicUser(u) {
   if (!u) return null;
-  const { pwHash, pwSalt, iter, vault, ...rest } = u;
-  return { ...rest, hasVault: !!vault, roleLabel: ROLES[u.role]?.label || u.role, permSet: effectivePerms(u) };
+  const { pwHash, pwSalt, iter, vault, dek, ...rest } = u;
+  return { ...rest, hasVault: !!vault, encrypted: !!dek, needsRecovery: !!dek && !dek.pw, recAt: dek?.recAt || null, roleLabel: ROLES[u.role]?.label || u.role, permSet: effectivePerms(u) };
 }
 
 function validatePassword(pw) {
-  if (String(pw || '').length < 8) throw new Error('Mật khẩu tối thiểu 8 ký tự');
+  const problem = passwordProblem(pw);
+  if (problem) throw new Error(problem);
+}
+
+/* ---------------- Khóa dữ liệu (mã hóa dữ liệu tài khoản) ---------------- */
+// Khóa mật khẩu của phiên: chỉ trong bộ nhớ; ngoài chế độ bảo mật thì giữ thêm trong sessionStorage của thẻ.
+const memKeys = new Map();
+function keepVaultKey(id, vk) {
+  memKeys.set(id, vk);
+  if (secureOn()) sessionStore.remove(`vk:${id}`);
+  else sessionStore.set(`vk:${id}`, vk);
+}
+const vaultKeyOf = (id) => memKeys.get(id) || (secureOn() ? null : sessionStore.get(`vk:${id}`));
+
+async function wrapBytes(raw, keyB64) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await aesKey(keyB64, ['encrypt']), raw);
+  return { iv: b64(iv), ct: b64(ct) };
+}
+async function unwrapBytes(box, keyB64) {
+  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(box.iv) }, await aesKey(keyB64, ['decrypt']), unb64(box.ct)));
+}
+
+// Mã khôi phục: 24 ký tự (≈ 118 bit) không có ký tự dễ nhầm (0/O, 1/I/L, U), nhóm 4 ký tự.
+const REC_ALPHA = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
+const REC_ITER = 200000;
+export function newRecoveryCode() {
+  const out = [];
+  while (out.length < 24) for (const b of randomBytes(32)) if (b < 240 && out.length < 24) out.push(REC_ALPHA[b % 30]);
+  return out.join('').match(/.{4}/g).join('-');
+}
+export const normRecovery = (code) => String(code || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+async function recoveryKey(code, saltB64) {
+  const base = await crypto.subtle.importKey('raw', enc.encode(normRecovery(code)), 'PBKDF2', false, ['deriveBits']);
+  return b64(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: unb64(saltB64), iterations: REC_ITER }, base, 256));
+}
+async function recoveryBox(raw, code) {
+  const salt = randomB64(16);
+  return { salt, ...(await wrapBytes(raw, await recoveryKey(code, salt))) };
+}
+
+function persistUser(u) {
+  const all = users();
+  const i = all.findIndex((x) => x.id === u.id);
+  if (i >= 0) {
+    all[i] = { ...all[i], dek: u.dek };
+    saveUsers(all);
+  }
+}
+
+/**
+ * Mở dữ liệu của tài khoản sau khi xác thực. Chế độ bảo mật mà tài khoản chưa có khóa dữ liệu → tạo khóa, mã hóa
+ * dữ liệu hiện có và trả về mã khôi phục (hiện một lần). Mật khẩu đã bị quản trị đặt lại → lỗi NEED_RECOVERY.
+ */
+async function openData(u, vaultKey) {
+  if (!u.dek) {
+    if (!secureOn()) return {};
+    const raw = randomBytes(32);
+    const code = newRecoveryCode();
+    u.dek = { v: 1, pw: await wrapBytes(raw, vaultKey), rec: await recoveryBox(raw, code), at: Date.now(), recAt: Date.now() };
+    persistUser(u);
+    await cipher.open(u.id, await importDataKey(raw));
+    raw.fill(0);
+    audit('Bật mã hóa dữ liệu tài khoản', `${u.email} — AES-256-GCM`);
+    return { recoveryCode: code };
+  }
+  if (!u.dek.pw) {
+    const e = new Error('Mật khẩu đã được quản trị đặt lại. Nhập mã khôi phục để mở dữ liệu đã mã hóa.');
+    e.code = 'NEED_RECOVERY';
+    throw e;
+  }
+  let raw;
+  try {
+    raw = await unwrapBytes(u.dek.pw, vaultKey);
+  } catch {
+    throw new Error('Không mở được khóa dữ liệu của tài khoản');
+  }
+  await cipher.open(u.id, await importDataKey(raw));
+  raw.fill(0);
+  return {};
 }
 
 async function buildCredentials(password) {
@@ -126,7 +211,7 @@ async function buildCredentials(password) {
 /* ---------------- Phiên đăng nhập ---------------- */
 function startSession(user, vaultKey) {
   sessionStore.set('session', { id: user.id, email: user.email, at: Date.now() });
-  sessionStore.set(`vk:${user.id}`, vaultKey);
+  keepVaultKey(user.id, vaultKey);
   setScope(user.id);
 }
 
@@ -188,7 +273,8 @@ export const accounts = {
     startSession(user, cred.vaultKey);
     if (user.role === 'superadmin') await migrateLegacy(user, cred.vaultKey);
     audit('Đăng ký tài khoản', `${user.email} (${ROLES[user.role].label})`);
-    return publicUser(user);
+    const extra = await openData(user, cred.vaultKey);
+    return { ...publicUser(user), ...extra };
   },
 
   async login({ email, password }) {
@@ -196,29 +282,129 @@ export const accounts = {
     const all = users();
     const u = all.find((x) => x.email === email);
     const fail = () => new Error('Email hoặc mật khẩu không đúng');
-    if (!u) throw fail();
+    const wait = loginBlockedFor(email);
+    if (wait) throw new Error(`Đăng nhập đang tạm khóa do nhập sai nhiều lần — thử lại sau ${wait} phút`);
+    if (!u) {
+      recordLoginFail(email);
+      throw fail();
+    }
     const m = await deriveMaterial(password, u.pwSalt, u.iter || ITER);
     if (!safeEqual(m.authHash, u.pwHash)) {
+      recordLoginFail(email);
       audit('Đăng nhập thất bại', email);
       throw fail();
     }
     if (u.locked) throw new Error('Tài khoản đã bị khóa. Liên hệ quản trị viên.');
+    clearLoginFails(email);
     u.lastLogin = Date.now();
     saveUsers(all);
     startSession(u, m.vaultKey);
     if (u.role === 'superadmin') await migrateLegacy(u, m.vaultKey);
     audit('Đăng nhập', email);
-    return publicUser(u);
+    const extra = await openData(u, m.vaultKey);
+    return { ...publicUser(u), ...extra };
   },
 
   logout(silent = false) {
     const s = sessionStore.get('session');
     if (s) {
       sessionStore.remove(`vk:${s.id}`);
+      memKeys.delete(s.id);
       if (!silent) audit('Đăng xuất', s.email);
     }
+    cipher.close().catch(() => {});
     sessionStore.remove('session');
     setScope(null);
+  },
+
+  /** Phiên còn nhưng dữ liệu đang khóa (chế độ bảo mật sau khi tải lại trang / tự khóa). */
+  needsUnlock() {
+    const u = this.current();
+    return !!u && (secureOn() || u.encrypted) && !cipher.active();
+  },
+
+  /** Khởi động: mở lại dữ liệu nếu còn khóa phiên. Trả về false nếu cần nhập mật khẩu. */
+  async resume() {
+    const s = sessionStore.get('session');
+    const u = s && users().find((x) => x.id === s.id);
+    if (!u) return false;
+    if (!secureOn() && !u.dek) return true;
+    if (cipher.active() && cipher.owner() === u.id) return true;
+    const vk = vaultKeyOf(u.id);
+    if (!vk) return false;
+    await openData(u, vk);
+    return true;
+  },
+
+  /** Mở khóa phiên đang có bằng mật khẩu (màn hình khóa). */
+  async unlock(password) {
+    const s = sessionStore.get('session');
+    const u = s && users().find((x) => x.id === s.id);
+    if (!u || u.locked) throw new Error('Phiên đã hết hạn, vui lòng đăng nhập lại');
+    const wait = loginBlockedFor(u.email);
+    if (wait) throw new Error(`Mở khóa đang tạm khóa do nhập sai nhiều lần — thử lại sau ${wait} phút`);
+    const m = await deriveMaterial(password, u.pwSalt, u.iter || ITER);
+    if (!safeEqual(m.authHash, u.pwHash)) {
+      recordLoginFail(u.email);
+      audit('Mở khóa thất bại', u.email);
+      throw new Error('Mật khẩu không đúng');
+    }
+    clearLoginFails(u.email);
+    keepVaultKey(u.id, m.vaultKey);
+    setScope(u.id);
+    const extra = await openData(u, m.vaultKey);
+    audit('Mở khóa phiên làm việc', u.email);
+    return extra;
+  },
+
+  /** Khóa phiên: ghi nốt dữ liệu (đã mã hóa), xóa khóa khỏi bộ nhớ; giữ phiên để màn hình khóa biết tài khoản. */
+  async lock(reason = 'Khóa phiên làm việc') {
+    const s = sessionStore.get('session');
+    await cipher.close();
+    if (s) {
+      memKeys.delete(s.id);
+      sessionStore.remove(`vk:${s.id}`);
+      audit(reason, s.email);
+    }
+  },
+
+  /** Mở dữ liệu bằng mã khôi phục (sau khi quản trị đặt lại mật khẩu) rồi bọc lại khóa bằng mật khẩu mới. */
+  async recover(code) {
+    const s = sessionStore.get('session');
+    const u = s && users().find((x) => x.id === s.id);
+    const vk = u && vaultKeyOf(u.id);
+    if (!u || !vk) throw new Error('Phiên đã hết hạn, vui lòng đăng nhập lại');
+    if (!u.dek?.rec) throw new Error('Tài khoản không có mã khôi phục');
+    let raw;
+    try {
+      raw = await unwrapBytes(u.dek.rec, await recoveryKey(code, u.dek.rec.salt));
+    } catch {
+      audit('Nhập sai mã khôi phục', u.email);
+      throw new Error('Mã khôi phục không đúng');
+    }
+    u.dek.pw = await wrapBytes(raw, vk);
+    persistUser(u);
+    await cipher.open(u.id, await importDataKey(raw));
+    raw.fill(0);
+    audit('Mở dữ liệu bằng mã khôi phục', u.email);
+  },
+
+  /** Tạo mã khôi phục mới (mã cũ hết hiệu lực). Cần mật khẩu hiện tại. */
+  async regenerateRecovery(password) {
+    const me = this.current();
+    const all = users();
+    const u = me && all.find((x) => x.id === me.id);
+    if (!u?.dek?.pw) throw new Error('Tài khoản chưa bật mã hóa dữ liệu');
+    const m = await deriveMaterial(password, u.pwSalt, u.iter || ITER);
+    if (!safeEqual(m.authHash, u.pwHash)) throw new Error('Mật khẩu không đúng');
+    const raw = await unwrapBytes(u.dek.pw, m.vaultKey);
+    const code = newRecoveryCode();
+    u.dek.rec = await recoveryBox(raw, code);
+    u.dek.recAt = Date.now();
+    raw.fill(0);
+    persistUser(u);
+    audit('Tạo mã khôi phục mới', u.email);
+    return code;
   },
 
   async changePassword(oldPw, newPw) {
@@ -231,9 +417,15 @@ export const accounts = {
     if (!safeEqual(m.authHash, u.pwHash)) throw new Error('Mật khẩu hiện tại không đúng');
     const data = u.vault ? await decryptJson(u.vault, m.vaultKey) : null;
     const cred = await buildCredentials(newPw);
+    // Khóa dữ liệu không đổi, chỉ bọc lại bằng khóa của mật khẩu mới (không phải mã hóa lại toàn bộ dữ liệu).
+    if (u.dek?.pw) {
+      const raw = await unwrapBytes(u.dek.pw, m.vaultKey);
+      u.dek.pw = await wrapBytes(raw, cred.vaultKey);
+      raw.fill(0);
+    }
     Object.assign(u, { pwHash: cred.pwHash, pwSalt: cred.pwSalt, iter: cred.iter, vault: data ? await encryptJson(data, cred.vaultKey) : null });
     saveUsers(all);
-    sessionStore.set(`vk:${u.id}`, cred.vaultKey);
+    keepVaultKey(u.id, cred.vaultKey);
     audit('Đổi mật khẩu', u.email);
   },
 
@@ -309,8 +501,9 @@ export const accounts = {
     validatePassword(newPw);
     const cred = await buildCredentials(newPw);
     Object.assign(u, { pwHash: cred.pwHash, pwSalt: cred.pwSalt, iter: cred.iter, vault: null });
+    if (u.dek) u.dek.pw = null;
     saveUsers(all);
-    audit('Đặt lại mật khẩu', `${u.email} (kho API key đã bị xóa)`);
+    audit('Đặt lại mật khẩu', `${u.email} (kho API key đã bị xóa${u.dek ? '; dữ liệu đã mã hóa: người dùng cần mã khôi phục' : ''})`);
   },
 
   deleteUser(id) {
@@ -340,7 +533,7 @@ export const vault = {
     const s = sessionStore.get('session');
     if (!s) return { providers: {} };
     const u = users().find((x) => x.id === s.id);
-    const key = sessionStore.get(`vk:${s.id}`);
+    const key = vaultKeyOf(s.id);
     if (!u?.vault || !key) return { providers: {} };
     try {
       return await decryptJson(u.vault, key);
@@ -350,7 +543,7 @@ export const vault = {
   },
   async write(data) {
     const s = sessionStore.get('session');
-    const key = s && sessionStore.get(`vk:${s.id}`);
+    const key = s && vaultKeyOf(s.id);
     if (!key) throw new Error('Phiên đã hết hạn, vui lòng đăng nhập lại');
     await writeVault(s.id, key, data);
   },

@@ -3530,3 +3530,162 @@ mark.err-mark.is-ai {
 .groq-bar { height: 8px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
 .groq-bar i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
 .groq-quota [data-groq-reset] { justify-self: start; }
+
+/* ---------- Chế độ bảo mật ---------- */
+.sec-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px 10px;
+  border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+  border-radius: 999px;
+  background: var(--success-soft);
+}
+.sec-chip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--success);
+  text-decoration: none;
+}
+.lock-mark {
+  display: inline-grid;
+  place-items: center;
+}
+.lock-mark .ic {
+  width: 22px;
+  height: 22px;
+}
+.lock-user {
+  display: grid;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.lock-user small {
+  color: var(--text-3);
+}
+.input.mono,
+.rec-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.06em;
+}
+.rec-code {
+  margin: 14px 0;
+  padding: 16px;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: 19px;
+  font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.rec-tips {
+  margin: 0 0 12px;
+  padding-left: 18px;
+}
+.sec-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--warning-soft);
+}
+.sec-hero.on {
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  background: var(--success-soft);
+}
+.sec-hero > div {
+  flex: 1;
+}
+.sec-hero h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.sec-hero p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+.sec-hero-ic .ic {
+  width: 30px;
+  height: 30px;
+  color: var(--warning);
+}
+.sec-hero.on .sec-hero-ic .ic {
+  color: var(--success);
+}
+.sec-checks {
+  margin: 0;
+  padding: 6px 16px 14px;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+.sec-check {
+  display: flex;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.sec-check:last-child {
+  border-bottom: 0;
+}
+.sec-check div {
+  display: grid;
+  gap: 2px;
+}
+.sec-check small {
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.sec-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--text-3);
+}
+.s-ok .sec-mark {
+  background: var(--success);
+}
+.s-warn .sec-mark {
+  background: var(--warning);
+}
+.s-fail .sec-mark {
+  background: var(--danger);
+}
+.sec-body,
+.sec-form {
+  display: grid;
+  gap: 12px;
+}
+.sec-body p {
+  margin: 0;
+  color: var(--text-2);
+}
+.sec-idle {
+  max-width: 260px;
+}
+@media (max-width: 640px) {
+  .sec-chip span {
+    display: none;
+  }
+  .sec-hero {
+    flex-wrap: wrap;
+  }
+}
