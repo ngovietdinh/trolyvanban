@@ -4,3 +4,8 @@ playwright-report/
 .DS_Store
 desktop/web/
 desktop/dist/
+# Gói biểu mẫu chính thức là dữ liệu riêng của người dùng — không đưa lên kho công khai.
+mau-pack*.zip
+*.zip.report.json
+bieu-mau-docx/
+

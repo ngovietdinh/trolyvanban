@@ -10,6 +10,8 @@ import { INVESTIGATOR_SYSTEM } from '../legal/assist.js';
 import { store } from '../lib/store.js';
 import { mobilePanes } from '../lib/panes.js';
 import { deleteWithUndo, repoOps } from '../lib/undo-delete.js';
+import { isMauId, loadMauMeta, mauFormOf, mauListHtml, mauOverviewHtml, importPackFile, mountMauEditor } from './forms-mau.js';
+import { mauDb } from '../legal/mau-pack.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const norm = (s) =>
@@ -33,10 +35,18 @@ export function render(ctx, params = []) {
   let q = '';
   let openStages = new Set(store.get('forms-open', ['khoi-to']));
   const org = () => ctx.settings().legalOrg || {};
+  let mauMeta; // undefined: đang đọc; null: chưa nạp gói; đối tượng: gói đã nạp
+  let officialId = '';
+  let officialDoc = null;
+  let xaOnly = !!store.get('forms-xa', false);
 
   if (params[0] === 'doc' && params[1]) {
     const d = legalDocsRepo.get(params[1]);
-    if (d && findForm(d.formId)) {
+    if (d && isMauId(d.formId) && !findForm(d.formId)) {
+      officialId = d.formId;
+      officialDoc = d;
+      docId = d.id;
+    } else if (d && findForm(d.formId)) {
       form = findForm(d.formId);
       values = { ...d.values };
       docId = d.id;
@@ -45,6 +55,8 @@ export function render(ctx, params = []) {
     }
   } else if (params[0] && findForm(params[0])) {
     form = findForm(params[0]);
+  } else if (isMauId(params[0])) {
+    officialId = params[0];
   }
 
   ctx.view.innerHTML = `
@@ -60,8 +72,8 @@ export function render(ctx, params = []) {
   const main = $('[data-main]', root);
   const panes = mobilePanes($('.tt', root), [
     { id: 'side', el: $('.tt-side', root), label: 'Danh mục mẫu', icon: 'layers' },
-    { id: 'main', el: main, label: form ? 'Biểu mẫu' : 'Giai đoạn', icon: 'file' },
-  ], { initial: form ? 'main' : 'side' });
+    { id: 'main', el: main, label: form || officialId ? 'Biểu mẫu' : 'Giai đoạn', icon: 'file' },
+  ], { initial: form || officialId ? 'main' : 'side' });
 
   /* ---------------- Danh mục ---------------- */
   function renderList() {
@@ -70,9 +82,11 @@ export function render(ctx, params = []) {
     let html = '';
     if (!n && docs.length) {
       html += `<div class="tt-stage open"><div class="tt-stage-h">${icon('clock', 'ic-sm')}<span>Văn bản đã lập gần đây</span></div><div class="tt-forms">${docs
-        .map((d) => `<div class="tt-doc-row"><a class="tt-form-item ${d.id === docId ? 'active' : ''}" href="#forms/doc/${d.id}"><span class="tt-loai">${escapeHtml(LOAI[findForm(d.formId)?.loai] || '')}</span><span>${escapeHtml(d.title)}</span></a><button type="button" class="btn btn-ghost btn-sm btn-icon" data-del-ldoc="${d.id}" aria-label="Xóa văn bản “${escapeHtml(d.title)}”" title="Xóa">${icon('trash', 'ic-sm')}</button></div>`)
+        .map((d) => `<div class="tt-doc-row"><a class="tt-form-item ${d.id === docId ? 'active' : ''}" href="#forms/doc/${d.id}"><span class="tt-loai">${escapeHtml(LOAI[findForm(d.formId)?.loai] || (isMauId(d.formId) ? 'Mẫu ' + (mauFormOf(mauMeta, d.formId)?.so || '') : ''))}</span><span>${escapeHtml(d.title)}</span></a><button type="button" class="btn btn-ghost btn-sm btn-icon" data-del-ldoc="${d.id}" aria-label="Xóa văn bản “${escapeHtml(d.title)}”" title="Xóa">${icon('trash', 'ic-sm')}</button></div>`)
         .join('')}</div></div>`;
     }
+    if (mauMeta !== undefined) html += mauListHtml({ meta: mauMeta, q, open: openStages, activeId: officialId, xaOnly });
+    html += `<div class="tt-mau-title tt-old">${icon('layers', 'ic-sm')}<span>Mẫu cũ trong phần mềm (tự soạn)</span><small>${FORMS.length + 1}</small></div>`;
     html += `<div class="tt-stage ${n || openStages.has('interview') ? 'open' : ''}"><button type="button" class="tt-stage-h" data-stage="interview">${icon('chevron-down', 'ic-sm lg-chev')}${icon('message', 'ic-sm')}<span>Biên bản ghi lời khai, hỏi cung (Mẫu 140)</span></button>${
       n || openStages.has('interview') ? `<div class="tt-forms"><a class="tt-form-item" href="#interview"><span class="tt-loai">Biên bản</span><span>Biên bản ghi lời khai / hỏi cung bị can — mở màn hình Ghi lời khai</span></a></div>` : ''
     }</div>`;
@@ -119,7 +133,9 @@ export function render(ctx, params = []) {
   /* ---------------- Tổng quan ---------------- */
   function renderOverview() {
     main.innerHTML = `<div class="page tt-overview">
-      <div class="page-head"><div><h1 class="page-title">Biểu mẫu <em>tố tụng hình sự</em></h1><p class="page-sub">${FORMS.length + 1} biểu mẫu dùng trong tiếp nhận, giải quyết nguồn tin và điều tra: quyết định, lệnh, biên bản, thông báo, giấy triệu tập, đề nghị, bản kết luận điều tra. Tự điền từ hồ sơ vụ án, xem trước và xuất Word.</p></div></div>
+      <div class="page-head"><div><h1 class="page-title">Biểu mẫu <em>tố tụng hình sự</em></h1><p class="page-sub">Biểu mẫu dùng trong tiếp nhận, giải quyết nguồn tin và điều tra: quyết định, lệnh, biên bản, thông báo, giấy triệu tập, đề nghị, bản kết luận điều tra. ${mauMeta ? `${mauMeta.count} mẫu chính thức theo Thông tư 128/2025/TT-BCA (giữ nguyên bố cục file gốc) và ` : ''}${FORMS.length + 1} mẫu cũ trong phần mềm. Tự điền từ hồ sơ vụ án, xem trước và xuất Word.</p></div></div>
+      ${mauMeta === undefined ? '' : mauOverviewHtml(mauMeta)}
+      <h2 class="tt-old-h">Mẫu cũ trong phần mềm (${FORMS.length + 1})</h2>
       <div class="tt-stage-grid">${STAGES.map((s) => `<button type="button" class="tt-stage-card" data-open-stage="${s.id}"><span class="quick-icon">${icon(s.icon)}</span><strong>${escapeHtml(s.ten)}</strong><em>${FORMS.filter((f) => f.giaiDoan === s.id).length} mẫu</em></button>`).join('')}</div>
       <p class="lg-disclaimer">${icon('info', 'ic-sm')}Nội dung biểu mẫu theo cấu trúc văn bản tố tụng thông dụng và Bộ luật Tố tụng hình sự 2015 (sửa đổi, bổ sung 2021, 2025). Số hiệu mẫu theo Thông tư 128/2025/TT-BCA nhập tại ô “Mẫu số” của từng mẫu (được ghi nhớ). Cần đối chiếu biểu mẫu chính thức trước khi ban hành; có thể tải biểu mẫu Word chính thức lên tại “Thư viện mẫu → Tạo mẫu từ file Word”.</p>
     </div>`;
@@ -301,8 +317,69 @@ export function render(ctx, params = []) {
   }
 
   const cleanups = [];
+
+  /* ---------------- Biểu mẫu chính thức: nạp gói, mở mẫu ---------------- */
+  function openOfficial() {
+    const f = mauFormOf(mauMeta, officialId);
+    if (!f) {
+      main.innerHTML = `<div class="page"><p class="lg-empty">${mauMeta ? 'Không tìm thấy biểu mẫu này trong gói đã nạp.' : 'Cần nạp gói mẫu chính thức để mở biểu mẫu này.'}</p><div class="inline">${mauMeta ? '' : mauOverviewHtml(null)}</div></div>`;
+      return;
+    }
+    mountMauEditor({
+      ctx,
+      main,
+      form: f,
+      values: officialDoc?.values,
+      docId: officialDoc?.id || null,
+      caseId: officialDoc?.caseId || '',
+      cleanups,
+      renderList,
+      deleteDoc: delDoc,
+      setDocId: (id) => (docId = id),
+    });
+  }
+  function showMain() {
+    if (officialId) openOfficial();
+    else if (form) renderEditor();
+    else renderOverview();
+  }
+  root.addEventListener('change', async (e) => {
+    if (e.target.matches('[data-mau-xa]')) {
+      xaOnly = e.target.checked;
+      store.set('forms-xa', xaOnly);
+      return renderList();
+    }
+    const input = e.target.closest('[data-mau-import]');
+    if (!input || !input.files?.[0]) return;
+    try {
+      mauMeta = await importPackFile(input.files[0]);
+      toast(`Đã nạp ${mauMeta.count} biểu mẫu chính thức vào máy này`);
+      renderList();
+      showMain();
+    } catch (err) {
+      toast(err.message, { type: 'error', timeout: 6000 });
+    } finally {
+      input.value = '';
+    }
+  });
+  root.addEventListener('click', async (e) => {
+    if (!e.target.closest('[data-mau-remove]')) return;
+    if (!window.confirm('Gỡ gói biểu mẫu chính thức khỏi máy này? Các văn bản đã lưu vẫn còn nhưng cần nạp lại gói để mở.')) return;
+    await mauDb.clear();
+    mauMeta = null;
+    renderList();
+    showMain();
+    toast('Đã gỡ gói biểu mẫu khỏi máy');
+  });
+
   renderList();
   if (form) renderEditor();
+  else if (officialId) main.innerHTML = '<div class="page"><p class="lg-empty">Đang mở biểu mẫu…</p></div>';
   else renderOverview();
+  loadMauMeta().then((meta) => {
+    mauMeta = meta;
+    renderList();
+    if (!form) showMain();
+  });
   return () => cleanups.forEach((f) => f());
 }

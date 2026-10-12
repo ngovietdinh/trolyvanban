@@ -5,6 +5,7 @@ import { PROVIDERS, MODELS, LOCAL_PRESETS, testApiKey, listModels, normalizeLoca
 import { groqLimits, setGroqLimits, groqUsageToday, GROQ_DEFAULT_LIMITS } from '../lib/groq-quota.js';
 import { learnedBank } from '../legal/repo.js';
 import { khoDb } from '../lib/kho-db.js';
+import { mauDb } from '../legal/mau-pack.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { audit } from '../lib/accounts.js';
 import { APP_VERSION } from '../version.js';
@@ -654,6 +655,7 @@ export function render(ctx) {
     if (!(await ctx.confirm('Toàn bộ văn bản, hồ sơ, biên bản và lịch sử của tài khoản này sẽ bị xóa vĩnh viễn. Tài khoản, API key và cài đặt được giữ lại.', { title: 'Xóa toàn bộ dữ liệu?', okText: 'Xóa vĩnh viễn', danger: true }))) return;
     WIPE_KEYS.forEach((k) => store.remove(k));
     await khoDb.clear().catch(() => {});
+    await mauDb.clear().catch(() => {}); // gói biểu mẫu chính thức nạp trên máy
     audit('Xóa toàn bộ dữ liệu', ctx.user()?.email || '');
     document.dispatchEvent(new CustomEvent('docs-changed'));
     toast('Đã xóa toàn bộ dữ liệu (tài khoản được giữ lại)');

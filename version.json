@@ -1,7 +1,10 @@
 {
-  "version": "2.32.0",
-  "date": "2026-10-09",
+  "version": "2.33.0",
+  "date": "2026-10-12",
   "notes": [
-    "Dòng tiền thông minh, biết học; bấm số liệu, tên người, tổng tiền xem chi tiết ngay"
+    "Biểu mẫu chính thức TT 128/2025/TT-BCA: nạp gói riêng (không nằm trong phần mềm hay kho công khai), lưu trên máy, tách theo tài khoản",
+    "Tự nhận diện mọi chỗ chấm “……” và tab dẫn chấm của file gốc thành ô điền; tự điền cơ quan, ngày, vụ án, tội danh, từng người từ hồ sơ",
+    "Xuất Word giữ nguyên bố cục, phông chữ, khung, bảng của mẫu gốc; bỏ dấu chú thích (1), (2)… và phần chú thích (tùy chọn giữ)",
+    "Danh mục 13 nhóm, tìm theo số mẫu, lọc mẫu Công an cấp xã; mẫu cũ vẫn còn"
   ]
 }

@@ -2,7 +2,7 @@
 // thay thế nội dung ngay trong XML gốc (giữ nguyên định dạng, bảng, tiêu đề đầu/cuối trang).
 import { readZip, createZip } from './docx.js';
 
-const PART_RE = /^word\/(document|header\d*|footer\d*)\.xml$/;
+const PART_RE = /^word\/(document|header\d*|footer\d*|footnotes)\.xml$/;
 const dec = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16))).replace(/&amp;/g, '&');
 const enc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -15,15 +15,19 @@ function partOrder(name) {
 
 /**
  * Tách các nút chữ của một phần XML theo đoạn.
- * Nút tab/xuống dòng được tính là một khoảng trắng không sửa được để giữ đúng vị trí ký tự.
+ * Nút tab/xuống dòng được tính là một ký tự không sửa được (có vị trí) để giữ đúng vị trí ký tự.
+ * Mỗi nút gắn với lượt chạy (run) chứa nó; mỗi đoạn có vị trí trong XML, cờ tab dẫn chấm và cờ nằm trong ô bảng.
  */
-function scanPart(xml) {
-  const re = /<w:t(\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:t(\s[^>]*)?\/>|<w:tab\/>|<w:br(?:\s[^>]*)?\/>|<\/w:p>|<w:p[\s>]|<w:jc w:val="(\w+)"|<w:b\/>|<w:b w:val="(?:1|true|on)"\/>/g;
+export function scanPart(xml) {
+  const re = /<w:t(\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:t(\s[^>]*)?\/>|<w:tab\/>|<w:br(?:\s[^>]*)?\/>|<\/w:p>|<w:p[\s>]|<w:jc w:val="(\w+)"|<w:b\/>|<w:b w:val="(?:1|true|on)"\/>|<w:r[\s>]|<\/w:r>|<w:rPr>|<\/w:rPr>|<w:tab [^>]*w:leader="dot"[^>]*\/>|<w:tc[\s>]|<\/w:tc>|<w:sz w:val="(\d+)"\/>/g;
   const paras = [];
+  const stack = [];
   let cur = null;
+  let run = null;
+  let tc = 0;
   const open = () => {
     if (!cur || cur.nodes.length || cur.jc) {
-      cur = { nodes: [], jc: '', bold: false };
+      cur = { nodes: [], jc: '', bold: false, leader: false };
       paras.push(cur);
     }
   };
@@ -31,16 +35,39 @@ function scanPart(xml) {
   let m;
   while ((m = re.exec(xml))) {
     const tok = m[0];
-    if (tok === '</w:p>' || tok.startsWith('<w:p')) {
+    if (tok === '</w:p>') {
+      const done = stack.pop();
+      if (done) {
+        done.end = m.index + tok.length;
+        if (stack.length) stack.at(-1).hasChild = true;
+      }
       cur = null;
       open();
+    } else if (/^<w:p[\s>]/.test(tok)) {
+      cur = null;
+      open();
+      cur.start = m.index;
+      cur.nested = stack.length > 0;
+      cur.inTc = tc > 0;
+      stack.push(cur);
     } else if (tok.startsWith('<w:jc')) cur.jc = m[4];
+    else if (/^<w:r[\s>]/.test(tok)) run = { start: m.index, rpr: null, sz: null };
+    else if (tok === '</w:r>') run = null;
+    else if (tok === '<w:rPr>') {
+      if (run && !run.rpr) run.rpr = { start: m.index, end: -1 };
+    } else if (tok === '</w:rPr>') {
+      if (run?.rpr && run.rpr.end < 0) run.rpr.end = m.index + tok.length;
+    } else if (tok.startsWith('<w:tab ')) cur.leader = true;
+    else if (/^<w:tc[\s>]/.test(tok)) tc++;
+    else if (tok === '</w:tc>') tc = Math.max(0, tc - 1);
+    else if (tok.startsWith('<w:sz ')) {
+      if (run?.rpr && run.rpr.end < 0) run.sz = +m[5];
+    } else if (tok.startsWith('<w:br') || tok === '<w:tab/>') cur.nodes.push({ fixed: true, start: m.index, end: m.index + tok.length, run, text: tok === '<w:tab/>' ? '\t' : '\n' });
     else if (tok.startsWith('<w:b')) cur.bold = true;
-    else if (tok === '<w:tab/>' || tok.startsWith('<w:br')) cur.nodes.push({ fixed: true, text: tok === '<w:tab/>' ? '\t' : '\n' });
     else if (m[2] !== undefined) {
       const inner = m[2];
       const innerStart = m.index + tok.length - '</w:t>'.length - inner.length;
-      cur.nodes.push({ start: m.index, end: m.index + tok.length, innerStart, attrs: m[1] || '', text: dec(inner) });
+      cur.nodes.push({ start: m.index, end: m.index + tok.length, innerStart, attrs: m[1] || '', text: dec(inner), run });
     }
   }
   return paras.filter((p) => p.nodes.length);
@@ -48,8 +75,11 @@ function scanPart(xml) {
 
 const paraText = (p) => p.nodes.map((n) => n.text).join('');
 
-/** Đọc tệp .docx → { zip, parts: {name: xml}, paragraphs: [{ part, i, text, align, bold }] }. */
-export async function parseTemplateDocx(buffer) {
+/**
+ * Đọc tệp .docx → { zip, parts: {name: xml}, paragraphs: [{ part, i, text, align, bold }] }.
+ * blankLeader: giữ cả đoạn chỉ có tab dẫn chấm (dòng chấm trống của biểu mẫu).
+ */
+export async function parseTemplateDocx(buffer, { blankLeader = false } = {}) {
   const zip = await readZip(buffer);
   if (!zip.names.includes('word/document.xml')) throw new Error('Tệp không phải văn bản Word (.docx) hợp lệ');
   const names = zip.names.filter((n) => PART_RE.test(n)).sort((a, b) => partOrder(a) - partOrder(b) || a.localeCompare(b));
@@ -60,7 +90,7 @@ export async function parseTemplateDocx(buffer) {
     parts[name] = td.decode(await zip.read(name));
     scanPart(parts[name]).forEach((p, i) => {
       const text = paraText(p);
-      if (text.trim()) paragraphs.push({ part: name, i, text, align: p.jc, bold: p.bold });
+      if (text.trim() || (blankLeader && p.leader && text.includes('\t'))) paragraphs.push({ part: name, i, text, align: p.jc, bold: p.bold, leader: p.leader, inTc: p.inTc, nested: !!p.nested || !!p.hasChild });
     });
   }
   return { zip, parts, paragraphs };
