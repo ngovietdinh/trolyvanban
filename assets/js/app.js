@@ -1,6 +1,6 @@
 // Ứng dụng chính: khung giao diện, điều hướng theo hash, tài khoản, bảng lệnh.
 import { $, $$, icon, toast, bindThemeToggles, escapeHtml } from './ui.js';
-import { store, docsRepo } from './lib/store.js';
+import { store, docsRepo, getEnv } from './lib/store.js';
 import { PROVIDERS, setAIHooks, setLocalEndpoint, isPrivateEndpoint, isOffline, normalizeLocalBase } from './lib/ai.js';
 import { accounts, vault, systemConfig, audit } from './lib/accounts.js';
 import { applyNetworkGuard, secureOn, securityPolicy, aiEndpointAllowed, setSecurityBlockHook } from './lib/security.js';
@@ -323,7 +323,7 @@ function refreshChrome() {
   const sec = secureOn();
   st.querySelector('strong').textContent = ai ? (sec ? 'AI nội bộ đã bật' : ai.local ? (isOffline() ? 'Mất mạng · AI trên máy' : 'AI trên máy đã bật') : `AI ${ai.label} đã bật`) : sec ? 'Chưa kết nối AI nội bộ' : user.permSet.has('ai') ? 'Chế độ cơ bản' : 'AI trực tuyến bị tắt';
   st.querySelector('small').textContent = ai ? ai.model : sec ? 'Chế độ bảo mật: chỉ AI nội bộ' : user.permSet.has('ai') ? 'Thêm API key để bật AI' : 'Có thể dùng AI trên máy';
-  renderSecurityChip(sec);
+  renderSecurityChip(getEnv() === 'secure');
   renderUserMenu();
   renderBottomNav();
 }
@@ -337,7 +337,7 @@ function renderSecurityChip(on) {
     chip = document.createElement('div');
     chip.className = 'sec-chip';
     chip.dataset.secChip = '';
-    chip.innerHTML = `<a href="#bao-mat" class="sec-chip-link" title="Chế độ bảo mật đang bật: dữ liệu mã hóa, chỉ AI nội bộ, chặn kết nối ra Internet">${icon('shield', 'ic-sm')}<span>Bảo mật</span></a><button type="button" class="btn btn-ghost btn-icon btn-sm" data-sec-lock aria-label="Khóa ngay" title="Khóa ngay">${icon('lock', 'ic-sm')}</button>`;
+    chip.innerHTML = `<a href="#bao-mat" class="sec-chip-link" title="Chế độ bảo mật đang bật: dữ liệu mã hóa, chỉ AI nội bộ, chặn kết nối ra Internet">${icon('shield', 'ic-sm')}<span>Môi trường bảo mật</span></a><button type="button" class="btn btn-ghost btn-icon btn-sm" data-sec-lock aria-label="Khóa ngay" title="Khóa ngay">${icon('lock', 'ic-sm')}</button>`;
     bar.prepend(chip);
     chip.querySelector('[data-sec-lock]').addEventListener('click', () => lockApp('Khóa phiên làm việc'));
   }
@@ -384,7 +384,7 @@ function renderUserMenu() {
       ${user.permSet.has('users') ? `<a href="#admin" role="menuitem">${icon('shield')}Quản trị tài khoản</a>` : ''}
       <a href="#settings" role="menuitem">${icon('settings')}Cài đặt</a>
       <a href="#bao-mat" role="menuitem">${icon('shield')}Bảo mật &amp; an toàn thông tin</a>
-      ${secureOn() || user.encrypted ? `<button type="button" role="menuitem" data-lock-now>${icon('lock')}Khóa ngay</button>` : ''}
+      ${getEnv() === 'secure' ? `<button type="button" role="menuitem" data-lock-now>${icon('lock')}Khóa ngay</button>` : ''}
       <a href="#help" role="menuitem">${icon('help')}Hướng dẫn sử dụng</a>
       <button type="button" role="menuitem" data-theme-menu>${icon('moon')}Giao diện sáng / tối</button>
       <button type="button" role="menuitem" data-change-pw>${icon('key')}Đổi mật khẩu</button>
@@ -727,7 +727,7 @@ async function lockApp(reason = 'Khóa phiên làm việc') {
 }
 setInterval(() => {
   const p = securityPolicy();
-  if (!p.on || !accounts.current() || accounts.needsUnlock() || shell.hidden) return;
+  if (getEnv() !== 'secure' || !accounts.current() || accounts.needsUnlock() || shell.hidden) return;
   if (Date.now() - lastActivity >= p.idleMin * 60000) lockApp(`Tự khóa sau ${p.idleMin} phút không thao tác`);
 }, 15000);
 

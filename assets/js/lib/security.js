@@ -7,7 +7,7 @@
 //   2. bọc fetch / XMLHttpRequest / WebSocket / EventSource / sendBeacon của trang;
 //   3. Content-Security-Policy connect-src chỉ cho phép chính ứng dụng và máy chủ được khai báo;
 //   4. bản máy tính: vỏ ứng dụng hủy mọi yêu cầu mạng ra ngoài (desktop/main.cjs).
-import { rawStore } from './store.js';
+import { rawStore, setEnvResolver, getEnv } from './store.js';
 import { SECURE_BUILD } from '../security-build.js';
 
 const KEY = 'security';
@@ -22,7 +22,10 @@ export function securityPolicy() {
   if (p.forced) p.on = true;
   return p;
 }
-export const secureOn = () => securityPolicy().on;
+// Đang trong môi trường bảo mật (kể cả khi chính sách vừa bị tắt mà chưa tải lại) cũng giữ nguyên mọi giới hạn.
+export const secureOn = () => securityPolicy().on || getEnv() === 'secure';
+// Môi trường dữ liệu (lib/store.js): bật chế độ bảo mật = làm việc trong môi trường bảo mật riêng.
+setEnvResolver(() => (securityPolicy().on ? 'secure' : 'normal'));
 
 /** Lưu chính sách (người gọi phải kiểm tra quyền quản trị tối cao). */
 export function saveSecurityPolicy(patch, by = '') {

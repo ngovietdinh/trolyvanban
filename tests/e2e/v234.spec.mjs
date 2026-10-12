@@ -34,13 +34,20 @@ test.describe('v2.34 — chế độ bảo mật: chạy nội bộ, AI nội b�
       casesRepo.save({ ten: 'Vụ tham ô tại Ban quản lý dự án X', persons: [] });
     });
     await enableSecure(page);
-    await expect(page.locator('[data-sec-chip]')).toContainText('Bảo mật');
-    // Dữ liệu cũ đã được mã hóa: trên máy chỉ còn bản mã.
-    const raw = await page.evaluate(() => Object.entries(localStorage).filter(([k]) => k.startsWith('tlvb:u:')).map(([, v]) => v).join('\n'));
-    expect(raw).toContain('"$e":1');
-    expect(raw).not.toContain('Ban quản lý dự án X');
+    await expect(page.locator('[data-sec-chip]')).toContainText('Môi trường bảo mật');
+    // Môi trường bảo mật riêng: không thấy dữ liệu của chế độ bình thường.
     await page.goto('/app.html#cases');
-    await expect(page.locator('.view')).toContainText('Ban quản lý dự án X');
+    await expect(page.locator('.view')).not.toContainText('Ban quản lý dự án X');
+    await page.evaluate(async () => {
+      const { casesRepo } = await import('/assets/js/legal/repo.js');
+      casesRepo.save({ ten: 'Vụ MẬT tạo trong chế độ bảo mật', persons: [] });
+    });
+    await page.waitForTimeout(300);
+    // Trên máy chỉ có bản mã của dữ liệu bảo mật.
+    const raw = await page.evaluate(() => Object.entries(localStorage).map(([k, v]) => `${k}=${v}`).join('\n'));
+    expect(raw).toContain('tlvb:s:');
+    expect(raw).toContain('"$e":1');
+    expect(raw).not.toContain('Vụ MẬT');
     // Kiểm tra an toàn.
     await page.goto('/app.html#bao-mat');
     const checks = page.locator('[data-checks]');
@@ -112,5 +119,45 @@ test.describe('v2.34 — chế độ bảo mật: chạy nội bộ, AI nội b�
     await expect(page.locator('[data-gate-form="unlock"]')).toBeVisible({ timeout: 20000 });
     await expect(page.locator('.gate')).toContainText('Phiên làm việc đã khóa');
     t.assertClean();
+  });
+
+  test('hai môi trường tách biệt: tắt chế độ bảo mật thì không còn thấy dữ liệu đã tạo ở đó; bật lại thấy lại', async ({ page }) => {
+    const t = trackErrors(page);
+    await page.route('http://10.0.0.5:11434/**', (r) => r.abort());
+    await freshApp(page, '#cases');
+    await page.evaluate(async () => (await import('/assets/js/legal/repo.js')).casesRepo.save({ ten: 'Vụ BÌNH THƯỜNG', persons: [] }));
+    await enableSecure(page);
+    await page.evaluate(async () => (await import('/assets/js/legal/repo.js')).casesRepo.save({ ten: 'Vụ MẬT', persons: [] }));
+    await page.goto('/app.html#cases');
+    await expect(page.locator('.view')).toContainText('Vụ MẬT');
+    await expect(page.locator('.view')).not.toContainText('Vụ BÌNH THƯỜNG');
+    // Tắt chế độ bảo mật → quay về môi trường bình thường (không cần mở khóa).
+    await page.goto('/app.html#bao-mat');
+    await page.uncheck('[data-policy] [name="on"]');
+    await page.click('[data-policy] button[type="submit"]');
+    await expect(page.locator('.modal')).toContainText('KHÔNG hiện');
+    await page.click('.modal [data-yes]');
+    await expect(page.locator('.shell')).toBeVisible();
+    await expect(page.locator('[data-sec-chip]')).toHaveCount(0);
+    await page.goto('/app.html#cases');
+    await expect(page.locator('.view')).toContainText('Vụ BÌNH THƯỜNG');
+    await expect(page.locator('.view')).not.toContainText('Vụ MẬT');
+    const names = await page.evaluate(async () => (await import('/assets/js/legal/repo.js')).casesRepo.list().map((c) => c.ten));
+    expect(names).toEqual(['Vụ BÌNH THƯỜNG']);
+    // Nhật ký của chế độ bình thường không có gì từ môi trường bảo mật.
+    await page.goto('/app.html#admin');
+    await expect(page.locator('.audit-list')).not.toContainText('Vụ MẬT');
+    // Bật lại → mở khóa → thấy lại dữ liệu của môi trường bảo mật.
+    await page.goto('/app.html#bao-mat');
+    await page.check('[data-policy] [name="on"]');
+    await page.click('[data-policy] button[type="submit"]');
+    await page.click('.modal [data-yes]');
+    await page.fill('#g-pass', SUPER.password);
+    await page.click('[data-gate-form="unlock"] button[type="submit"]');
+    await expect(page.locator('.shell')).toBeVisible();
+    await page.goto('/app.html#cases');
+    await expect(page.locator('.view')).toContainText('Vụ MẬT');
+    await expect(page.locator('.view')).not.toContainText('Vụ BÌNH THƯỜNG');
+    expect(t.errors.filter((e) => !/net::ERR_FAILED/.test(e))).toEqual([]);
   });
 });

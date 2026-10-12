@@ -3,6 +3,7 @@
 import { $, icon, toast, escapeHtml, downloadBlob, copyText } from '../ui.js';
 import { accounts, audit, auditLog } from '../lib/accounts.js';
 import { cipher } from '../lib/cipher.js';
+import { getEnv, dataPrefix } from '../lib/store.js';
 import { khoDb } from '../lib/kho-db.js';
 import { mauDb } from '../legal/mau-pack.js';
 import { securityPolicy, saveSecurityPolicy, selfTestBlock, cspActive, desktopSecurityStatus, allowedHosts, aiEndpointAllowed, checkUrl } from '../lib/security.js';
@@ -25,15 +26,19 @@ export async function runChecks(ctx, onAdd = null) {
 
   add(p.on ? 'ok' : 'warn', 'Chế độ bảo mật', p.on ? (p.forced ? 'Đang bật — bản cài đặt bảo mật (cưỡng chế, không tắt được)' : `Đang bật — do quản trị tối cao cấu hình${p.by ? ` (${p.by})` : ''}`) : 'Đang tắt: dữ liệu chưa bắt buộc mã hóa, vẫn có thể dùng dịch vụ AI công cộng nếu được cấp quyền');
 
+  const secEnv = getEnv() === 'secure';
+  add('ok', 'Môi trường dữ liệu', secEnv ? 'BẢO MẬT — vùng dữ liệu riêng, luôn mã hóa; tách biệt hoàn toàn với chế độ bình thường (dữ liệu tạo ở đây không hiện, không đọc được khi chuyển sang chế độ bình thường và ngược lại)' : 'BÌNH THƯỜNG — dữ liệu của môi trường bảo mật (nếu có) nằm ở vùng riêng, đã mã hóa, không hiện và không đọc được từ đây');
+
   // Mã hóa dữ liệu của tài khoản đang dùng.
-  const st = cipher.stats(me.id);
+  const st = cipher.stats(dataPrefix(me.id, 'secure'));
   const kho = await khoDb.stats().catch(() => ({ enc: 0, plain: 0 }));
   const mau = await mauDb.sealed().catch(() => null);
-  if (me.encrypted && cipher.active()) {
+  if (!secEnv) add(p.on ? 'warn' : 'info', 'Mã hóa dữ liệu', p.on ? 'Chính sách vừa bật — tải lại ứng dụng để vào môi trường bảo mật' : 'Môi trường bình thường không mã hóa. Dữ liệu nghiệp vụ thật chỉ xử lý trong môi trường bảo mật.');
+  else if (me.encrypted && cipher.active()) {
     const plain = st.plain + kho.plain + (mau === false ? 1 : 0);
     add(plain ? 'warn' : 'ok', 'Mã hóa dữ liệu tài khoản (AES-256-GCM)', `${st.enc} mục dữ liệu, ${kho.enc} tài liệu trong kho${mau ? ', gói biểu mẫu' : ''} đã mã hóa${plain ? ` · còn ${plain} mục dạng rõ (sẽ được mã hóa ở lần ghi tới)` : ''}. Khóa dữ liệu chỉ nằm trong bộ nhớ khi đang mở, không xuất được.`);
-  } else add(p.on ? 'fail' : 'info', 'Mã hóa dữ liệu tài khoản', p.on ? 'Chưa mã hóa — đăng xuất rồi đăng nhập lại để bật' : 'Chưa bật (bật chế độ bảo mật để mã hóa)');
-  if (me.encrypted) add(me.recAt ? 'ok' : 'warn', 'Mã khôi phục dữ liệu', me.recAt ? `Đã cấp ngày ${new Date(me.recAt).toLocaleDateString('vi-VN')} — người dùng tự cất giữ, phần mềm không lưu mã` : 'Chưa có');
+  } else add('fail', 'Mã hóa dữ liệu tài khoản', 'Chưa mã hóa — đăng xuất rồi đăng nhập lại để bật');
+  if (secEnv && me.encrypted) add(me.recAt ? 'ok' : 'warn', 'Mã khôi phục dữ liệu', me.recAt ? `Đã cấp ngày ${new Date(me.recAt).toLocaleDateString('vi-VN')} — người dùng tự cất giữ, phần mềm không lưu mã` : 'Chưa có');
 
   // Chặn kết nối ra ngoài.
   if (p.on) {
@@ -136,14 +141,15 @@ export function render(ctx) {
   function draw() {
     const p = securityPolicy();
     const user = ctx.user();
+    const secEnv = getEnv() === 'secure';
     ctx.view.innerHTML = `
     <div class="page page-narrow sec-page">
       <div class="page-head"><div><h1 class="page-title">Bảo mật &amp; <em>an toàn thông tin</em></h1><p class="page-sub">Dữ liệu chỉ lưu trên máy, mã hóa theo từng tài khoản; chế độ bảo mật chỉ dùng AI nội bộ và chặn mọi kết nối ra Internet.</p></div></div>
-      <section class="sec-hero ${p.on ? 'on' : ''}">
-        <span class="sec-hero-ic">${icon(p.on ? 'shield' : 'alert')}</span>
-        <div><h2>Chế độ bảo mật: ${p.on ? 'ĐANG BẬT' : 'ĐANG TẮT'}${p.forced ? ' <span class="badge badge-accent">Bản cài bảo mật</span>' : ''}</h2>
-        <p>${p.on ? `Mã hóa dữ liệu AES-256-GCM · chỉ AI nội bộ${p.aiBase ? ` (${escapeHtml(p.aiBase)})` : ''} · chặn kết nối ra Internet · tự khóa sau ${p.idleMin} phút` : 'Bật chế độ bảo mật trước khi xử lý dữ liệu nghiệp vụ thật. Chỉ quản trị tối cao bật / tắt được.'}</p></div>
-        ${p.on || user.encrypted ? `<button class="btn btn-sm" type="button" data-lock-now>${icon('lock', 'ic-sm')}Khóa ngay</button>` : ''}
+      <section class="sec-hero ${secEnv ? 'on' : ''}">
+        <span class="sec-hero-ic">${icon(secEnv ? 'shield' : 'alert')}</span>
+        <div><h2>Chế độ bảo mật: ${secEnv ? 'ĐANG BẬT' : 'ĐANG TẮT'}${p.forced ? ' <span class="badge badge-accent">Bản cài bảo mật</span>' : ''}</h2>
+        <p>${secEnv ? `<strong>Môi trường bảo mật riêng</strong>, tách biệt với chế độ bình thường · mã hóa dữ liệu AES-256-GCM · chỉ AI nội bộ${p.aiBase ? ` (${escapeHtml(p.aiBase)})` : ''} · chặn kết nối ra Internet · tự khóa sau ${p.idleMin} phút` : '<strong>Môi trường bình thường.</strong> Dữ liệu tạo trong chế độ bảo mật nằm ở môi trường riêng, không hiện ở đây. Bật chế độ bảo mật trước khi xử lý dữ liệu nghiệp vụ thật; chỉ quản trị tối cao bật / tắt được.'}</p></div>
+        ${secEnv ? `<button class="btn btn-sm" type="button" data-lock-now>${icon('lock', 'ic-sm')}Khóa ngay</button>` : ''}
       </section>
 
       <section class="panel">
@@ -153,10 +159,10 @@ export function render(ctx) {
       </section>
 
       <section class="panel">
-        <div class="panel-head"><h2>${icon('key', 'ic-sm')}Mã hóa dữ liệu của tôi</h2><span class="badge ${user.encrypted ? 'badge-success' : 'badge-warning'}">${user.encrypted ? 'Đã mã hóa' : 'Chưa mã hóa'}</span></div>
+        <div class="panel-head"><h2>${icon('key', 'ic-sm')}Môi trường bảo mật của tôi</h2><span class="badge ${user.encrypted ? 'badge-success' : 'badge-warning'}">${user.encrypted ? 'Đã có (mã hóa)' : 'Chưa có'}</span></div>
         <div class="panel-body sec-body">
-          <p>${user.encrypted ? `Dữ liệu của tài khoản (văn bản, hồ sơ, biên bản, lời khai, sơ đồ, kho tài liệu, gói biểu mẫu, lịch sử AI) được mã hóa bằng khóa riêng 256 bit. Khóa được bảo vệ bằng mật khẩu và mã khôi phục${user.recAt ? ` (cấp ngày ${new Date(user.recAt).toLocaleDateString('vi-VN')})` : ''}.` : 'Dữ liệu sẽ được mã hóa khi chế độ bảo mật bật và bạn đăng nhập lại.'}</p>
-          ${user.encrypted ? `<div class="inline"><button class="btn btn-sm" type="button" data-new-rec>${icon('key', 'ic-sm')}Tạo mã khôi phục mới</button></div>` : ''}
+          <p>${user.encrypted ? `Dữ liệu tạo trong chế độ bảo mật (văn bản, hồ sơ, biên bản, lời khai, sơ đồ, kho tài liệu, gói biểu mẫu, lịch sử AI) nằm ở <strong>vùng riêng</strong>, mã hóa bằng khóa riêng 256 bit, bảo vệ bằng mật khẩu và mã khôi phục${user.recAt ? ` (cấp ngày ${new Date(user.recAt).toLocaleDateString('vi-VN')})` : ''}. Chế độ bình thường không thấy và không đọc được vùng này.` : 'Môi trường bảo mật được tạo (trống, mã hóa) ở lần đăng nhập đầu tiên sau khi bật chế độ bảo mật.'}</p>
+          ${secEnv && user.encrypted ? `<div class="inline"><button class="btn btn-sm" type="button" data-new-rec>${icon('key', 'ic-sm')}Tạo mã khôi phục mới</button></div>` : ''}
         </div>
       </section>
 
@@ -178,7 +184,7 @@ export function render(ctx) {
         <div class="field"><label for="sp-hosts">Máy chủ nội bộ khác được phép kết nối</label><textarea class="textarea" id="sp-hosts" name="allowHosts" rows="3" placeholder="Mỗi dòng một máy chủ: may-chu-ai.noibo hoặc *.noibo.ca">${escapeHtml(p.allowHosts.join('\n'))}</textarea></div>
         <label class="check"><input type="checkbox" name="strictHosts" ${p.strictHosts ? 'checked' : ''} /> Chỉ cho phép máy chủ đã khai báo (khuyến nghị). Bỏ chọn: cho phép mọi địa chỉ trong dải mạng nội bộ (10.x, 172.16–31.x, 192.168.x).</label>
         <div class="field sec-idle"><label for="sp-idle">Tự khóa sau (phút không thao tác)</label><input class="input" id="sp-idle" name="idleMin" type="number" min="1" max="120" value="${p.idleMin}" /></div>
-        <div class="note">${icon('info', 'ic-sm')}<span>Khi bật: ứng dụng tải lại; mỗi tài khoản đăng nhập lại sẽ được mã hóa dữ liệu và nhận <strong>mã khôi phục</strong>. Dữ liệu đã mã hóa vẫn được mã hóa nếu sau này tắt chế độ. Triển khai chính thức nên dùng <strong>bản cài đặt bảo mật</strong> (chế độ luôn bật, không tắt được).</span></div>
+        <div class="note">${icon('info', 'ic-sm')}<span>Chế độ bảo mật là <strong>môi trường dữ liệu riêng</strong>: khi bật, ứng dụng tải lại và mỗi tài khoản vào một vùng dữ liệu mới, trống, luôn mã hóa (nhận <strong>mã khôi phục</strong> ở lần đầu; chỉ chép thông tin đơn vị). Dữ liệu tạo trong chế độ bảo mật <strong>không bao giờ hiện ở chế độ bình thường</strong> và ngược lại; tắt rồi bật lại sẽ thấy lại đúng dữ liệu của môi trường bảo mật. Triển khai chính thức nên dùng <strong>bản cài đặt bảo mật</strong> (luôn bật, không tắt được).</span></div>
         <div><button class="btn btn-primary btn-sm" type="submit">${icon('save', 'ic-sm')}Lưu chính sách</button></div>
       </form>
     </section>`;
@@ -235,8 +241,8 @@ export function render(ctx) {
       if (patch.on && patch.aiBase && !aiEndpointAllowed(patch.aiBase, { ...before, ...patch, on: true })) return toast('Máy chủ AI nội bộ không hợp lệ', { type: 'error' });
       if (patch.on !== before.on) {
         const msg = patch.on
-          ? 'Bật chế độ bảo mật: chặn mọi kết nối ra Internet, chỉ dùng AI nội bộ, mã hóa dữ liệu từng tài khoản (mỗi người nhận mã khôi phục khi đăng nhập lại), tự khóa khi không thao tác. Ứng dụng sẽ tải lại và yêu cầu nhập lại mật khẩu.'
-          : 'Tắt chế độ bảo mật: cho phép lại dịch vụ AI công cộng (nếu được cấp quyền) và kết nối Internet. Dữ liệu đã mã hóa vẫn giữ mã hóa. Ứng dụng sẽ tải lại.';
+          ? 'Chuyển sang MÔI TRƯỜNG BẢO MẬT riêng: dữ liệu hiện có ở chế độ bình thường sẽ không hiện trong môi trường bảo mật (và dữ liệu tạo trong môi trường bảo mật không hiện ở chế độ bình thường). Môi trường bảo mật luôn mã hóa, chỉ dùng AI nội bộ, chặn mọi kết nối ra Internet, tự khóa khi không thao tác; mỗi người nhận mã khôi phục ở lần đăng nhập đầu. Ứng dụng sẽ tải lại và yêu cầu nhập lại mật khẩu.'
+          : 'Quay về MÔI TRƯỜNG BÌNH THƯỜNG: toàn bộ dữ liệu tạo trong chế độ bảo mật ở lại vùng bảo mật (đã mã hóa), KHÔNG hiện và không đọc được ở chế độ bình thường; bật lại chế độ bảo mật sẽ thấy lại. Chế độ bình thường cho phép lại dịch vụ AI công cộng (nếu được cấp quyền). Ứng dụng sẽ tải lại.';
         if (!(await ctx.confirm(msg, { title: patch.on ? 'Bật chế độ bảo mật?' : 'Tắt chế độ bảo mật?', okText: patch.on ? 'Bật và tải lại' : 'Tắt và tải lại', danger: !patch.on }))) return;
       }
       try {

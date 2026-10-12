@@ -56,7 +56,7 @@ export async function passphraseOpen(box, pass) {
 
 /* ---------------- Lớp mã hóa dữ liệu tài khoản ---------------- */
 let key = null;
-let owner = null;
+let prefix = null; // tiền tố khóa dữ liệu đang mở: s:<tài khoản>:
 const cache = new Map(); // khóa đầy đủ → chuỗi JSON (bản rõ, chỉ trong bộ nhớ)
 const dirty = new Set();
 let chain = Promise.resolve();
@@ -83,7 +83,7 @@ function schedule() {
 
 function onStorage(e) {
   // Thẻ khác của ứng dụng vừa ghi dữ liệu đã mã hóa → cập nhật bộ nhớ đệm của thẻ này.
-  if (!key || !e.key?.startsWith(`tlvb:u:${owner}:`) || e.newValue == null) return;
+  if (!key || !e.key?.startsWith(`tlvb:${prefix}`) || e.newValue == null) return;
   const full = e.key.slice(5);
   let v;
   try {
@@ -100,8 +100,8 @@ function onStorage(e) {
 
 export const cipher = {
   active: () => !!key,
-  owner: () => owner,
-  owns: (full) => !!key && full.startsWith(`u:${owner}:`),
+  prefix: () => prefix,
+  owns: (full) => !!key && full.startsWith(prefix),
   get: (full) => (cache.has(full) ? cache.get(full) : null),
   set(full, json) {
     cache.set(full, json);
@@ -114,14 +114,31 @@ export const cipher = {
     rawStore.remove(full);
   },
 
-  /** Mở khóa dữ liệu của tài khoản: giải mã vào bộ nhớ đệm; dữ liệu cũ chưa mã hóa được mã hóa ngay. */
-  async open(userId, cryptoKey) {
+  /**
+   * Mở khóa dữ liệu (tiền tố dataPrefix, vd "s:<tài khoản>:"): giải mã vào bộ nhớ đệm; mục còn dạng rõ được mã hóa
+   * ngay. legacy: tiền tố cũ (v2.34 mã hóa tại chỗ "u:<tài khoản>:") — bản mã ở đó được chuyển sang tiền tố mới.
+   */
+  async open(dataPrefix, cryptoKey, { legacy = null } = {}) {
     await this.close();
     key = cryptoKey;
-    owner = userId;
+    prefix = dataPrefix;
+    const moved = [];
     for (const k of SCOPED_KEYS) {
-      const full = `u:${userId}:${k}`;
+      const full = `${dataPrefix}${k}`;
       const raw = rawStore.getRaw(full);
+      if (raw == null && legacy) {
+        const old = rawStore.get(`${legacy}${k}`);
+        if (isEnvelope(old)) {
+          try {
+            cache.set(full, await openText(old, `${legacy}${k}`));
+            dirty.add(full);
+            moved.push(`${legacy}${k}`);
+          } catch {
+            /* không giải mã được: giữ nguyên */
+          }
+        }
+        continue;
+      }
       if (raw == null) continue;
       let v;
       try {
@@ -149,6 +166,7 @@ export const cipher = {
       document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && flushNow());
     }
     await this.flush();
+    for (const k of moved) rawStore.remove(k);
     for (const fn of openHooks) await Promise.resolve(fn()).catch(() => {});
   },
 
@@ -175,7 +193,7 @@ export const cipher = {
     if (!key) return;
     await this.flush();
     key = null;
-    owner = null;
+    prefix = null;
     cache.clear();
     dirty.clear();
     setCipher(null);
@@ -202,12 +220,12 @@ export const cipher = {
     return JSON.parse(td.decode(await this.openBytes(box, aad)));
   },
 
-  /** Thống kê mục dữ liệu của một tài khoản trên máy: đã mã hóa / còn dạng rõ. */
-  stats(userId) {
+  /** Thống kê mục dữ liệu theo tiền tố (vd "s:<tài khoản>:"): đã mã hóa / còn dạng rõ. */
+  stats(dataPrefix) {
     let enc = 0;
     let plain = 0;
     for (const k of SCOPED_KEYS) {
-      const v = rawStore.get(`u:${userId}:${k}`);
+      const v = rawStore.get(`${dataPrefix}${k}`);
       if (v == null) continue;
       if (isEnvelope(v)) enc++;
       else plain++;

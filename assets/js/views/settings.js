@@ -1,6 +1,6 @@
 // Cài đặt: AI (API key mã hóa theo tài khoản, đa nhà cung cấp), thông tin đơn vị, giao diện, cập nhật, dữ liệu.
 import { $, $$, icon, toast, escapeHtml, setTheme, downloadBlob } from '../ui.js';
-import { store, docsRepo, WIPE_KEYS } from '../lib/store.js';
+import { store, docsRepo, WIPE_KEYS, getEnv } from '../lib/store.js';
 import { PROVIDERS, MODELS, LOCAL_PRESETS, testApiKey, listModels, normalizeLocalBase, isPrivateEndpoint } from '../lib/ai.js';
 import { groqLimits, setGroqLimits, groqUsageToday, GROQ_DEFAULT_LIMITS } from '../lib/groq-quota.js';
 import { learnedBank } from '../legal/repo.js';
@@ -153,7 +153,7 @@ export function render(ctx) {
       <section class="panel">
         <div class="panel-head"><h2>${icon('folder', 'ic-sm')}Dữ liệu</h2></div>
         <div class="setting-row">
-          <div><h3>Sao lưu &amp; khôi phục</h3><p>Xuất dữ liệu của tài khoản (văn bản${ctx.can('legal') ? ', hồ sơ vụ án, biên bản, kế hoạch hỏi' : ''}) thành tệp JSON. Tệp sao lưu không chứa mật khẩu và API key.${sec.on || ctx.user().encrypted ? ' <strong>Dữ liệu đã mã hóa: tệp sao lưu bắt buộc đặt mật khẩu</strong> (AES-256-GCM).' : ''}</p></div>
+          <div><h3>Sao lưu &amp; khôi phục</h3><p>Xuất dữ liệu của tài khoản (văn bản${ctx.can('legal') ? ', hồ sơ vụ án, biên bản, kế hoạch hỏi' : ''}) thành tệp JSON. Tệp sao lưu không chứa mật khẩu và API key.${getEnv() === 'secure' ? ' <strong>Môi trường bảo mật: tệp sao lưu bắt buộc đặt mật khẩu</strong> (AES-256-GCM) và chỉ khôi phục được trong chế độ bảo mật.' : ''}</p></div>
           <div class="setting-ctl"><div class="inline">
             <button class="btn btn-sm" type="button" data-backup>${icon('download', 'ic-sm')}Xuất sao lưu</button>
             <label class="btn btn-sm" style="position:relative;overflow:hidden">${icon('upload', 'ic-sm')}Khôi phục<input type="file" accept="application/json,.json,.tlvb" data-restore style="position:absolute;inset:0;opacity:0;cursor:pointer" aria-label="Chọn tệp sao lưu" /></label>
@@ -606,7 +606,7 @@ export function render(ctx) {
   );
 
   $('[data-backup]', root).addEventListener('click', () => {
-    const data = { app: 'tro-ly-van-ban', version: 2, exportedAt: new Date().toISOString(), docs: docsRepo.list() };
+    const data = { app: 'tro-ly-van-ban', version: 2, env: getEnv(), exportedAt: new Date().toISOString(), docs: docsRepo.list() };
     data.templates = store.get('tpl-custom', []);
     if (ctx.can('legal')) {
       for (const k of ['cases', 'records', 'plans']) data[k] = store.get(BACKUP_KEYS[k], []);
@@ -615,7 +615,7 @@ export function render(ctx) {
     }
     const day = new Date().toISOString().slice(0, 10);
     const done = () => toast(`Đã xuất ${data.docs.length} tài liệu${data.cases ? `, ${data.cases.length} hồ sơ, ${data.records.length} biên bản` : ''}`);
-    if (!(sec.on || ctx.user().encrypted)) {
+    if (getEnv() !== 'secure') {
       downloadBlob(JSON.stringify(data, null, 2), `tro-ly-van-ban-sao-luu-${day}.json`, 'application/json');
       return done();
     }
@@ -623,7 +623,7 @@ export function render(ctx) {
     backupPass(ctx, true).then(async (pass) => {
       if (!pass) return;
       const box = await passphraseSeal(JSON.stringify(data), pass);
-      downloadBlob(JSON.stringify({ app: 'tro-ly-van-ban', encrypted: true, exportedAt: data.exportedAt, enc: box }), `tro-ly-van-ban-sao-luu-${day}.tlvb`, 'application/json');
+      downloadBlob(JSON.stringify({ app: 'tro-ly-van-ban', encrypted: true, env: 'secure', exportedAt: data.exportedAt, enc: box }), `tro-ly-van-ban-sao-luu-${day}.tlvb`, 'application/json');
       audit('Xuất sao lưu mã hóa', `${data.docs.length} tài liệu${data.cases ? `, ${data.cases.length} hồ sơ` : ''}`);
       done();
     });
@@ -633,10 +633,13 @@ export function render(ctx) {
     if (!file) return;
     try {
       let data = JSON.parse(await file.text());
+      // Hai môi trường tách biệt: dữ liệu của môi trường bảo mật không được đưa sang chế độ bình thường.
+      if (data.app === 'tro-ly-van-ban' && data.env === 'secure' && getEnv() !== 'secure') throw new Error('Tệp sao lưu của môi trường bảo mật chỉ khôi phục được trong chế độ bảo mật');
       if (data.app === 'tro-ly-van-ban' && data.encrypted && data.enc) {
         const pass = await backupPass(ctx, false);
         if (!pass) return (e.target.value = '');
         data = JSON.parse(await passphraseOpen(data.enc, pass));
+        if (data.env === 'secure' && getEnv() !== 'secure') throw new Error('Tệp sao lưu của môi trường bảo mật chỉ khôi phục được trong chế độ bảo mật');
       }
       if (data.app !== 'tro-ly-van-ban' || !Array.isArray(data.docs)) throw new Error('Tệp sao lưu không hợp lệ');
       const merge = (key, items, ok) => {

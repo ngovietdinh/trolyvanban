@@ -32,7 +32,27 @@ export function setScope(userId) {
   scope = userId || null;
 }
 export const getScope = () => scope;
-const resolve = (key) => (SCOPED.has(key) ? `u:${scope || 'anon'}:${key}` : key);
+
+// Hai MÔI TRƯỜNG dữ liệu tách biệt hoàn toàn: bình thường (`u:<tài khoản>:…`) và bảo mật (`s:<tài khoản>:…`, luôn mã
+// hóa). Môi trường được xác định một lần khi mở ứng dụng theo chính sách bảo mật (lib/security.js đăng ký bộ xác định)
+// và giữ nguyên tới khi tải lại — đổi chính sách thì ứng dụng tải lại. Dữ liệu tạo ở môi trường này không bao giờ
+// được đọc / ghi từ môi trường kia.
+let envResolver = () => 'normal';
+let env = null;
+export function setEnvResolver(fn) {
+  envResolver = fn;
+}
+export const getEnv = () => (env ??= envResolver() === 'secure' ? 'secure' : 'normal');
+/** Xác định lại môi trường (tương đương tải lại ứng dụng; dùng khi khởi động / kiểm thử). */
+export function refreshEnv() {
+  env = null;
+  return getEnv();
+}
+/** Tiền tố khóa dữ liệu của một tài khoản trong môi trường hiện tại (hoặc môi trường chỉ định). */
+export const dataPrefix = (id, e = getEnv()) => `${e === 'secure' ? 's' : 'u'}:${id || 'anon'}:`;
+/** Chủ sở hữu dữ liệu trong IndexedDB (kho tài liệu, gói mẫu): tách theo tài khoản và môi trường. */
+export const dataOwner = () => (getEnv() === 'secure' ? `s:${scope || 'anon'}` : scope || 'anon');
+const resolve = (key) => (SCOPED.has(key) ? `${dataPrefix(scope)}${key}` : key);
 
 /** Hộp dữ liệu đã mã hóa trong localStorage: {"$e":1,"iv":"…","ct":"…"} (xem lib/cipher.js). */
 export const isEnvelope = (v) => !!v && typeof v === 'object' && v.$e === 1 && typeof v.ct === 'string';
@@ -57,6 +77,8 @@ export const store = {
         return fallback;
       }
     }
+    // Môi trường bảo mật mà chưa mở khóa: không đọc gì.
+    if (SCOPED.has(key) && getEnv() === 'secure') return fallback;
     const v = rawStore.get(full, fallback);
     // Dữ liệu đã mã hóa mà chưa mở khóa: không trả bản mã cho màn hình.
     return isEnvelope(v) ? fallback : v;
@@ -67,6 +89,8 @@ export const store = {
       cipher.set(full, JSON.stringify(value));
       return value;
     }
+    // Môi trường bảo mật mà chưa mở khóa: không bao giờ ghi bản rõ.
+    if (SCOPED.has(key) && getEnv() === 'secure') return value;
     // Đang khóa: không ghi đè dữ liệu đã mã hóa bằng bản rõ.
     if (SCOPED.has(key) && isEnvelope(rawStore.get(full))) return value;
     return rawStore.set(full, value);
@@ -74,7 +98,7 @@ export const store = {
   remove(key) {
     const full = resolve(key);
     if (viaCipher(key, full)) cipher.remove(full);
-    else rawStore.remove(full);
+    else if (!(SCOPED.has(key) && getEnv() === 'secure')) rawStore.remove(full);
   },
   update(key, fn, fallback = null) {
     return this.set(key, fn(this.get(key, fallback)));

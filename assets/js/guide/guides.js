@@ -679,12 +679,12 @@ export const GUIDES = [
     route: '#bao-mat',
     icon: 'shield',
     title: 'Bảo mật & an toàn thông tin',
-    summary: 'Chế độ bảo mật cho cơ quan: mã hóa dữ liệu AES-256-GCM theo từng tài khoản, chỉ dùng AI nội bộ, chặn mọi kết nối ra Internet, tự khóa khi không thao tác; kiểm tra an toàn và xuất báo cáo.',
+    summary: 'Chế độ bảo mật cho cơ quan: môi trường dữ liệu riêng, tách biệt hoàn toàn với chế độ bình thường; mã hóa dữ liệu AES-256-GCM theo từng tài khoản, chỉ dùng AI nội bộ, chặn mọi kết nối ra Internet, tự khóa khi không thao tác; kiểm tra an toàn và xuất báo cáo.',
     time: '4 phút',
     when: ['Trước khi đưa dữ liệu nghiệp vụ thật vào phần mềm', 'Triển khai cho đơn vị, máy trạm dùng chung', 'Cần báo cáo tình trạng an toàn thông tin cho lãnh đạo'],
     steps: [
       { t: 'Bật chế độ bảo mật (quản trị tối cao)', d: 'Mục **Chính sách bảo mật của máy**: tick **Bật chế độ bảo mật**, nhập **Máy chủ AI nội bộ** (vd: `http://10.0.0.5:11434/v1` — Ollama, vLLM, BionicGPT… trong mạng nội bộ), mô hình mặc định, số phút tự khóa, rồi [[Lưu chính sách]]. Ứng dụng tải lại và yêu cầu nhập lại mật khẩu. Triển khai chính thức nên cài **bản cài đặt bảo mật** (chế độ luôn bật, không tắt được).' },
-      { t: 'Ghi lại mã khôi phục', d: 'Lần đăng nhập đầu tiên sau khi bật, dữ liệu của tài khoản được mã hóa và hiện **mã khôi phục** 24 ký tự — **chỉ hiện một lần**. Ghi ra giấy / in, cất theo quy định. Nếu quên mật khẩu và quản trị đặt lại, chỉ mã này mở được dữ liệu cũ.' },
+      { t: 'Ghi lại mã khôi phục', d: 'Lần đăng nhập đầu tiên sau khi bật, mỗi tài khoản có một **môi trường bảo mật riêng, ban đầu trống** (chỉ chép thông tin đơn vị), luôn mã hóa, và hiện **mã khôi phục** 24 ký tự — **chỉ hiện một lần**. Ghi ra giấy / in, cất theo quy định. Nếu quên mật khẩu và quản trị đặt lại, chỉ mã này mở được dữ liệu cũ.' },
       { t: 'Làm việc hằng ngày', d: 'Huy hiệu **Bảo mật** trên thanh trên cùng cho biết chế độ đang bật; bấm biểu tượng khóa để **khóa ngay** khi rời máy. Không thao tác quá số phút quy định → tự khóa, phải nhập lại mật khẩu. Tải lại trang cũng phải nhập lại mật khẩu (khóa dữ liệu chỉ nằm trong bộ nhớ).' },
       { t: 'Kiểm tra an toàn và báo cáo', d: 'Mục **Kiểm tra an toàn** tự chạy: chế độ bảo mật, mã hóa dữ liệu, chặn kết nối ra Internet (thử gọi dịch vụ AI công cộng — phải bị chặn), CSP, máy chủ AI nội bộ, tự khóa, mật khẩu, cập nhật, tài khoản chưa mã hóa. Bấm [[Xuất báo cáo]] để có tệp kết quả đính kèm báo cáo.' },
     ],
@@ -693,7 +693,7 @@ export const GUIDES = [
     mistakes: [['Lưu mã khôi phục trong máy tính hoặc gửi qua mạng', 'Ghi ra giấy, cất cùng hồ sơ bảo mật của đơn vị.'], ['Tắt chế độ bảo mật để dùng AI công cộng cho hồ sơ thật', 'Dùng máy chủ AI nội bộ; dữ liệu nghiệp vụ không được đưa ra Internet công cộng.']],
     faq: [
       ['Quản trị viên có xem được dữ liệu của người khác không?', 'Không. Mỗi tài khoản có khóa dữ liệu riêng, được bảo vệ bằng mật khẩu và mã khôi phục của chính người đó.'],
-      ['Tắt chế độ bảo mật thì dữ liệu có bị giải mã không?', 'Không. Dữ liệu đã mã hóa vẫn giữ mã hóa; chỉ các giới hạn về mạng và AI được nới.'],
+      ['Tắt chế độ bảo mật thì dữ liệu đã tạo ở đó có hiện ra không?', 'Không. Chế độ bảo mật là một môi trường dữ liệu riêng: hồ sơ, biên bản, lời khai… tạo ở đó nằm trong vùng bảo mật (mã hóa) và không hiện, không đọc được ở chế độ bình thường; ngược lại dữ liệu của chế độ bình thường cũng không hiện trong môi trường bảo mật. Bật lại chế độ bảo mật thì thấy lại đúng dữ liệu của môi trường bảo mật.'],
       ['Không có máy chủ AI nội bộ thì sao?', 'Các chức năng phân tích trên máy (không cần AI) vẫn dùng được; có thể chạy AI trên chính máy trạm (localhost, vd: Ollama).'],
     ],
     related: ['admin', 'settings'],

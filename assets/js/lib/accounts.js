@@ -11,10 +11,10 @@
 //   (256 bit sau của PBKDF2) và bằng mã khôi phục (PBKDF2 200.000 vòng). Quản trị đặt lại mật khẩu → người dùng
 //   cần mã khôi phục để mở lại dữ liệu cũ; không có mã khôi phục thì không ai giải mã được (kể cả quản trị).
 
-import { rawStore, sessionStore, setScope, uid, SCOPED_KEYS } from './store.js';
+import { rawStore, sessionStore, setScope, uid, SCOPED_KEYS, getEnv, dataPrefix, isEnvelope } from './store.js';
 import { isDesktop } from './platform.js';
 import { cipher, importDataKey, randomBytes } from './cipher.js';
-import { secureOn, passwordProblem, loginBlockedFor, recordLoginFail, clearLoginFails } from './security.js';
+import { passwordProblem, loginBlockedFor, recordLoginFail, clearLoginFails } from './security.js';
 
 export const SUPER_EMAIL = 'gsnvbu@gmail.com';
 const ITER = 310000;
@@ -89,13 +89,19 @@ const saveUsers = (list) => rawStore.set('users', list);
 const normEmail = (e) => String(e || '').trim().toLowerCase();
 const isSuperEmail = (e) => normEmail(e) === SUPER_EMAIL;
 
+// Nhật ký tách theo môi trường. Môi trường bảo mật: nhật ký riêng và KHÔNG ghi nội dung nghiệp vụ (tên người khai,
+// tên tệp, tên vụ…) — chỉ ghi chi tiết của sự kiện hệ thống (đăng nhập, khóa, tài khoản, chính sách, chặn kết nối).
+const AUDIT_KEY = () => (getEnv() === 'secure' ? 'audit-s' : 'audit');
+const SYSTEM_EVENT = /^(Đăng nhập|Đăng xuất|Đăng ký|Mở khóa|Khóa|Tự khóa|Bật|Tắt|Cập nhật chính sách|Áp dụng|Cấu hình|Tạo tài khoản|Cập nhật tài khoản|Đặt lại mật khẩu|Xóa tài khoản|Đổi mật khẩu|Chặn kết nối|Nhập sai mã|Mở dữ liệu|Tạo mã khôi phục|Xuất báo cáo|Cập nhật AI|Gỡ AI|Cập nhật API|Gỡ API|Xóa toàn bộ dữ liệu)/;
 export function audit(action, detail = '') {
   const s = sessionStore.get('session');
-  const list = rawStore.get('audit', []);
+  const key = AUDIT_KEY();
+  if (key === 'audit-s' && detail && !SYSTEM_EVENT.test(action)) detail = '(nội dung không ghi — môi trường bảo mật)';
+  const list = rawStore.get(key, []);
   list.unshift({ at: Date.now(), by: s?.email || 'hệ thống', action, detail });
-  rawStore.set('audit', list.slice(0, 300));
+  rawStore.set(key, list.slice(0, 300));
 }
-export const auditLog = () => rawStore.get('audit', []);
+export const auditLog = () => rawStore.get(AUDIT_KEY(), []);
 
 export function systemConfig() {
   return { allowSignup: true, ...rawStore.get('system', {}) };
@@ -129,10 +135,10 @@ function validatePassword(pw) {
 const memKeys = new Map();
 function keepVaultKey(id, vk) {
   memKeys.set(id, vk);
-  if (secureOn()) sessionStore.remove(`vk:${id}`);
+  if (getEnv() === 'secure') sessionStore.remove(`vk:${id}`);
   else sessionStore.set(`vk:${id}`, vk);
 }
-const vaultKeyOf = (id) => memKeys.get(id) || (secureOn() ? null : sessionStore.get(`vk:${id}`));
+const vaultKeyOf = (id) => memKeys.get(id) || (getEnv() === 'secure' ? null : sessionStore.get(`vk:${id}`));
 
 async function wrapBytes(raw, keyB64) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -170,20 +176,28 @@ function persistUser(u) {
   }
 }
 
+/** Mở môi trường bảo mật của tài khoản bằng khóa dữ liệu (chuyển bản mã kiểu cũ v2.34 sang vùng bảo mật). */
+async function openSecure(u, raw) {
+  await cipher.open(dataPrefix(u.id, 'secure'), await importDataKey(raw), { legacy: dataPrefix(u.id, 'normal') });
+}
+
 /**
- * Mở dữ liệu của tài khoản sau khi xác thực. Chế độ bảo mật mà tài khoản chưa có khóa dữ liệu → tạo khóa, mã hóa
- * dữ liệu hiện có và trả về mã khôi phục (hiện một lần). Mật khẩu đã bị quản trị đặt lại → lỗi NEED_RECOVERY.
+ * Mở dữ liệu sau khi xác thực. Chỉ môi trường bảo mật mới mã hóa (môi trường bình thường không mở khóa gì).
+ * Lần đầu vào môi trường bảo mật: tạo khóa dữ liệu, trả về mã khôi phục (hiện một lần); môi trường bảo mật bắt đầu
+ * TRỐNG — chỉ chép thông tin đơn vị / cơ quan điều tra từ môi trường bình thường (một chiều, không chứa dữ liệu vụ việc).
+ * Mật khẩu đã bị quản trị đặt lại → lỗi NEED_RECOVERY.
  */
 async function openData(u, vaultKey) {
+  if (getEnv() !== 'secure') return {};
   if (!u.dek) {
-    if (!secureOn()) return {};
     const raw = randomBytes(32);
     const code = newRecoveryCode();
     u.dek = { v: 1, pw: await wrapBytes(raw, vaultKey), rec: await recoveryBox(raw, code), at: Date.now(), recAt: Date.now() };
     persistUser(u);
-    await cipher.open(u.id, await importDataKey(raw));
+    await openSecure(u, raw);
     raw.fill(0);
-    audit('Bật mã hóa dữ liệu tài khoản', `${u.email} — AES-256-GCM`);
+    seedSecureSettings(u);
+    audit('Bật mã hóa dữ liệu tài khoản', `${u.email} — môi trường bảo mật riêng, AES-256-GCM`);
     return { recoveryCode: code };
   }
   if (!u.dek.pw) {
@@ -197,9 +211,21 @@ async function openData(u, vaultKey) {
   } catch {
     throw new Error('Không mở được khóa dữ liệu của tài khoản');
   }
-  await cipher.open(u.id, await importDataKey(raw));
+  await openSecure(u, raw);
   raw.fill(0);
+  seedSecureSettings(u);
   return {};
+}
+
+/** Môi trường bảo mật chưa có cài đặt: chép thông tin đơn vị, cơ quan điều tra (một chiều bình thường → bảo mật). */
+function seedSecureSettings(u) {
+  const full = `${dataPrefix(u.id, 'secure')}settings`;
+  if (cipher.get(full) != null) return;
+  const normal = rawStore.get(`${dataPrefix(u.id, 'normal')}settings`, null);
+  if (!normal || isEnvelope(normal)) return;
+  const pick = {};
+  for (const k of ['org', 'legalOrg']) if (normal[k]) pick[k] = normal[k];
+  if (Object.keys(pick).length) cipher.set(full, JSON.stringify(pick));
 }
 
 async function buildCredentials(password) {
@@ -320,7 +346,7 @@ export const accounts = {
   /** Phiên còn nhưng dữ liệu đang khóa (chế độ bảo mật sau khi tải lại trang / tự khóa). */
   needsUnlock() {
     const u = this.current();
-    return !!u && (secureOn() || u.encrypted) && !cipher.active();
+    return !!u && getEnv() === 'secure' && !cipher.active();
   },
 
   /** Khởi động: mở lại dữ liệu nếu còn khóa phiên. Trả về false nếu cần nhập mật khẩu. */
@@ -328,8 +354,8 @@ export const accounts = {
     const s = sessionStore.get('session');
     const u = s && users().find((x) => x.id === s.id);
     if (!u) return false;
-    if (!secureOn() && !u.dek) return true;
-    if (cipher.active() && cipher.owner() === u.id) return true;
+    if (getEnv() !== 'secure') return true;
+    if (cipher.active() && cipher.prefix() === dataPrefix(u.id, 'secure')) return true;
     const vk = vaultKeyOf(u.id);
     if (!vk) return false;
     await openData(u, vk);
@@ -384,7 +410,7 @@ export const accounts = {
     }
     u.dek.pw = await wrapBytes(raw, vk);
     persistUser(u);
-    await cipher.open(u.id, await importDataKey(raw));
+    await openSecure(u, raw);
     raw.fill(0);
     audit('Mở dữ liệu bằng mã khôi phục', u.email);
   },
@@ -514,7 +540,7 @@ export const accounts = {
     if (u.role === 'superadmin') throw new Error('Không thể xóa tài khoản quản trị tối cao');
     if (u.id === me.id) throw new Error('Không thể tự xóa tài khoản của mình');
     saveUsers(all.filter((x) => x.id !== id));
-    for (const k of SCOPED_KEYS) rawStore.remove(`u:${id}:${k}`);
+    for (const k of SCOPED_KEYS) for (const e of ['normal', 'secure']) rawStore.remove(`${dataPrefix(id, e)}${k}`);
     audit('Xóa tài khoản', u.email);
   },
 };

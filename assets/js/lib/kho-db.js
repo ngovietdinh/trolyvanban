@@ -1,6 +1,6 @@
 // Kho tài liệu hồ sơ: lưu trên máy bằng IndexedDB (dung lượng lớn hơn localStorage), tách riêng theo tài khoản.
 // Môi trường không có IndexedDB (kiểm thử Node) → lưu tạm trong bộ nhớ.
-import { getScope } from './store.js';
+import { getScope, getEnv, dataOwner } from './store.js';
 import { cipher } from './cipher.js';
 
 const DB = 'tlvb-kho';
@@ -35,13 +35,15 @@ async function tx(mode, fn) {
   });
 }
 
-const owner = () => getScope() || 'anon';
+// Chủ sở hữu tách theo tài khoản VÀ môi trường: tài liệu của môi trường bảo mật không hiện ở môi trường bình thường.
+const owner = () => dataOwner();
 
 // Chế độ bảo mật: nội dung tài liệu (thông tin + tệp gốc) được mã hóa AES-GCM; chỉ id, chủ sở hữu, thời gian để rõ
 // (cần cho chỉ mục). Bản ghi đã mã hóa mà đang khóa → không trả về.
 const SEALED = (d) => !!d?.$e;
 async function seal(rec) {
-  if (!cipher.active()) return rec;
+  if (getEnv() !== 'secure') return rec;
+  if (!cipher.active()) throw new Error('Dữ liệu đang khóa — mở khóa để tiếp tục');
   const { id, owner: o, createdAt, updatedAt, blob, ...meta } = rec;
   const out = { id, owner: o, createdAt, updatedAt, $e: await cipher.sealJson(meta, `kho:${id}`) };
   if (blob) out.$b = { ...(await cipher.sealBytes(new Uint8Array(await blob.arrayBuffer()), `kho-tep:${id}`)), type: blob.type || '' };
@@ -58,9 +60,13 @@ async function unseal(rec, { file = true } = {}) {
 const rawAll = async (o) => (!hasIDB() ? [...mem.values()].filter((d) => d.owner === o) : await tx('readonly', (s) => s.index('owner').getAll(o)));
 const rawPut = async (rec) => (!hasIDB() ? mem.set(rec.id, rec) : await tx('readwrite', (s) => s.put(rec)));
 
-// Mở khóa dữ liệu → mã hóa các tài liệu cũ còn dạng rõ của tài khoản.
+// Mở khóa môi trường bảo mật → mã hóa tài liệu còn dạng rõ; chuyển tài liệu đã mã hóa kiểu cũ (v2.34, chủ sở hữu là
+// tài khoản ở môi trường bình thường) sang môi trường bảo mật.
 cipher.onOpen(async () => {
+  if (getEnv() !== 'secure') return;
   for (const d of await rawAll(owner())) if (!SEALED(d)) await rawPut(await seal(d));
+  const legacy = getScope() || 'anon';
+  for (const d of await rawAll(legacy)) if (SEALED(d)) await rawPut({ ...d, owner: owner() });
 });
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 

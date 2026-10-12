@@ -4,7 +4,7 @@
 import { createZip, readZip } from '../lib/docx.js';
 import { parseTemplateDocx } from '../lib/tpl-docx.js';
 import { fillMauDocx } from '../lib/mau-docx.js';
-import { getScope } from '../lib/store.js';
+import { getScope, getEnv, dataOwner } from '../lib/store.js';
 import { cipher } from '../lib/cipher.js';
 import { analyzeMau, isFrameForm, loaiOf, norm } from './mau-analyze.js';
 
@@ -101,7 +101,8 @@ const STORE = 'pack';
 let dbp = null;
 const mem = new Map();
 const hasIDB = () => typeof indexedDB !== 'undefined';
-const owner = () => getScope() || 'anon';
+// Tách theo tài khoản và môi trường (bình thường / bảo mật).
+const owner = () => dataOwner();
 const open = () => {
   if (!hasIDB()) return null;
   dbp ??= new Promise((resolve, reject) => {
@@ -126,8 +127,13 @@ const kMeta = () => `${owner()}|meta`;
 const kFile = (id) => `${owner()}|f|${id}`;
 
 // Chế độ bảo mật: danh mục và tệp mẫu được mã hóa AES-GCM như dữ liệu khác của tài khoản.
-const sealMeta = async (meta) => (cipher.active() ? { $e: await cipher.sealJson(meta, 'mau:meta') } : { meta });
-const sealFile = async (id, data) => (cipher.active() ? { $b: await cipher.sealBytes(data, `mau:${id}`) } : { data });
+const mustSeal = () => {
+  if (getEnv() !== 'secure') return false;
+  if (!cipher.active()) throw new Error('Dữ liệu đang khóa — mở khóa để tiếp tục');
+  return true;
+};
+const sealMeta = async (meta) => (mustSeal() ? { $e: await cipher.sealJson(meta, 'mau:meta') } : { meta });
+const sealFile = async (id, data) => (mustSeal() ? { $b: await cipher.sealBytes(data, `mau:${id}`) } : { data });
 async function rawGet(k) {
   return !hasIDB() ? mem.get(k) || null : (await tx('readonly', (s) => s.get(k))) || null;
 }
@@ -179,10 +185,32 @@ export const mauDb = {
   },
 };
 
-// Mở khóa dữ liệu → gói mẫu nạp trước đó (dạng rõ) được mã hóa lại.
+// Mở khóa môi trường bảo mật → chuyển gói đã mã hóa kiểu cũ (v2.34) sang môi trường bảo mật; gói dạng rõ thì mã hóa lại.
 cipher.onOpen(async () => {
-  const r = await rawGet(kMeta());
-  if (!r || r.$e) return;
+  if (getEnv() !== 'secure') return;
+  let r = await rawGet(kMeta());
+  if (!r) {
+    const legacy = `${getScope() || 'anon'}|`;
+    const old = await rawGet(`${legacy}meta`);
+    if (!old?.$e) return;
+    const forms = (await cipher.openJson(old.$e, 'mau:meta')).forms || [];
+    const recs = [{ ...old, k: kMeta() }];
+    for (const f of forms) {
+      const d = await rawGet(`${legacy}f|${f.id}`);
+      if (d) recs.push({ ...d, k: kFile(f.id) });
+    }
+    const oldKeys = [`${legacy}meta`, ...forms.map((f) => `${legacy}f|${f.id}`)];
+    if (!hasIDB()) {
+      recs.forEach((x) => mem.set(x.k, x));
+      oldKeys.forEach((k) => mem.delete(k));
+    } else
+      await tx('readwrite', (s) => {
+        recs.forEach((x) => s.put(x));
+        oldKeys.forEach((k) => s.delete(k));
+      });
+    return;
+  }
+  if (r.$e) return;
   const files = {};
   for (const f of r.meta.forms || []) {
     const d = await rawGet(kFile(f.id));
