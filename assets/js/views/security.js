@@ -62,7 +62,7 @@ export async function runChecks(ctx, onAdd = null) {
         const models = await Promise.race([listModels('local', ai.apiKey || 'local'), new Promise((_, rej) => setTimeout(() => rej(new Error('quá 6 giây không phản hồi')), 6000))]);
         add('ok', 'Kết nối AI nội bộ', `${PROVIDERS.local.base} phản hồi — ${models.length} mô hình; đang dùng ${ai.model}`);
       } catch (err) {
-        add('warn', 'Kết nối AI nội bộ', `Chưa kết nối được ${PROVIDERS.local.base}: ${err.message}. Các chức năng phân tích trên máy (không cần AI) vẫn dùng được.`);
+        add('warn', 'Kết nối AI nội bộ', `Chưa kết nối được ${PROVIDERS.local.base}: ${String(err.message).replace(/[.\s]+$/, '')}. Các chức năng phân tích trên máy (không cần AI) vẫn dùng được.`);
       }
     } else add('info', 'Kết nối AI nội bộ', 'Tài khoản chưa cấu hình mô hình (Cài đặt → AI nội bộ). Chức năng phân tích trên máy vẫn dùng được.');
   } else add(ai && !ai.local ? 'warn' : 'info', 'Trí tuệ nhân tạo', ai ? `${ai.label} (${ai.local ? 'trên máy / nội bộ' : 'dịch vụ trực tuyến — dữ liệu gửi ra Internet'})` : 'Chưa kết nối');
