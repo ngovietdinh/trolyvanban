@@ -1,9 +1,9 @@
 {
-  "version": "2.35.0",
-  "date": "2026-10-12",
+  "version": "2.36.0",
+  "date": "2026-10-13",
   "notes": [
-    "Chế độ bảo mật là một môi trường dữ liệu riêng, tách biệt hoàn toàn với chế độ bình thường: dữ liệu tạo ở môi trường này không hiện ở môi trường kia",
-    "Nhật ký hoạt động riêng cho từng môi trường; nhật ký môi trường bảo mật không ghi nội dung nghiệp vụ",
-    "Sao lưu môi trường bảo mật không khôi phục được vào chế độ bình thường; tự chuyển dữ liệu đã mã hóa của bản 2.34 sang vùng bảo mật"
+    "Đọc trực tiếp tệp Word cũ (.doc — Word 97-2003, Word 95) ngay trên máy ở mọi chỗ tải tệp: biên bản, lời khai, kho hồ sơ, chính tả, tóm tắt, Bộ luật; giữ bảng, khung chữ; phông TCVN3/VNI tự chuyển Unicode; Mẫu từ file Word tự chuyển .doc sang .docx",
+    "Tải biên bản lên tự đọc ngay khi chọn tệp; nhận Hỏi – Đáp viết chung một dòng, chữ hoa; nhận họ tên người khai từ “Người khai:” và bảng",
+    "Bấm Lưu / Tạo / Xuất / Thêm khi còn thiếu: thông báo nêu đích danh phần còn thiếu và đưa con trỏ tới ô cần điền; lỗi ngoài dự kiến cũng báo kèm lý do"
   ]
 }
