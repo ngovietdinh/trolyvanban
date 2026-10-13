@@ -1,0 +1,12 @@
+# Cấu hình Cloudflare Worker cho bot Zalo biểu mẫu. Các khóa bí mật KHÔNG ghi ở đây — đặt trong GitHub Secrets,
+# quy trình .github/workflows/zalo-bot.yml tự nạp lên Cloudflare khi triển khai.
+name = "tlvb-bieu-mau-bot"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[vars]
+MAU_REPO = "ngovietdinh/mau-bieu-mau"
+MAU_REF = "main"
+MAU_DIR = ""
+LINK_MINUTES = "15"

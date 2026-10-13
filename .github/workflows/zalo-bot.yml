@@ -1,0 +1,78 @@
+# Triển khai bot Zalo lấy biểu mẫu lên Cloudflare Workers (miễn phí) và đăng ký webhook với Zalo.
+# Chạy tay ở tab Actions → "Bot Zalo biểu mẫu" → Run workflow; tự chạy lại khi thư mục zalo-bot/ đổi.
+# Cần GitHub Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, ZALO_BOT_TOKEN, MAU_GITHUB_TOKEN;
+# tùy chọn: GROQ_API_KEY (AI hiểu câu hỏi), ALLOWED_IDS (mã tài khoản Zalo được dùng, cách nhau dấu phẩy).
+name: Bot Zalo biểu mẫu
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/interior-design-website-pdv8ua]
+    paths: [zalo-bot/**, .github/workflows/zalo-bot.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zalo-bot
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ZALO_BOT_TOKEN: ${{ secrets.ZALO_BOT_TOKEN }}
+      MAU_GITHUB_TOKEN: ${{ secrets.MAU_GITHUB_TOKEN }}
+      AI_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      ALLOWED_IDS_IN: ${{ secrets.ALLOWED_IDS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Kiểm tra cấu hình
+        id: cfg
+        run: |
+          missing=""
+          for k in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID ZALO_BOT_TOKEN MAU_GITHUB_TOKEN; do
+            [ -z "${!k}" ] && missing="$missing $k"
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::Chưa cấu hình bot Zalo — thiếu GitHub Secrets:$missing. Xem zalo-bot/README.md."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Mã bí mật webhook và khóa mã hóa link: sinh mới mỗi lần triển khai (webhook được đăng ký lại ngay sau đó).
+          WEBHOOK_SECRET=$(openssl rand -hex 32); LINK_SECRET=$(openssl rand -hex 32)
+          echo "::add-mask::$WEBHOOK_SECRET"; echo "::add-mask::$LINK_SECRET"
+          echo "WEBHOOK_SECRET=$WEBHOOK_SECRET" >> "$GITHUB_ENV"
+          echo "LINK_SECRET=$LINK_SECRET" >> "$GITHUB_ENV"
+          echo "ALLOWED_IDS=${ALLOWED_IDS_IN:-none}" >> "$GITHUB_ENV"
+          list="ZALO_BOT_TOKEN MAU_GITHUB_TOKEN WEBHOOK_SECRET LINK_SECRET ALLOWED_IDS"
+          [ -n "$AI_API_KEY" ] && list="$list AI_API_KEY"
+          { echo "secrets<<EOF"; echo "$list" | tr ' ' '\n'; echo "EOF"; } >> "$GITHUB_OUTPUT"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Triển khai lên Cloudflare Workers
+        id: deploy
+        if: steps.cfg.outputs.ready == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: zalo-bot
+          secrets: ${{ steps.cfg.outputs.secrets }}
+
+      - name: Đăng ký webhook với Zalo, kiểm tra kho mẫu
+        if: steps.cfg.outputs.ready == 'true'
+        env:
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          [ -n "$URL" ] || { echo "::error::Không lấy được địa chỉ Worker sau khi triển khai."; exit 1; }
+          sleep 5
+          out=$(curl -sS -X POST "$URL/setup" -H "X-Setup-Key: $LINK_SECRET")
+          echo "$out" | jq '{bot_ok: .bot.ok, webhook: .webhook, soMau}'
+          echo "$out" | jq -e '.soMau | numbers' >/dev/null || { echo "::error::Không đọc được kho mẫu — kiểm tra MAU_GITHUB_TOKEN (quyền Contents: Read-only cho kho mau-bieu-mau)."; exit 1; }
+          echo "$out" | jq -e '.webhook.ok == true' >/dev/null || { echo "::error::Zalo không nhận webhook — kiểm tra ZALO_BOT_TOKEN."; exit 1; }
+          echo "### Bot Zalo đã chạy ✅" >> "$GITHUB_STEP_SUMMARY"
+          echo "Địa chỉ: $URL — nhắn thử số mẫu (vd: 140) cho bot trên Zalo." >> "$GITHUB_STEP_SUMMARY"
