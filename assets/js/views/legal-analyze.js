@@ -2,7 +2,7 @@
 // tóm tắt, liệt kê hành vi có dấu hiệu tội phạm theo điều luật trong hệ thống (một vụ việc có thể liên quan nhiều điều).
 // Người dùng chọn / bỏ chọn, sửa tên, đổi điều luật, xem câu hỏi sẽ sinh → bấm “Thêm hành vi”.
 import { chunkSizeFor, concurrencyFor } from '../lib/ai-chunk.js';
-import { $, $$, icon, toast, escapeHtml } from '../ui.js';
+import { $, $$, icon, toast, escapeHtml, needAttr, warnMissing } from '../ui.js';
 import { findCrime } from '../legal/engine.js';
 import { getRole } from '../legal/roles.js';
 import { analyzeOffline, analyzeWithAi, annotateResult, mergeResults } from '../legal/analyze.js';
@@ -185,7 +185,7 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
         function updateCount() {
           const n = rows.filter((r) => r.checked && r.ten.trim()).length;
           $('[data-count]', box).textContent = `${n}/${rows.length} đã chọn`;
-          setActions(`<button class="btn btn-ghost" type="button" data-back>${icon('chevron-left', 'ic-sm')}Tài liệu khác</button><span class="spacer"></span><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-commit ${n ? '' : 'disabled'}>${icon('plus', 'ic-sm')}Thêm ${n} hành vi</button>`);
+          setActions(`<button class="btn btn-ghost" type="button" data-back>${icon('chevron-left', 'ic-sm')}Tài liệu khác</button><span class="spacer"></span><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-commit ${needAttr(n ? '' : 'Chưa chọn hành vi nào để thêm — tích chọn ít nhất một hành vi (có tên) trong danh sách')}>${icon('plus', 'ic-sm')}Thêm ${n} hành vi</button>`);
           $('[data-back]', actions).addEventListener('click', () => {
             $('[data-step="review"]', box).hidden = true;
             $('[data-step="input"]', box).hidden = false;
@@ -197,7 +197,7 @@ export function openAnalyzeDialog(ctx, { crime, roleId, selected = [], onAdd }) 
         function commit() {
           const { byDieu, quotes, created, skipped } = commitRows(rows);
           if (skipped) toast(`Bỏ qua ${skipped} hành vi chưa chọn được điều luật trong hệ thống`, { type: 'info' });
-          if (!byDieu.size) return;
+          if (!byDieu.size) return warnMissing('Chưa thêm được hành vi nào: các hành vi đã chọn chưa gắn được điều luật — chọn điều luật cho từng hành vi rồi bấm lại');
           const primaryIds = byDieu.get(crime.dieu) || [];
           const related = [...byDieu].filter(([d]) => d !== crime.dieu).map(([dieu, hanhViIds]) => ({ dieu, hanhViIds }));
           onAdd({ primaryIds, related, quotes });

@@ -1,5 +1,6 @@
-// Trích văn bản thuần từ tệp người dùng tải lên: .docx (Word), .pdf (có lớp chữ), .txt, .md, .html.
+// Trích văn bản thuần từ tệp người dùng tải lên: .docx, .doc (Word cũ, tự chuyển), .rtf, .pdf (có lớp chữ), .txt, .md, .html.
 import { docxToText } from './docx.js';
+import { docToText, sniffDoc } from './doc.js';
 import { fixLegacy } from './vn-legacy.js';
 
 let pdfjsPromise = null;
@@ -62,6 +63,31 @@ async function ocrText(file, onProgress) {
   return { text: flowToText(doc), pages: doc.pages.length, ocr: true, confidence: stats.confidence };
 }
 
+/**
+ * Tệp Word bất kỳ (.docx, .doc Word 97-2003/Word 95, .rtf, kể cả tệp bị đổi đuôi) → văn bản thuần.
+ * Nhận diện theo nội dung tệp, không theo đuôi.
+ */
+export async function wordToText(buf, name = 'tệp') {
+  const bytes = new Uint8Array(buf);
+  if (sniffDoc(bytes) === 'docx') {
+    try {
+      return fixLegacy(await docxToText(buf));
+    } catch {
+      throw new Error(`Không đọc được “${name}” (tệp Word hỏng?) — mở bằng Word, lưu lại rồi tải lên`);
+    }
+  }
+  return docToText(bytes, name);
+}
+
+/** Đọc văn bản từ tệp người dùng chọn cho ô nhập (Word mọi loại, .txt, .md, .html). */
+export async function fileToText(file) {
+  const name = file.name || '';
+  const buf = await file.arrayBuffer();
+  if (/\.(docx?|rtf|dot)$/i.test(name)) return wordToText(buf, name);
+  const text = new TextDecoder().decode(buf);
+  return /\.html?$/i.test(name) ? htmlToText(text) : text;
+}
+
 /** Trả về { text, pages?, kind, ocr? } hoặc ném lỗi tiếng Việt. PDF ảnh quét, ảnh chụp được nhận dạng chữ (OCR) trên máy. */
 export async function extractText(file, { onProgress } = {}) {
   const name = file.name || '';
@@ -71,7 +97,7 @@ export async function extractText(file, { onProgress } = {}) {
     return { ...r, kind: 'image' };
   }
   const buf = await file.arrayBuffer();
-  if (/\.docx$/i.test(name)) return { text: await docxToText(buf), kind: 'docx' };
+  if (/\.(docx?|rtf|dot)$/i.test(name)) return { text: await wordToText(buf, name), kind: /\.docx$/i.test(name) ? 'docx' : 'doc' };
   if (/\.pdf$/i.test(name)) {
     const r = await pdfToText(buf);
     if (r.text.replace(/\s/g, '').length < 30 * r.pages) {
@@ -84,6 +110,5 @@ export async function extractText(file, { onProgress } = {}) {
   }
   if (/\.(txt|md|csv)$/i.test(name)) return { text: new TextDecoder().decode(buf), kind: 'txt' };
   if (/\.html?$/i.test(name)) return { text: htmlToText(new TextDecoder().decode(buf)), kind: 'html' };
-  if (/\.doc$/i.test(name)) throw new Error(`“${name}” là định dạng Word cũ (.doc) — mở bằng Word và lưu lại dạng .docx rồi tải lên.`);
-  throw new Error(`Chưa hỗ trợ định dạng tệp “${name}”. Dùng .docx, .pdf, .txt.`);
+  throw new Error(`Chưa hỗ trợ định dạng tệp “${name}”. Dùng Word (.doc, .docx), .pdf, ảnh chụp hoặc .txt.`);
 }

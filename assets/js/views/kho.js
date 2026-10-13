@@ -66,9 +66,9 @@ export function render(ctx) {
         <select class="select select-sm" data-case aria-label="Lọc theo hồ sơ vụ án"></select>
       </div>
       <label class="dropzone kho-drop" data-drop>
-        <input type="file" multiple accept=".docx,.pdf,.txt,.md,.html,image/*" data-file aria-label="Tải lên hồ sơ, tài liệu" />
+        <input type="file" multiple accept=".docx,.doc,.rtf,.pdf,.txt,.md,.html,image/*" data-file aria-label="Tải lên hồ sơ, tài liệu" />
         <span class="dz-icon">${icon('upload')}</span>
-        <span><strong>Tải lên hồ sơ, tài liệu</strong><small>Word (.docx), PDF (kể cả bản scan), ảnh chụp, .txt · nhiều tệp cùng lúc · lưu trên máy</small></span>
+        <span><strong>Tải lên hồ sơ, tài liệu</strong><small>Word (.doc, .docx), PDF (kể cả bản scan), ảnh chụp, .txt · nhiều tệp cùng lúc · lưu trên máy</small></span>
       </label>
       <div class="kho-tools">
         <div class="lg-search kho-search">${icon('search', 'ic-sm')}<input type="search" placeholder="Tìm trong kho…" data-q aria-label="Tìm trong kho" /></div>
@@ -296,7 +296,7 @@ export function render(ctx) {
       }
     }
     const hint = $('[data-drop] small', root);
-    if (hint) hint.textContent = 'Word (.docx), PDF (kể cả bản scan), ảnh chụp, .txt · nhiều tệp cùng lúc · lưu trên máy';
+    if (hint) hint.textContent = 'Word (.doc, .docx), PDF (kể cả bản scan), ảnh chụp, .txt · nhiều tệp cùng lúc · lưu trên máy';
     saveSel();
     await reload();
     if (ok) {

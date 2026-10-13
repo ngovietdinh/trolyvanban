@@ -2,6 +2,7 @@
 import { $, $$, icon, toast, escapeHtml, downloadBlob } from '../ui.js';
 import { store, uid, usage } from '../lib/store.js';
 import { safeFileName } from '../lib/docx.js';
+import { docToDocx, sniffDoc } from '../lib/doc.js';
 import { streamClaude, extractJson } from '../lib/ai.js';
 import { parseTemplateDocx, fillTemplateDocx, detectFields, addField, fieldsFromAi, numberedText, TEMPLATE_AI_PROMPT, bytesToBase64, base64ToBytes } from '../lib/tpl-docx.js';
 
@@ -61,15 +62,15 @@ export function render(ctx, params = []) {
     ctx.view.innerHTML = `
     <div class="page">
       <div class="page-head">
-        <div><h1 class="page-title">Tạo mẫu từ <em>file Word</em></h1><p class="page-sub">Tải lên văn bản .docx có sẵn — hệ thống nhận diện các phần cần điền (số, ngày tháng, họ tên, địa chỉ, số tiền…), AI chắt lọc thành mẫu, xem trước rồi lưu để dùng lại.</p></div>
+        <div><h1 class="page-title">Tạo mẫu từ <em>file Word</em></h1><p class="page-sub">Tải lên văn bản Word (.docx, .doc) có sẵn — hệ thống nhận diện các phần cần điền (số, ngày tháng, họ tên, địa chỉ, số tiền…), AI chắt lọc thành mẫu, xem trước rồi lưu để dùng lại.</p></div>
         <a class="btn" href="#templates">${icon('chevron-left', 'ic-sm')}Thư viện mẫu</a>
       </div>
       <section class="panel tpl-upload">
         <div class="panel-body">
           <label class="dropzone dropzone-lg" data-drop>
-            <input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-file aria-label="Chọn tệp Word (.docx)" />
+            <input type="file" accept=".docx,.doc,.rtf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-file aria-label="Chọn tệp Word (.docx, .doc)" />
             <span class="dz-icon">${icon('upload')}</span>
-            <span><strong>Chọn hoặc kéo thả tệp Word (.docx)</strong><small>Tối đa 1,5 MB · tệp được xử lý và lưu ngay trên máy của bạn</small></span>
+            <span><strong>Chọn hoặc kéo thả tệp Word (.docx, .doc)</strong><small>Tối đa 1,5 MB · tệp được xử lý và lưu ngay trên máy của bạn</small></span>
           </label>
           <ul class="tpl-steps">
             <li><span>1</span>Tải lên văn bản mẫu</li>
@@ -97,14 +98,21 @@ export function render(ctx, params = []) {
   }
 
   async function loadFile(file) {
-    if (!/\.docx$/i.test(file.name)) return toast('Chỉ hỗ trợ tệp Word định dạng .docx', { type: 'error' });
+    if (!/\.(docx?|rtf|dot)$/i.test(file.name)) return toast(`“${file.name}” không phải tệp Word — chọn tệp .docx hoặc .doc`, { type: 'error', timeout: 5000 });
     if (file.size > MAX_SIZE) return toast('Tệp lớn hơn 1,5 MB — hãy xóa bớt hình ảnh trong văn bản rồi thử lại', { type: 'error', timeout: 5000 });
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
+      let bytes = new Uint8Array(await file.arrayBuffer());
+      let fileName = file.name;
+      if (sniffDoc(bytes) !== 'docx') {
+        // Word cũ (.doc), RTF → tự chuyển sang .docx ngay trên máy.
+        bytes = await docToDocx(bytes, file.name);
+        fileName = file.name.replace(/\.(doc|rtf|dot)$/i, '.docx');
+        toast(`Đã tự chuyển “${file.name}” sang .docx — giữ nguyên chữ và đoạn; phông, bảng, căn lề có thể khác bản gốc, kiểm tra lại khi xem trước`, { type: 'info', timeout: 7000 });
+      }
       const parsed = await parseTemplateDocx(bytes);
       if (!parsed.paragraphs.length) throw new Error('Văn bản không có nội dung chữ');
       const fields = detectFields(parsed.paragraphs);
-      state = { id: null, ten: file.name.replace(/\.docx$/i, ''), moTa: '', fileName: file.name, bytes, paragraphs: parsed.paragraphs, fields, values: {}, mode: 'setup' };
+      state = { id: null, ten: file.name.replace(/\.(docx?|rtf|dot)$/i, ''), moTa: '', fileName, bytes, paragraphs: parsed.paragraphs, fields, values: {}, mode: 'setup' };
       renderEditor();
       toast(`Đã đọc ${parsed.paragraphs.length} đoạn · nhận diện ${fields.length} trường cần điền`);
     } catch (err) {

@@ -16,7 +16,7 @@ async function enableSecure(page, { idleMin = 10 } = {}) {
   await page.click('[data-gate-form="unlock"] button[type="submit"]');
   const code = await page.locator('[data-rec-code]').innerText();
   expect(code).toMatch(/^([2-9A-Z]{4}-){5}[2-9A-Z]{4}$/);
-  await expect(page.locator('[data-rec-done]')).toBeDisabled();
+  await expect(page.locator('[data-rec-done]')).toHaveAttribute('aria-disabled', 'true');
   await page.check('[data-rec-ok]');
   await page.click('[data-rec-done]');
   await expect(page.locator('.shell')).toBeVisible();

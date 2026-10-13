@@ -262,8 +262,11 @@ export function overviewReport({ cases = [], plans = [], records = [], planOf = 
  * parseQa(text) → { pairs: [{ q, a }] } (dùng parsePastedQa của record.js).
  */
 export function parseRecordText(text, parseQa) {
-  const s = String(text || '').replace(/\r/g, '');
-  const hoTen = (/(?:^|\n)\s*(?:Họ và tên|Họ tên)\s*[:：]\s*([^\n;,\t]+?)(?:\s{2,}|\t|;|,|\n|Giới tính|$)/iu.exec(s)?.[1] || '').trim().replace(/[.…]+$/, '');
+  const s = String(text || '').normalize('NFC').replace(/\r/g, '');
+  // Họ tên chỉ lấy theo nhãn rõ ràng ("Họ tên:", ô bảng "Họ tên ⇥ …", "Người khai: …"); bỏ chữ ở phần ký tên.
+  const NAME_RE = /(?:^|\n)[ \t]*(?:(?:Họ và tên|Họ tên)[ \t]*(?:[:：]|\t)|(?:Tên người khai|Người khai)[ \t]*[:：])[ \t]*([^\n;,\t]+?)(?:\s{2,}|\t|;|,|\n|Giới tính|$)/giu;
+  const okName = (n) => n && !/[()[\]…]|\.{3}|(?<!\p{L})(?:ký\s*(?:tên|,|và|ghi)|ghi rõ|điều tra viên|cán bộ|kiểm sát viên|thư ký)(?!\p{L})/iu.test(n) && /\p{L}{2}/u.test(n);
+  const hoTen = [...s.matchAll(NAME_RE)].map((m) => m[1].trim().replace(/[.…]+$/, '')).find(okName) || '';
   let ngay = '';
   const m = /ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/iu.exec(s) || /(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/.exec(s);
   if (m) ngay = `${m[3]}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`;

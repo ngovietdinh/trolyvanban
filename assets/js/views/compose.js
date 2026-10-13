@@ -185,7 +185,8 @@ export function render(ctx, params = []) {
     const missing = validate(state.typeId, state.values);
     if (missing.length) {
       markInvalid(missing);
-      toast(`Vui lòng điền ${missing.length} trường bắt buộc trước khi ${action}`, { type: 'error' });
+      const names = missing.map((m) => `“${m.label}”`);
+      toast(`Chưa ${action} được — còn thiếu ${missing.length} trường bắt buộc: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` và ${names.length - 5} trường khác` : ''}`, { type: 'warn', timeout: 7000 });
       return false;
     }
     return true;

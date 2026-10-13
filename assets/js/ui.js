@@ -18,8 +18,8 @@ export function toast(message, { type = 'success', timeout = 2800, action = null
   }
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  el.setAttribute('role', type === 'error' ? 'alert' : 'status');
-  el.innerHTML = `${icon(type === 'error' ? 'alert' : type === 'info' ? 'info' : 'check-circle')}<span>${escapeHtml(message)}</span>${action ? `<button type="button" class="toast-action">${escapeHtml(action.label)}</button>` : ''}`;
+  el.setAttribute('role', type === 'error' || type === 'warn' ? 'alert' : 'status');
+  el.innerHTML = `${icon(type === 'error' || type === 'warn' ? 'alert' : type === 'info' ? 'info' : 'check-circle')}<span>${escapeHtml(message)}</span>${action ? `<button type="button" class="toast-action">${escapeHtml(action.label)}</button>` : ''}`;
   if (action) {
     el.querySelector('.toast-action').addEventListener('click', () => {
       action.onClick();
@@ -32,6 +32,55 @@ export function toast(message, { type = 'success', timeout = 2800, action = null
     el.addEventListener('animationend', () => el.remove(), { once: true });
   }, timeout);
   return el;
+}
+
+/* ---------- Nút chưa dùng được: bấm vào thì báo thiếu gì ---------- */
+// Thay cho thuộc tính disabled "câm": nút vẫn bấm được nhưng chỉ hiện thông báo nói rõ còn thiếu gì
+// (và đưa con trỏ tới ô cần điền nếu có data-need-focus). reason rỗng → nút hoạt động bình thường.
+export const needAttr = (reason, focus = '') =>
+  reason ? `aria-disabled="true" data-need="${escapeHtml(reason)}"${focus ? ` data-need-focus="${escapeHtml(focus)}"` : ''}` : '';
+
+export function need(btn, reason, focus = '') {
+  if (!btn) return;
+  btn.disabled = false;
+  if (reason) {
+    btn.setAttribute('aria-disabled', 'true');
+    btn.dataset.need = reason;
+    if (focus) btn.dataset.needFocus = focus;
+    else delete btn.dataset.needFocus;
+  } else {
+    btn.removeAttribute('aria-disabled');
+    delete btn.dataset.need;
+    delete btn.dataset.needFocus;
+  }
+}
+
+/** Báo thiếu: thông báo + đưa con trỏ tới ô cần điền (nếu tìm thấy) và làm nổi ô đó. */
+export function warnMissing(message, focusEl = null) {
+  toast(message, { type: 'warn', timeout: 6000 });
+  if (focusEl) {
+    focusEl.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    focusEl.focus?.({ preventScroll: true });
+    focusEl.classList.add('need-flash');
+    setTimeout(() => focusEl.classList.remove('need-flash'), 2200);
+  }
+  return false;
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener(
+    'click',
+    (e) => {
+      const b = e.target.closest?.('[aria-disabled="true"][data-need]');
+      if (!b) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const scope = b.closest('.modal, .view, .page') || document;
+      const sel = b.dataset.needFocus;
+      warnMissing(b.dataset.need, sel ? scope.querySelector(sel) || document.querySelector(sel) : null);
+    },
+    true,
+  );
 }
 
 /* ---------- Giao diện sáng / tối ---------- */

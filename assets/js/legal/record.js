@@ -255,8 +255,10 @@ export function prefillQa(rec, uidFn = () => Math.random().toString(36).slice(2,
 }
 
 /* ---------------- Dán văn bản ghi chép → hỏi – đáp theo mẫu biên bản ---------------- */
-const Q_MARK = /^\s*(?:\d{1,3}\s*[.)]\s*)?(?:câu\s*hỏi|hỏi|h|q)\s*(?:\d{1,3}\s*)?[:.\-–—]\s*/i;
-const A_MARK = /^\s*(?:trả\s*lời|tl|đáp|đ|a)\s*[:.\-–—]\s*/i;
+const Q_MARK = /^\s*(?:\d{1,3}\s*[.)]\s*)?(?:(?:câu\s*hỏi|hỏi|h|q)\s*(?:\d{1,3}\s*)?[:.\-–—]|(?:câu\s*hỏi|hỏi)\s*\t)\s*/i;
+const A_MARK = /^\s*(?:(?:trả\s*lời|tl|đáp|đ|a)\s*[:.\-–—]|(?:trả\s*lời|đáp)\s*\t)\s*/i;
+// "Hỏi: …? Đáp: …" trên cùng một dòng → tách thành hai dòng (chỉ với từ đầy đủ, không với “Đ:”, “A:”).
+const splitInlineAnswer = (t) => t.replace(/([?.!…”"])[ \t]+((?:Đáp|Trả lời|TL)\s*:)/giu, '$1\n$2');
 const keyText = (t) =>
   String(t || '')
     .toLowerCase()
@@ -270,7 +272,7 @@ const keyText = (t) =>
  * Không có dấu hiệu nào → trả về các đoạn văn (paragraphs) để ghép với câu hỏi chưa trả lời.
  */
 export function parsePastedQa(text) {
-  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  const lines = splitInlineAnswer(String(text || '').normalize('NFC').replace(/\r/g, '')).split('\n');
   const pairs = [];
   const pre = []; // đoạn văn đứng trước dấu hiệu "Hỏi:" đầu tiên
   let cur = null;

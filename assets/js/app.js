@@ -1,5 +1,5 @@
 // Ứng dụng chính: khung giao diện, điều hướng theo hash, tài khoản, bảng lệnh.
-import { $, $$, icon, toast, bindThemeToggles, escapeHtml } from './ui.js';
+import { $, $$, icon, toast, bindThemeToggles, escapeHtml, need, needAttr } from './ui.js';
 import { store, docsRepo, getEnv } from './lib/store.js';
 import { PROVIDERS, setAIHooks, setLocalEndpoint, isPrivateEndpoint, isOffline, normalizeLocalBase } from './lib/ai.js';
 import { accounts, vault, systemConfig, audit } from './lib/accounts.js';
@@ -635,11 +635,11 @@ function showRecoveryCode(code) {
         <div class="rec-code" data-rec-code>${escapeHtml(code)}</div>
         <ul class="hint rec-tips"><li>Ghi ra giấy hoặc in, cất nơi an toàn theo quy định bảo mật của đơn vị.</li><li>Không lưu trong máy tính, không gửi qua mạng.</li><li>Tạo mã mới tại <em>Bảo mật &amp; an toàn thông tin</em> (mã cũ hết hiệu lực).</li></ul>
         <label class="check"><input type="checkbox" data-rec-ok /> Tôi đã ghi lại mã khôi phục</label>
-        <div class="modal-actions"><button class="btn" type="button" data-rec-print>${icon('printer', 'ic-sm')}In mã</button><button class="btn btn-primary" type="button" data-rec-done disabled>Tiếp tục</button></div>
+        <div class="modal-actions"><button class="btn" type="button" data-rec-print>${icon('printer', 'ic-sm')}In mã</button><button class="btn btn-primary" type="button" data-rec-done ${needAttr('Hãy ghi lại (hoặc in) mã khôi phục, rồi tích ô “Tôi đã ghi lại mã khôi phục” để tiếp tục', '[data-rec-ok]')}>Tiếp tục</button></div>
       </div>`;
     const ok = gateEl.querySelector('[data-rec-ok]');
     const done = gateEl.querySelector('[data-rec-done]');
-    ok.addEventListener('change', () => (done.disabled = !ok.checked));
+    ok.addEventListener('change', () => need(done, ok.checked ? '' : 'Hãy ghi lại (hoặc in) mã khôi phục, rồi tích ô “Tôi đã ghi lại mã khôi phục” để tiếp tục', '[data-rec-ok]'));
     gateEl.querySelector('[data-rec-print]').addEventListener('click', () => {
       const w = window.open('', '_blank', 'width=600,height=400');
       if (!w) return;
@@ -875,6 +875,24 @@ $('[data-features-open]')?.addEventListener('click', () => openFeatureCatalog(ct
 /* ---------- Khởi động ---------- */
 // Chặn kết nối ra ngoài (chế độ bảo mật) trước mọi thao tác khác; ghi nhật ký mỗi lần chặn.
 applyNetworkGuard();
+
+// Lưới an toàn: thao tác nào gặp lỗi ngoài dự kiến cũng phải báo cho người dùng biết lý do (không im lặng).
+{
+  let last = '';
+  let lastAt = 0;
+  const report = (err) => {
+    if (!err || err.name === 'AbortError') return;
+    const msg = String(err.message || err || '').trim();
+    if (!msg || /ResizeObserver|Script error|Loading chunk|Failed to fetch dynamically/i.test(msg)) return;
+    const now = Date.now();
+    if (msg === last && now - lastAt < 4000) return;
+    last = msg;
+    lastAt = now;
+    toast(`Không thực hiện được: ${msg}`, { type: 'error', timeout: 7000 });
+  };
+  window.addEventListener('unhandledrejection', (e) => report(e.reason));
+  window.addEventListener('error', (e) => e.error && report(e.error));
+}
 const blockSeen = new Map();
 setSecurityBlockHook((r) => {
   // Mỗi máy chủ ghi nhật ký tối đa một lần mỗi phút.

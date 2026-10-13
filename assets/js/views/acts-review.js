@@ -16,13 +16,15 @@ export const lines = (v) => String(v || '').split('\n').map((x) => x.replace(/^\
 
 /* ---------------- Nhập tài liệu ---------------- */
 
-export const dropzoneHtml = (hint = 'Đơn tố giác, báo cáo xác minh, kết luận thanh tra, biên bản… (.pdf, .docx, ảnh chụp, .txt)') => `
+export const dropzoneHtml = (hint = 'Đơn tố giác, báo cáo xác minh, kết luận thanh tra, biên bản… (.pdf, Word .doc/.docx, ảnh chụp, .txt)') => `
   <label class="la-drop" data-drop>
-    <input type="file" accept=".pdf,.docx,.txt,.md,.html,image/*" multiple data-file hidden />
+    <input type="file" accept=".pdf,.docx,.doc,.rtf,.txt,.md,.html,image/*" multiple data-file hidden />
     ${icon('upload')}<strong>Chọn hoặc kéo thả tài liệu (Word, PDF, ảnh)</strong>
     <small>${escapeHtml(hint)}</small>
     <span class="la-files" data-files></span>
   </label>`;
+
+const SUPPORTED = /\.(pdf|docx?|dot|rtf|txt|md|csv|html?|jpe?g|png|webp|bmp|gif|tiff?)$/i;
 
 /** Gắn vùng kéo thả. Trả về { files() } — danh sách tệp đã chọn. */
 export function bindDropzone(box, onChange = () => {}) {
@@ -36,6 +38,7 @@ export function bindDropzone(box, onChange = () => {}) {
   const add = (list) => {
     for (const f of list) {
       if (f.size > MAX_FILE) toast(`“${f.name}” lớn hơn 40 MB`, { type: 'error' });
+      else if (!SUPPORTED.test(f.name) && !/^image\//.test(f.type)) toast(`Chưa đọc được loại tệp “${f.name}” — dùng Word (.doc, .docx), PDF, ảnh chụp hoặc .txt`, { type: 'error', timeout: 6000 });
       else files.push(f);
     }
     show();

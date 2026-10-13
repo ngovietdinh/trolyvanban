@@ -1,5 +1,5 @@
 // PDF sang Word: chọn tệp PDF / ảnh → chế độ (tự động, OCR, AI đọc ảnh) → chuyển → xem trước → tải .docx.
-import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob } from '../ui.js';
+import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, need, needAttr } from '../ui.js';
 import { inspectFile, convertFile } from '../lib/pdf-convert.js';
 import { buildFlowDocx, flowToText } from '../lib/docx-flow.js';
 import { aiReadPage, aiFixLines } from '../lib/pdf-ai.js';
@@ -72,7 +72,7 @@ export function render(ctx) {
             <label class="check"><input type="checkbox" data-opt="dropPageNumbers" ${opts.dropPageNumbers ? 'checked' : ''} />Bỏ số trang ở đầu/cuối trang</label>
           </div>
           <div class="pw-range"><span class="label">Trang</span><input class="input" type="number" min="1" placeholder="từ" data-from aria-label="Từ trang" /><span>–</span><input class="input" type="number" min="1" placeholder="đến" data-to aria-label="Đến trang" /><span class="hint">để trống: tất cả</span></div>
-          <button class="btn btn-primary btn-lg" type="button" data-go disabled>${icon('file', 'ic-sm')}<span data-go-label>Chuyển sang Word</span></button>
+          <button class="btn btn-primary btn-lg" type="button" data-go ${needAttr('Chưa chọn tệp: chọn hoặc kéo thả tệp PDF/ảnh vào khung phía trên', '[data-drop]')}>${icon('file', 'ic-sm')}<span data-go-label>Chuyển sang Word</span></button>
           <p class="hint pw-privacy">${icon('lock', 'ic-sm')}<span>Tệp được xử lý trên máy của bạn. Chỉ khi chọn chế độ AI, ảnh hoặc chữ của trang mới được gửi tới dịch vụ AI bạn đã cài.</span></p>
         </div>
       </section>
@@ -103,7 +103,7 @@ export function render(ctx) {
       file = info = result = null;
       renderInfo();
       renderEmpty();
-      $('[data-go]', root).disabled = true;
+      need($('[data-go]', root), 'Chưa chọn tệp: chọn hoặc kéo thả tệp PDF/ảnh vào khung phía trên', '[data-drop]');
     });
   }
 
@@ -116,16 +116,18 @@ export function render(ctx) {
     result = null;
     renderInfo();
     renderEmpty();
+    need($('[data-go]', root), 'Đang đọc tệp — chờ vài giây rồi bấm lại');
     try {
       info = await inspectFile(f);
       // Gợi ý chế độ phù hợp.
       if (info.kind === 'scan' && ctx.hasAI() && opts.mode === 'auto') toast('PDF dạng ảnh quét — có thể chọn “AI đọc ảnh” để chính xác nhất', { type: 'info', timeout: 5000 });
       renderInfo();
       $('[data-to]', root).placeholder = String(info.pages);
-      $('[data-go]', root).disabled = false;
+      need($('[data-go]', root), '');
     } catch (err) {
       file = null;
       renderInfo();
+      need($('[data-go]', root), 'Chưa chọn tệp: chọn hoặc kéo thả tệp PDF/ảnh vào khung phía trên', '[data-drop]');
       toast(/password/i.test(err?.name + err?.message) ? 'PDF có mật khẩu — hãy bỏ mật khẩu rồi thử lại' : `Không đọc được tệp: ${err.message}`, { type: 'error', timeout: 6000 });
     }
   }

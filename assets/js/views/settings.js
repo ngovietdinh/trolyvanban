@@ -1,5 +1,5 @@
 // Cài đặt: AI (API key mã hóa theo tài khoản, đa nhà cung cấp), thông tin đơn vị, giao diện, cập nhật, dữ liệu.
-import { $, $$, icon, toast, escapeHtml, setTheme, downloadBlob } from '../ui.js';
+import { $, $$, icon, toast, escapeHtml, setTheme, downloadBlob, need, needAttr } from '../ui.js';
 import { store, docsRepo, WIPE_KEYS, getEnv } from '../lib/store.js';
 import { PROVIDERS, MODELS, LOCAL_PRESETS, testApiKey, listModels, normalizeLocalBase, isPrivateEndpoint } from '../lib/ai.js';
 import { groqLimits, setGroqLimits, groqUsageToday, GROQ_DEFAULT_LIMITS } from '../lib/groq-quota.js';
@@ -538,7 +538,7 @@ export function render(ctx) {
     const nCache = Object.keys(store.get('ai-cache', {})).length;
     const nLearn = learnedBank.count();
     host.innerHTML = `<div class="mem-stats"><div><strong data-mem-learn>${nLearn}</strong><span>câu hỏi đã học</span></div><div><strong data-mem-cache>${nCache}</strong><span>kết quả AI đã ghi nhớ</span></div></div>
-      <div class="inline"><button class="btn btn-sm btn-ghost" type="button" data-clear-learn ${nLearn ? '' : 'disabled'}>${icon('trash', 'ic-sm')}Xóa câu hỏi đã học</button><button class="btn btn-sm btn-ghost" type="button" data-clear-cache ${nCache ? '' : 'disabled'}>${icon('trash', 'ic-sm')}Xóa kết quả AI đã ghi nhớ</button></div>`;
+      <div class="inline"><button class="btn btn-sm btn-ghost" type="button" data-clear-learn ${needAttr(nLearn ? '' : 'Chưa có câu hỏi đã học nào để xóa')}>${icon('trash', 'ic-sm')}Xóa câu hỏi đã học</button><button class="btn btn-sm btn-ghost" type="button" data-clear-cache ${needAttr(nCache ? '' : 'Chưa có kết quả AI đã ghi nhớ nào để xóa')}>${icon('trash', 'ic-sm')}Xóa kết quả AI đã ghi nhớ</button></div>`;
     $('[data-clear-learn]', host).addEventListener('click', async () => {
       if (!(await ctx.confirm('Xóa toàn bộ câu hỏi hệ thống đã tự học?', { title: 'Xóa bộ nhớ', okText: 'Xóa', danger: true }))) return;
       learnedBank.clear();
@@ -678,7 +678,7 @@ export function render(ctx) {
   const syncChatN = () => {
     const n = chatCount();
     $('[data-chat-n]', root).textContent = n ? ` ${n} cuộc trò chuyện` : ' Chưa có';
-    $('[data-clear-chats]', root).disabled = !n;
+    need($('[data-clear-chats]', root), n ? '' : 'Chưa có cuộc trò chuyện nào để xóa');
   };
   syncChatN();
   $('[data-clear-chats]', root).addEventListener('click', async () => {

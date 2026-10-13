@@ -1,5 +1,5 @@
 // Hồ sơ vụ án: thông tin vụ án, người tham gia tố tụng, kế hoạch hỏi, biên bản, đối chiếu lời khai.
-import { $, $$, icon, toast, escapeHtml } from '../ui.js';
+import { $, $$, icon, toast, escapeHtml, warnMissing } from '../ui.js';
 import { deleteWithUndo, repoOps } from '../lib/undo-delete.js';
 import { casesRepo, recordsRepo, plansRepo, deleteCase, legalDocsRepo } from '../legal/repo.js';
 import { findForm, LOAI } from '../legal/forms-catalog.js';
@@ -52,8 +52,7 @@ function caseForm(ctx, existing, onSaved) {
           const f = Object.fromEntries(new FormData(e.target));
           if (!f.ten.trim()) {
             box.querySelector('[name="ten"]').closest('.field').classList.add('invalid');
-            box.querySelector('[name="ten"]').focus();
-            return;
+            return warnMissing('Chưa nhập tên vụ án / vụ việc', box.querySelector('[name="ten"]'));
           }
           const saved = casesRepo.save({ ...(existing || { persons: [] }), ...f, ten: f.ten.trim(), toiDanh: f.toiDanh.split(/[,;\s]+/).map((x) => x.replace(/^điều/i, '')).filter((x) => findCrime(x)) });
           close();
@@ -87,8 +86,7 @@ function personForm(ctx, caseItem, existing, onSaved) {
           const f = Object.fromEntries(new FormData(e.target));
           if (!f.hoTen.trim()) {
             box.querySelector('[name="hoTen"]').closest('.field').classList.add('invalid');
-            box.querySelector('[name="hoTen"]').focus();
-            return;
+            return warnMissing('Chưa nhập họ tên người tham gia tố tụng', box.querySelector('[name="hoTen"]'));
           }
           const person = { ...(existing || { id: uid() }), ...f, hoTen: f.hoTen.trim() };
           const persons = (caseItem.persons || []).filter((x) => x.id !== person.id);

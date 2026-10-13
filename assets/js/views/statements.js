@@ -2,7 +2,7 @@
 // sơ đồ quan hệ, dòng tiền, hành vi, tư duy; đối chiếu ai khai gì về ai; danh sách điểm cần làm rõ (mâu thuẫn,
 // phủ nhận, chỉ một bên khai, thiếu số tiền / thời gian / chức vụ, người chưa lấy lời khai, trả lời mơ hồ).
 // AI chỉ dùng khi cần làm rõ: gửi đúng các câu liên quan tới điểm đó, kết quả đối chiếu nguyên văn.
-import { $, $$, icon, toast, escapeHtml, downloadBlob, copyText } from '../ui.js';
+import { $, $$, icon, toast, escapeHtml, downloadBlob, copyText, needAttr } from '../ui.js';
 import { casesRepo, recordsRepo } from '../legal/repo.js';
 import { getRole } from '../legal/roles.js';
 import { isFullName, stripTitle, key as nameKey } from '../legal/case-map.js';
@@ -68,7 +68,7 @@ export function render(ctx) {
       <div class="lk-bar">
         <select class="select" data-lk-case aria-label="Hồ sơ để lấy biên bản"><option value="">Biên bản của tất cả hồ sơ</option>${casesRepo.list().map((c) => `<option value="${c.id}" ${c.id === s.caseId ? 'selected' : ''}>${escapeHtml(c.ten)}</option>`).join('')}</select>
         <button class="btn btn-sm" type="button" data-lk-import>${icon('message', 'ic-sm')}Lấy từ biên bản</button>
-        <label class="btn btn-sm" title="Word, PDF, ảnh, .txt — tệp có nhiều lời khai (“Lời khai của …”) tự tách theo người">${icon('upload', 'ic-sm')}Tải tệp<input type="file" hidden multiple accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp" data-lk-file /></label>
+        <label class="btn btn-sm" title="Word, PDF, ảnh, .txt — tệp có nhiều lời khai (“Lời khai của …”) tự tách theo người">${icon('upload', 'ic-sm')}Tải tệp<input type="file" hidden multiple accept=".pdf,.docx,.doc,.rtf,.txt,.png,.jpg,.jpeg,.webp" data-lk-file /></label>
         <button class="btn btn-sm btn-ghost" type="button" data-lk-add>${icon('plus', 'ic-sm')}Thêm lời khai</button>
         <span class="spacer"></span>
         <button class="btn btn-sm btn-ghost" type="button" data-lk-new title="Bắt đầu phân tích mới (phiên hiện tại vẫn được lưu)">${icon('file', 'ic-sm')}Phiên mới</button>
@@ -195,7 +195,7 @@ export function render(ctx) {
     const pend = open.filter((x) => x.level !== 'thap' && !s.answers[x.id]).length;
     const keepOpen = new Set($$('.lk-ex[open]', host).map((d) => d.closest('[data-issue]')?.dataset.issue));
     host.innerHTML = `<div class="lk-is-head"><h2>${icon('alert', 'ic-sm')}Cần làm rõ <span class="badge">${open.length}</span></h2>
-      ${ai() ? `<button type="button" class="btn btn-sm btn-primary" data-lk-ai-all ${pend && !st.busy.size ? '' : 'disabled'} title="Gửi một lần các điểm quan trọng chưa hỏi — chỉ kèm câu lời khai liên quan">${icon('sparkles', 'ic-sm')}AI làm rõ ${pend ? `${Math.min(pend, isTight(ai()) ? 3 : 6)} điểm quan trọng` : 'các điểm quan trọng'}</button>` : `<small class="hint">Kết nối AI trong Cài đặt để AI làm rõ từng điểm (chỉ gửi đoạn liên quan). Không có AI vẫn dùng được câu hỏi gợi ý.</small>`}</div>
+      ${ai() ? `<button type="button" class="btn btn-sm btn-primary" data-lk-ai-all ${needAttr(st.busy.size ? 'AI đang làm rõ — chờ xong lượt hiện tại' : pend ? '' : 'Không còn điểm quan trọng nào chưa hỏi AI — bấm “Hỏi AI làm rõ” ở từng điểm nếu cần')} title="Gửi một lần các điểm quan trọng chưa hỏi — chỉ kèm câu lời khai liên quan">${icon('sparkles', 'ic-sm')}AI làm rõ ${pend ? `${Math.min(pend, isTight(ai()) ? 3 : 6)} điểm quan trọng` : 'các điểm quan trọng'}</button>` : `<small class="hint">Kết nối AI trong Cài đặt để AI làm rõ từng điểm (chỉ gửi đoạn liên quan). Không có AI vẫn dùng được câu hỏi gợi ý.</small>`}</div>
       <div class="lk-lvs" role="group" aria-label="Lọc theo mức">${[['all', `Tất cả (${list.length})`], ['cao', `Ngay (${cnt('cao')})`], ['vua', `Nên (${cnt('vua')})`], ['thap', `Bổ sung (${cnt('thap')})`]].map(([k, l]) => `<button type="button" class="chip" data-lk-lv="${k}" aria-pressed="${st.lv === k}">${l}</button>`).join('')}</div>
       ${shown.length ? `<ul class="lk-issue-list">${shown.map(issueHtml).join('')}</ul>` : `<p class="muted">${list.length ? 'Không có điểm nào ở mức này.' : 'Chưa phát hiện mâu thuẫn hay điểm còn thiếu giữa các lời khai.'}</p>`}`;
     keepOpen.forEach((id) => id && $(`[data-issue="${CSS.escape(id)}"] .lk-ex`, host)?.setAttribute('open', ''));

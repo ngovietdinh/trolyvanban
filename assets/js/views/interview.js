@@ -1,5 +1,5 @@
 // Ghi lời khai / hỏi cung trực tiếp theo kế hoạch, có trợ lý phân tích (AI hoặc cục bộ) và xuất biên bản.
-import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, debounce } from '../ui.js';
+import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, debounce, needAttr, warnMissing } from '../ui.js';
 import { recordsRepo, casesRepo, learnedBank, deleteRecords, restoreRecords } from '../legal/repo.js';
 import { audit } from '../lib/accounts.js';
 import { buildRecordDocument, PERSON_FIELDS, newRecord, prefillQa, parsePastedQa, planPastedQa, applyPastedQa } from '../legal/record.js';
@@ -58,7 +58,7 @@ function renderList(ctx) {
     </div>
     <section class="panel">${
       recs.length
-        ? `<div class="rec-bar"><label class="check"><input type="checkbox" data-sel-all ${selected.size && selected.size === recs.length ? 'checked' : ''} />Chọn tất cả</label><span class="spacer"></span><span class="hint" data-sel-n>${selected.size ? `Đã chọn ${selected.size}` : ''}</span><button class="btn btn-sm" type="button" data-del-sel ${selected.size ? '' : 'disabled'}>${icon('trash', 'ic-sm')}Xóa đã chọn</button></div>
+        ? `<div class="rec-bar"><label class="check"><input type="checkbox" data-sel-all ${selected.size && selected.size === recs.length ? 'checked' : ''} />Chọn tất cả</label><span class="spacer"></span><span class="hint" data-sel-n>${selected.size ? `Đã chọn ${selected.size}` : ''}</span><button class="btn btn-sm" type="button" data-del-sel ${needAttr(selected.size ? '' : 'Chưa chọn biên bản nào — tích ô ở đầu các biên bản cần xóa')}>${icon('trash', 'ic-sm')}Xóa đã chọn</button></div>
           <ul class="doc-list">${recs
             .map((r) => {
               const c = r.caseId ? casesRepo.get(r.caseId) : null;
@@ -636,7 +636,7 @@ export function render(ctx, params = []) {
         </div>
         <div class="field"><label>Xem trước theo mẫu biên bản</label><div class="ps-out" data-ps-out><p class="hint">Bấm “Chuyển đổi” để xem trước.</p></div></div>
       </div>
-      <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-ps-apply disabled>${icon('check', 'ic-sm')}Đưa vào biên bản</button></div>`,
+      <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-ps-apply>${icon('check', 'ic-sm')}Đưa vào biên bản</button></div>`,
       {
         className: 'modal-wide modal-xl',
         label: 'Dán và chuyển đổi',
@@ -647,24 +647,27 @@ export function render(ctx, params = []) {
           const norm = () => box.querySelector('[data-ps-norm]').checked;
           ta.focus();
           const show = () => {
-            applyBtn.disabled = !items.length;
             out.innerHTML = items.length
               ? `<ol class="ps-list">${items
                   .map((it) => `<li><p><strong>Hỏi:</strong> ${escapeHtml(it.q)}</p><p><strong>Trả lời:</strong> ${escapeHtml(it.a || '…')}</p><small class="${it.index >= 0 ? 'ok' : ''}">${it.index >= 0 ? `Điền vào lượt ${it.index + 1} (câu hỏi đã có)` : 'Thêm lượt mới'}</small></li>`)
                   .join('')}</ol>`
               : '<p class="hint">Không tìm thấy nội dung để chuyển đổi.</p>';
           };
-          box.querySelector('[data-ps-run]').addEventListener('click', () => {
+          const runLocal = () => {
             const parsed = parsePastedQa(ta.value);
             items = planPastedQa(rec, parsed).map((it) => ({ ...it, a: norm() ? localNormalize(it.a) : it.a }));
             show();
+          };
+          box.querySelector('[data-ps-run]').addEventListener('click', () => {
+            if (!ta.value.trim()) return warnMissing('Chưa có nội dung: dán ghi chép, lời khai vào ô bên trên', ta);
+            runLocal();
           });
           box.querySelector('[data-ps-ai]').addEventListener('click', async (e) => {
             if (!ctx.hasAI('legal')) {
               toast(ctx.can('legal.ai') ? 'Thêm API key trong Cài đặt để dùng AI' : 'Phân hệ Tố tụng đang ngoại tuyến — dùng “Chuyển đổi” (chạy trên máy)', { type: 'info', timeout: 4500 });
               return;
             }
-            if (!ta.value.trim()) return ta.focus();
+            if (!ta.value.trim()) return warnMissing('Chưa có nội dung: dán ghi chép, lời khai vào ô bên trên', ta);
             const btn = e.currentTarget;
             btn.disabled = true;
             btn.innerHTML = `${icon('refresh', 'ic-sm spin')}AI đang chuyển đổi…`;
@@ -689,6 +692,12 @@ export function render(ctx, params = []) {
             }
           });
           applyBtn.addEventListener('click', () => {
+            if (!items.length) {
+              if (!ta.value.trim()) return warnMissing('Chưa có nội dung để đưa vào biên bản: dán ghi chép vào ô bên trên', ta);
+              runLocal(); // chưa bấm “Chuyển đổi” → tự chuyển đổi trên máy
+              if (!items.length) return warnMissing('Không tách được lượt hỏi – đáp nào từ nội dung đã dán — kiểm tra lại nội dung (mỗi câu hỏi/câu trả lời một đoạn)', ta);
+              return toast(`Đã chuyển đổi ${items.length} lượt — kiểm tra rồi bấm “Đưa vào biên bản” lần nữa`, { type: 'info' });
+            }
             const r = applyPastedQa(rec, items, uid);
             if (rec.plan?.dieu) items.forEach((it) => it.a && it.q && !/^\[/.test(it.q) && learnedBank.learn(rec.plan.dieu, rec.qa.find((x) => x.q === it.q)?.issueId, it.q));
             if (rec.status === 'hoan-thanh') rec.status = 'dang-ghi';

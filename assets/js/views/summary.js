@@ -1,7 +1,7 @@
 // Tóm tắt văn bản: cục bộ (trích xuất) hoặc AI Claude (diễn giải).
 import { $, icon, toast, escapeHtml, copyText, renderMarkdown } from '../ui.js';
 import { summarize, textStats } from '../lib/summarize.js';
-import { docxToText } from '../lib/docx.js';
+import { fileToText } from '../lib/extract.js';
 import { store, usage } from '../lib/store.js';
 import { streamClaude } from '../lib/ai.js';
 import { isTight, chunkSizeFor, splitText } from '../lib/ai-chunk.js';
@@ -24,7 +24,7 @@ export function render(ctx) {
         <div class="panel-head"><h2>${icon('file', 'ic-sm')}Văn bản gốc</h2><button class="btn btn-ghost btn-sm" type="button" data-clear>${icon('trash', 'ic-sm')}Xóa</button></div>
         <div class="panel-body" style="display:grid;gap:14px">
           <label class="dropzone">
-            <input type="file" accept=".txt,.docx" data-file aria-label="Tải lên tệp .docx hoặc .txt" />
+            <input type="file" accept=".txt,.docx,.doc,.rtf" data-file aria-label="Tải lên tệp Word (.doc, .docx) hoặc .txt" />
             <span class="dz-icon">${icon('upload')}</span>
             <span><strong>Tải lên tệp .docx hoặc .txt</strong><small>Nội dung được xử lý ngay trên trình duyệt</small></span>
           </label>
@@ -161,8 +161,7 @@ export function render(ctx) {
     const file = e.target.files[0];
     if (!file) return;
     try {
-      const buf = await file.arrayBuffer();
-      input.value = /\.docx$/i.test(file.name) ? await docxToText(buf) : new TextDecoder().decode(buf);
+      input.value = await fileToText(file);
       store.set('summary-text', input.value);
       toast(`Đã tải “${file.name}”`);
       runLocal();

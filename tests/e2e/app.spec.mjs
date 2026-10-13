@@ -62,7 +62,7 @@ test.describe('Không gian làm việc', () => {
   test('chặn xuất tệp khi thiếu trường bắt buộc và chỉ rõ trường lỗi', async ({ page }) => {
     await freshApp(page, '#compose/cong-van');
     await page.locator('[data-export]').click();
-    await expect(page.locator('.toast.error').last()).toContainText('trường bắt buộc');
+    await expect(page.locator('.toast.warn').last()).toContainText('trường bắt buộc');
     expect(await page.locator('.field.invalid').count()).toBeGreaterThan(2);
     await expect(page.locator('.field.invalid [name]').first()).toBeFocused();
     await expect(page.locator('.vb-page .vb-ph').first()).toBeVisible();

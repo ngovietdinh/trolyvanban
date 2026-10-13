@@ -2,7 +2,7 @@
 // ① Nhập hành vi (thủ công, tải Word / PDF / ảnh) → ② Hệ thống đề xuất điều luật, người dùng chọn (một hoặc nhiều
 // điều, chọn điều chính) → ③ Duyệt hành vi theo từng điều (chọn, sửa, thêm) → ④ Kế hoạch câu hỏi và sơ đồ cây
 // (màn hình kế hoạch của cây hỏi đáp, có thanh bước để quay lại).
-import { $, $$, icon, toast, escapeHtml } from '../ui.js';
+import { $, $$, icon, toast, escapeHtml, needAttr } from '../ui.js';
 import { findCrime, crimeWithCustomActs, searchCrimes } from '../legal/engine.js';
 import { analyzeActs, analyzeOffline, mergeResults } from '../legal/analyze.js';
 import { store } from '../lib/store.js';
@@ -235,7 +235,7 @@ export function mountWizard(ctx, host, { step, onPlan, onExit } = {}) {
     foot2();
   }
   function foot2() {
-    foot(`<button class="btn btn-ghost" type="button" data-back>${icon('chevron-left', 'ic-sm')}Bước 1</button><span class="wz-sum">${s.chosen.length ? `Đã chọn <strong>${s.chosen.length}</strong> điều · điều chính <strong>Điều ${s.primary}</strong>` : 'Chưa chọn điều luật nào'}</span><span class="spacer"></span><button class="btn btn-primary" type="button" data-next ${s.chosen.length ? '' : 'disabled'}>Tiếp tục: chọn hành vi ${icon('arrow-right', 'ic-sm')}</button>`);
+    foot(`<button class="btn btn-ghost" type="button" data-back>${icon('chevron-left', 'ic-sm')}Bước 1</button><span class="wz-sum">${s.chosen.length ? `Đã chọn <strong>${s.chosen.length}</strong> điều · điều chính <strong>Điều ${s.primary}</strong>` : 'Chưa chọn điều luật nào'}</span><span class="spacer"></span><button class="btn btn-primary" type="button" data-next ${needAttr(s.chosen.length ? '' : 'Chưa chọn điều luật nào — tích chọn ít nhất một điều trong danh sách')}>Tiếp tục: chọn hành vi ${icon('arrow-right', 'ic-sm')}</button>`);
     $('[data-back]', host).addEventListener('click', () => go(1));
     $('[data-next]', host).addEventListener('click', () => {
       s.maxStep = Math.max(s.maxStep, 3);
@@ -295,7 +295,7 @@ export function mountWizard(ctx, host, { step, onPlan, onExit } = {}) {
     const c = $('[data-count]', host);
     if (c) c.textContent = `${n} hành vi đã chọn`;
     persist();
-    foot(`<button class="btn btn-ghost" type="button" data-back>${icon('chevron-left', 'ic-sm')}Bước 2</button><span class="spacer"></span><button class="btn btn-primary" type="button" data-next ${n ? '' : 'disabled'}>Lập câu hỏi &amp; sơ đồ cây ${icon('arrow-right', 'ic-sm')}</button>`);
+    foot(`<button class="btn btn-ghost" type="button" data-back>${icon('chevron-left', 'ic-sm')}Bước 2</button><span class="spacer"></span><button class="btn btn-primary" type="button" data-next ${needAttr(n ? '' : 'Chưa chọn hành vi nào — tích chọn ít nhất một hành vi (có tên) trong danh sách')}>Lập câu hỏi &amp; sơ đồ cây ${icon('arrow-right', 'ic-sm')}</button>`);
     $('[data-back]', host).addEventListener('click', () => go(2));
     $('[data-next]', host).addEventListener('click', finish);
   }

@@ -1,6 +1,6 @@
 // Tải biên bản lời khai đã có (Word, PDF, ảnh chụp, dán chữ) vào hệ thống: tự tách phần Hỏi – Đáp, nhận họ tên,
 // ngày, lần; gắn hồ sơ, người khai, kế hoạch hỏi để đánh dấu các câu hỏi đã được trả lời và đưa vào theo dõi.
-import { $, icon, toast, escapeHtml } from '../ui.js';
+import { $, icon, toast, escapeHtml, warnMissing } from '../ui.js';
 import { casesRepo, recordsRepo, plansRepo, customBank, learnedBank } from '../legal/repo.js';
 import { newRecord, parsePastedQa } from '../legal/record.js';
 import { generatePlan, findCrime } from '../legal/engine.js';
@@ -19,7 +19,7 @@ export function openRecordUpload(ctx, { caseId = null, onSaved = () => {} } = {}
     <p class="hint">Biên bản ghi lời khai, hỏi cung đã lập bên ngoài (Word, PDF, ảnh chụp) hoặc dán nội dung. Hệ thống tự tách các lượt <strong>Hỏi – Đáp</strong>, đối chiếu với kế hoạch hỏi để đánh dấu câu hỏi đã được trả lời và đưa vào phần theo dõi, báo cáo.</p>
     <div class="ru-grid">
       <div class="ru-src">
-        ${dropzoneHtml('Mỗi lần một biên bản — có thể chọn nhiều ảnh/trang của cùng biên bản (.docx, .pdf, ảnh, .txt)')}
+        ${dropzoneHtml('Mỗi lần một biên bản — có thể chọn nhiều ảnh/trang của cùng biên bản (Word .doc/.docx, .pdf, ảnh, .txt)')}
         <div class="field"><label for="ru-text">Hoặc dán nội dung biên bản</label><textarea class="textarea" id="ru-text" rows="5" data-ru-text placeholder="Hỏi: …&#10;Đáp: …"></textarea></div>
         <button class="btn btn-sm" type="button" data-ru-read>${icon('search', 'ic-sm')}Đọc biên bản</button>
         <p class="hint" data-ru-say aria-live="polite"></p>
@@ -40,16 +40,21 @@ export function openRecordUpload(ctx, { caseId = null, onSaved = () => {} } = {}
       </form>
     </div>
     <div class="ru-preview" data-ru-preview hidden></div>
-    <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-ru-save disabled>${icon('save', 'ic-sm')}Lưu biên bản</button></div>`,
+    <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-ru-save>${icon('save', 'ic-sm')}Lưu biên bản</button></div>`,
     {
       className: 'modal-wide ru-modal',
       label: 'Tải biên bản lên',
       onMount(box, close) {
         const f = $('[data-ru-form]', box);
         const say = (t) => ($('[data-ru-say]', box).textContent = t);
-        const drop = bindDropzone(box);
         let parsed = null;
+        let parsedKey = null; // nguồn đã đọc (tên + cỡ tệp + nội dung dán) — đổi nguồn thì đọc lại
         let files = [];
+        let reading = null;
+        let typeTimer = 0;
+        const srcKey = () => `${drop.files().map((x) => `${x.name}:${x.size}`).join('|')}§${$('[data-ru-text]', box).value.trim()}`;
+        // Chọn / kéo thả tệp → tự đọc ngay, không phải bấm thêm nút.
+        const drop = bindDropzone(box, (list) => list.length && read().catch(() => {}));
 
         const fillCase = () => {
           const c = casesRepo.get(f.caseId.value);
@@ -94,19 +99,23 @@ export function openRecordUpload(ctx, { caseId = null, onSaved = () => {} } = {}
           out.hidden = false;
           out.innerHTML = `<div class="ru-sum">${icon('check-circle', 'ic-sm')}<span>Đọc được <strong>${qa.length}</strong> lượt hỏi – đáp${plan ? ` · <strong>${linked}</strong> khớp câu hỏi của kế hoạch` : ''}${parsed.hoTen ? ` · người khai: <strong>${escapeHtml(parsed.hoTen)}</strong>` : ''}${parsed.ngay ? ` · ngày ${parsed.ngay.split('-').reverse().join('/')}` : ''}</span></div>
             ${qa.length ? `<ol class="ru-qa">${qa.slice(0, 6).map((x) => `<li><p><strong>Hỏi:</strong> ${escapeHtml(x.q)}${x.planQ ? ' <span class="badge badge-success">Khớp kế hoạch</span>' : ''}</p><p><strong>Đáp:</strong> ${escapeHtml(x.a || '(chưa trả lời)')}</p></li>`).join('')}</ol>${qa.length > 6 ? `<p class="hint">… và ${qa.length - 6} lượt khác.</p>` : ''}` : `<p class="note warn">${icon('alert', 'ic-sm')}<span>Không tìm thấy dòng “Hỏi:” / “Đáp:” (hoặc “H:”, “TL:”, “Trả lời:”). Kiểm tra lại nội dung biên bản.</span></p>`}`;
-          $('[data-ru-save]', box).disabled = !qa.length;
         };
         f.plan.addEventListener('change', preview);
 
-        $('[data-ru-read]', box).addEventListener('click', async (e) => {
-          const btn = e.currentTarget;
-          files = drop.files();
-          if (!files.length && !$('[data-ru-text]', box).value.trim()) return toast('Chọn tệp biên bản hoặc dán nội dung', { type: 'error' });
+        const noSource = () => !drop.files().length && !$('[data-ru-text]', box).value.trim();
+        /** Đọc biên bản (tệp + nội dung dán) → tách Hỏi – Đáp, điền sẵn thông tin. Ném lỗi nếu không đọc được tệp. */
+        const read = () => {
+          if (reading) return reading;
+          clearTimeout(typeTimer);
+          const btn = $('[data-ru-read]', box);
           btn.disabled = true;
-          try {
+          reading = (async () => {
+            files = [...drop.files()];
+            const key = srcKey();
             const text = await readAll(files, $('[data-ru-text]', box).value, say);
             parsed = parseRecordText(text, parsePastedQa);
-            say('');
+            parsedKey = key;
+            say(parsed.pairs.length ? '' : 'Đã đọc nhưng chưa tách được lượt Hỏi – Đáp nào — xem hướng dẫn bên dưới.');
             // Điền sẵn thông tin đọc được.
             if (parsed.ngay) f.ngay.value = parsed.ngay;
             if (parsed.lan) f.lan.value = parsed.lan;
@@ -120,16 +129,52 @@ export function openRecordUpload(ctx, { caseId = null, onSaved = () => {} } = {}
             syncPerson();
             if (parsed.lan) f.lan.value = parsed.lan;
             preview();
-          } catch (err) {
-            say('');
-            toast(err.message, { type: 'error', timeout: 5000 });
-          } finally {
-            btn.disabled = false;
-          }
+            return parsed;
+          })()
+            .catch((err) => {
+              say('');
+              parsed = null;
+              parsedKey = null;
+              preview();
+              toast(err.message, { type: 'error', timeout: 7000 });
+              throw err;
+            })
+            .finally(() => {
+              btn.disabled = false;
+              reading = null;
+            });
+          return reading;
+        };
+
+        $('[data-ru-read]', box).addEventListener('click', () => {
+          if (noSource()) return warnMissing('Chưa có biên bản: chọn tệp (Word .doc/.docx, PDF, ảnh chụp) hoặc dán nội dung vào ô bên trái', $('[data-drop]', box));
+          read().catch(() => {});
+        });
+        // Dán / gõ nội dung (không kèm tệp) → tự đọc lại sau khi ngừng gõ.
+        $('[data-ru-text]', box).addEventListener('input', () => {
+          clearTimeout(typeTimer);
+          if (!drop.files().length) typeTimer = setTimeout(() => !noSource() && read().catch(() => {}), 600);
         });
 
-        $('[data-ru-save]', box).addEventListener('click', () => {
-          if (!parsed?.pairs.length) return;
+        $('[data-ru-save]', box).addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          // Báo rõ còn thiếu gì thay vì im lặng.
+          if (noSource()) return warnMissing('Chưa có biên bản để lưu: chọn tệp (Word .doc/.docx, PDF, ảnh chụp) hoặc dán nội dung vào ô bên trái', $('[data-drop]', box));
+          // Chưa đọc / đổi tệp, nội dung sau lần đọc trước → đọc lại rồi mới lưu.
+          for (let i = 0; i < 3 && (reading || parsedKey !== srcKey()); i++) {
+            btn.disabled = true;
+            try {
+              await read();
+            } catch {
+              return;
+            } finally {
+              btn.disabled = false;
+            }
+          }
+          if (!parsed?.pairs.length)
+            return warnMissing('Không lưu được: chưa tách được lượt Hỏi – Đáp nào. Biên bản cần các dòng bắt đầu bằng “Hỏi:” và “Đáp:” (hoặc “H:”, “Đ:”, “Trả lời:”). Ảnh mờ thì chụp rõ hơn, hoặc dán nội dung vào ô bên trái.', $('[data-ru-text]', box));
+          const personPicked = casesRepo.get(f.caseId.value)?.persons?.some((x) => x.id === f.personId.value);
+          if (!personPicked && !f.hoTen.value.trim()) return warnMissing('Không lưu được: chưa có họ tên người khai — nhập vào ô “Họ tên người khai” hoặc chọn người khai có sẵn trong hồ sơ', f.hoTen);
           let caseItem = casesRepo.get(f.caseId.value) || null;
           let person = caseItem?.persons?.find((x) => x.id === f.personId.value) || null;
           const roleId = person?.roleId || f.roleId.value;

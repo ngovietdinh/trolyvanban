@@ -1,9 +1,9 @@
 // Cây hỏi đáp pháp luật: lĩnh vực → nhóm → tội danh → hành vi → vấn đề cần làm rõ → bộ câu hỏi (chỉnh sửa được).
-import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, debounce } from '../ui.js';
+import { $, $$, icon, toast, escapeHtml, copyText, downloadBlob, debounce, need, needAttr, warnMissing } from '../ui.js';
 import { DOMAINS, findCrime, searchCrimes, generatePlan, planToText, SOURCE_LABELS, LEGAL_DISCLAIMER, ALL_CRIMES, crimeWithCustomActs, localFollowUps, CATALOG_STATUS, BUOC } from '../legal/engine.js';
 import { CATALOG } from '../legal/blhs-catalog.js';
 import { parseBlhsText, compareWithCatalog } from '../legal/blhs-import.js';
-import { docxToText } from '../lib/docx.js';
+import { fileToText } from '../lib/extract.js';
 import { audit } from '../lib/accounts.js';
 import { ROLES, ROLE_GROUPS, getRole } from '../legal/roles.js';
 import { buildPlanDocument, buildRecordDocument, newRecord, prefillQa } from '../legal/record.js';
@@ -213,12 +213,12 @@ export function render(ctx, params = []) {
     ctx.modal(
       `<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button>
       <h2 class="modal-title">Cập nhật Bộ luật Hình sự</h2>
-      <p class="hint" style="margin-bottom:12px">Chọn tệp Word (.docx) hoặc .txt của Văn bản hợp nhất Bộ luật Hình sự (vd: 135/VBHN-VPQH năm 2025), hoặc sao chép toàn văn từ cổng văn bản pháp luật rồi dán vào ô dưới. Dữ liệu được xử lý và lưu trên máy này.</p>
-      <div class="field"><label class="btn btn-sm" style="position:relative;overflow:hidden;width:max-content">${icon('upload', 'ic-sm')}Chọn tệp .docx / .txt<input type="file" accept=".docx,.txt" data-blhs-file style="position:absolute;inset:0;opacity:0;cursor:pointer" aria-label="Chọn tệp Bộ luật" /></label></div>
+      <p class="hint" style="margin-bottom:12px">Chọn tệp Word (.doc, .docx) hoặc .txt của Văn bản hợp nhất Bộ luật Hình sự (vd: 135/VBHN-VPQH năm 2025), hoặc sao chép toàn văn từ cổng văn bản pháp luật rồi dán vào ô dưới. Dữ liệu được xử lý và lưu trên máy này.</p>
+      <div class="field"><label class="btn btn-sm" style="position:relative;overflow:hidden;width:max-content">${icon('upload', 'ic-sm')}Chọn tệp Word / .txt<input type="file" accept=".docx,.doc,.rtf,.txt" data-blhs-file style="position:absolute;inset:0;opacity:0;cursor:pointer" aria-label="Chọn tệp Bộ luật" /></label></div>
       <div class="field"><label for="blhs-text">Hoặc dán toàn văn</label><textarea class="textarea" rows="8" id="blhs-text" data-blhs-text placeholder="Điều 123. Tội giết người&#10;1. Người nào giết người thuộc một trong các trường hợp sau đây…"></textarea></div>
       <div class="inline"><button class="btn btn-sm" type="button" data-blhs-parse>${icon('refresh', 'ic-sm')}Phân tích</button></div>
       <div class="lg-blhs-out" data-blhs-out></div>
-      <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-blhs-apply disabled>${icon('check', 'ic-sm')}Áp dụng vào cây hỏi đáp</button></div>`,
+      <div class="modal-actions"><button class="btn" type="button" data-close>Hủy</button><button class="btn btn-primary" type="button" data-blhs-apply ${needAttr('Chưa có dữ liệu Bộ luật: chọn tệp Word/.txt hoặc dán toàn văn rồi bấm “Phân tích”', '[data-blhs-text]')}>${icon('check', 'ic-sm')}Áp dụng vào cây hỏi đáp</button></div>`,
       {
         className: 'modal-wide',
         label: 'Cập nhật Bộ luật',
@@ -230,7 +230,7 @@ export function render(ctx, params = []) {
             const n = Object.keys(parsed.articles).length;
             if (n < 20) {
               parsed = null;
-              apply.disabled = true;
+              need(apply, `Văn bản chưa đủ: chỉ nhận diện được ${n} điều — cần toàn văn Bộ luật (mỗi điều bắt đầu bằng “Điều N. Tên điều”)`, '[data-blhs-text]');
               out.innerHTML = `<p class="note warn">${icon('alert', 'ic-sm')}<span>Chỉ nhận diện được ${n} điều thuộc Phần các tội phạm. Hãy dùng toàn văn Bộ luật (mỗi điều bắt đầu bằng “Điều N. Tên điều”).</span></p>`;
               return;
             }
@@ -241,14 +241,13 @@ export function render(ctx, params = []) {
               ${cmp.renamed.length ? `<details open><summary>Điều có tên khác dữ liệu tích hợp (${cmp.renamed.length}) — sẽ dùng tên theo văn bản</summary><ul class="lg-blhs-list">${cmp.renamed.slice(0, 80).map(li).join('')}</ul></details>` : ''}
               ${cmp.added.length ? `<details><summary>Điều bổ sung vào cây (${cmp.added.length})</summary><ul class="lg-blhs-list">${cmp.added.slice(0, 80).map(li).join('')}</ul></details>` : ''}
               ${cmp.repealed.length ? `<p class="hint">Điều đã bãi bỏ (không đưa vào cây): ${cmp.repealed.join(', ')}.</p>` : ''}`;
-            apply.disabled = false;
+            need(apply, '');
           };
           box.querySelector('[data-blhs-file]').addEventListener('change', async (e) => {
             const f = e.target.files[0];
             if (!f) return;
             try {
-              const buf = await f.arrayBuffer();
-              const text = /\.docx$/i.test(f.name) ? await docxToText(buf) : new TextDecoder().decode(buf);
+              const text = await fileToText(f);
               source = f.name;
               analyse(text);
             } catch (err) {
@@ -811,7 +810,7 @@ export function render(ctx, params = []) {
         box.querySelector('[data-qcancel]').addEventListener('click', refresh);
         box.querySelector('[data-qsave]').addEventListener('click', () => {
           const v = ta.value.trim();
-          if (!v) return;
+          if (!v) return warnMissing('Chưa nhập nội dung câu hỏi', ta);
           if (q.local) overlay.added[key] = overlay.added[key].map((t) => (t === q.text ? v : t));
           else if (q.src === 'ai') {
             overlay.ai[key] = overlay.ai[key].map((t) => (t === q.text ? v : t));
@@ -838,7 +837,7 @@ export function render(ctx, params = []) {
       if (!f) return;
       e.preventDefault();
       const v = f.querySelector('input').value.trim();
-      if (!v) return;
+      if (!v) return warnMissing('Chưa nhập nội dung cần thêm', f.querySelector('input'));
       const key = f.dataset.add;
       overlay.added[key] = [...(overlay.added[key] || []), v];
       learnedBank.learn(plan.crime.dieu, key, v);
@@ -949,7 +948,7 @@ export function render(ctx, params = []) {
       tx.querySelector('[data-sq-cancel]').addEventListener('click', refresh);
       tx.querySelector('[data-sq-save]').addEventListener('click', () => {
         const v = ta.value.trim();
-        if (!v) return;
+        if (!v) return warnMissing('Chưa nhập nội dung câu hỏi', ta);
         if (c.src === 'ai') {
           overlay.ai[key] = (overlay.ai[key] || []).map((x) => (x === origin ? v : x));
           pickQuestions(overlay, key, [v]);
@@ -1088,7 +1087,7 @@ export function render(ctx, params = []) {
           form.addEventListener('submit', (e) => {
             e.preventDefault();
             const ten = form.ten.value.trim();
-            if (!ten) return;
+            if (!ten) return warnMissing('Chưa nhập tên hành vi', form.ten);
             const rec = customActs.save(crime.dieu, { ...(act || {}), ten, cauHoi: lines(form.cauHoi.value), taiLieu: lines(form.taiLieu.value) });
             if (!sel.hanhViIds.includes(rec.id)) sel.hanhViIds = [...sel.hanhViIds, rec.id];
             persistSel();

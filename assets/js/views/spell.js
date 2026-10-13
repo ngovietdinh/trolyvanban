@@ -4,7 +4,7 @@ import { checkText, applyFixes, fixAll, qualityScore, ISSUE_LABELS } from '../li
 import { SPELL_AI_SYSTEM, spellAiPrompt, splitChunks, locateAiIssues, mergeIssues } from '../lib/spell-ai.js';
 import { streamClaude, extractJson, PROVIDERS } from '../lib/ai.js';
 import { store, usage } from '../lib/store.js';
-import { docxToText } from '../lib/docx.js';
+import { fileToText } from '../lib/extract.js';
 
 const SAMPLE =
   'Kính gửi  các phòng ban ,\nThực hiện chỉ đạo của UBND quận, đề nghị các đơn vị khẩn trương sử lý hồ sơ tồn đọng và bổ xung tài liệu còn thiếu. kết quả gửi về Văn phòng trước ngày 5 tháng 2 năm 2026.\nĐề nghị các đơn vị nghiêm túc thực hiện thực hiện, bảo đãm tiến độ. Ngưòi đứng đầu chịu trách nhiệm về viềc tổ chức thưc hiện cuả đơn vị mình, không để sự việc được diễn ra tái diễn lại.';
@@ -38,7 +38,7 @@ export function render(ctx) {
         </div>
         <div class="panel-body" style="display:grid;gap:14px">
           <label class="dropzone">
-            <input type="file" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-file aria-label="Tải lên tệp .docx hoặc .txt" />
+            <input type="file" accept=".txt,.docx,.doc,.rtf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-file aria-label="Tải lên tệp Word (.doc, .docx) hoặc .txt" />
             <span class="dz-icon">${icon('upload')}</span>
             <span><strong>Tải lên tệp .docx hoặc .txt</strong><small>Hoặc kéo thả tệp vào đây</small></span>
           </label>
@@ -337,8 +337,7 @@ export function render(ctx) {
   async function loadFile(file) {
     if (!file) return;
     try {
-      const buf = await file.arrayBuffer();
-      input.value = /\.docx$/i.test(file.name) ? await docxToText(buf) : new TextDecoder().decode(buf);
+      input.value = await fileToText(file);
       aiRaw = [];
       aiNote = null;
       renderAll();
