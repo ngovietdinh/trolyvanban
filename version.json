@@ -1,9 +1,9 @@
 {
-  "version": "2.36.0",
-  "date": "2026-10-13",
+  "version": "2.37.0",
+  "date": "2026-10-15",
   "notes": [
-    "Đọc trực tiếp tệp Word cũ (.doc — Word 97-2003, Word 95) ngay trên máy ở mọi chỗ tải tệp: biên bản, lời khai, kho hồ sơ, chính tả, tóm tắt, Bộ luật; giữ bảng, khung chữ; phông TCVN3/VNI tự chuyển Unicode; Mẫu từ file Word tự chuyển .doc sang .docx",
-    "Tải biên bản lên tự đọc ngay khi chọn tệp; nhận Hỏi – Đáp viết chung một dòng, chữ hoa; nhận họ tên người khai từ “Người khai:” và bảng",
-    "Bấm Lưu / Tạo / Xuất / Thêm khi còn thiếu: thông báo nêu đích danh phần còn thiếu và đưa con trỏ tới ô cần điền; lỗi ngoài dự kiến cũng báo kèm lý do"
+    "Mục mới Bình luận khoa học Bộ luật Hình sự: nạp một lần tệp sách của bạn (.doc/.docx), đọc từng điều — nguyên văn điều luật, bình luận, chú thích; mục lục, cỡ chữ, tìm không dấu",
+    "Giữ nguyên 100% nội dung: khi nạp, phần mềm đối chiếu từng dòng với bản gốc, lệch một dòng là không nạp",
+    "Bấm “Điều N” của Bộ luật Hình sự ở bất kỳ màn hình nào để mở bình luận của điều đó; nút Bình luận ở trang tội danh"
   ]
 }
