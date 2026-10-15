@@ -32,6 +32,10 @@ import * as tracking from './views/tracking.js';
 import * as caseMap from './views/case-map.js';
 import * as statements from './views/statements.js';
 import * as security from './views/security.js';
+import * as binhLuan from './views/binh-luan.js';
+import { openBlPopup } from './views/bl-popup.js';
+import { loadBook, onBookChange } from './legal/binh-luan-store.js';
+import { startLawLinks, stopLawLinks } from './lib/law-links.js';
 import { makeResizable } from './lib/resizer.js';
 import { openFeatureCatalog } from './features.js';
 import { guideForRoute, visibleGuides, findGuide } from './guide/guides.js';
@@ -49,6 +53,7 @@ const ROUTES = {
   'loi-khai': { mod: statements, title: 'Phân tích lời khai', perm: 'legal' },
   'so-do': { mod: caseMap, title: 'Sơ đồ vụ việc', perm: 'legal' },
   forms: { mod: forms, title: 'Biểu mẫu tố tụng', perm: 'legal' },
+  'binh-luan': { mod: binhLuan, title: 'Bình luận Bộ luật Hình sự', perm: 'legal' },
   kho: { mod: kho, title: 'Kho hồ sơ & Trợ lý AI', perm: 'legal' },
   chat: { mod: chat, title: 'Trợ lý AI', perm: 'docs' },
   spell: { mod: spell, title: 'Kiểm tra chính tả', perm: 'tools' },
@@ -875,6 +880,35 @@ $('[data-features-open]')?.addEventListener('click', () => openFeatureCatalog(ct
 /* ---------- Khởi động ---------- */
 // Chặn kết nối ra ngoài (chế độ bảo mật) trước mọi thao tác khác; ghi nhật ký mỗi lần chặn.
 applyNetworkGuard();
+
+// Nút "Bình luận Điều N" đặt sẵn ở các màn hình (vd đầu trang tội danh) — mở được cả khi chưa nạp sách (hướng dẫn nạp).
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-bl-dieu]');
+  if (!b) return;
+  e.preventDefault();
+  openBlPopup(ctx, b.dataset.blDieu);
+});
+document.addEventListener('keydown', (e) => {
+  const b = (e.key === 'Enter' || e.key === ' ') && e.target.closest?.('[data-bl-dieu][role="button"]');
+  if (!b) return;
+  e.preventDefault();
+  openBlPopup(ctx, b.dataset.blDieu);
+});
+
+// Sách Bình luận BLHS: nạp từ máy; có sách thì mọi chỗ ghi "Điều N" bấm được để đọc bình luận.
+loadBook();
+onBookChange((b) => {
+  if (!b) return stopLawLinks();
+  startLawLinks({
+    has: (so) => !!b.articles.find((a) => a.so === so),
+    open: (so, el) => {
+      const modalBox = el.closest('.bl-modal');
+      if (modalBox) return modalBox.dispatchEvent(new CustomEvent('bl-go', { detail: so }));
+      if (el.closest('.bl-page')) return ctx.navigate(`#binh-luan/${encodeURIComponent(so)}`);
+      openBlPopup(ctx, so);
+    },
+  });
+});
 
 // Lưới an toàn: thao tác nào gặp lỗi ngoài dự kiến cũng phải báo cho người dùng biết lý do (không im lặng).
 {

@@ -5156,3 +5156,87 @@ body.dg-lock { overflow: hidden; }
   color: var(--text-3);
   overflow-wrap: anywhere;
 }
+
+/* ---------- Bình luận khoa học Bộ luật Hình sự ---------- */
+.bl-page { max-width: 1320px; }
+.bl-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bl-search { display: flex; align-items: center; gap: 6px; position: relative; }
+.bl-search .ic { position: absolute; left: 10px; color: var(--text-3); pointer-events: none; }
+.bl-search .input { padding-left: 32px; width: min(360px, 70vw); }
+.bl-size { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 10px; padding: 2px; background: var(--surface); }
+.bl-size span { min-width: 26px; text-align: center; font-size: 13px; color: var(--text-2); }
+.bl-more { position: relative; }
+.bl-more > summary { list-style: none; }
+.bl-more > summary::-webkit-details-marker { display: none; }
+.bl-more-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: 290px; display: grid; gap: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-sm); }
+.bl-layout { display: grid; grid-template-columns: minmax(250px, 320px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.bl-toc-wrap { position: sticky; top: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
+.bl-toc-wrap > .input { margin: 8px 0; width: 100%; }
+.bl-toc-head { font-weight: 600; display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; }
+.bl-toc-head::-webkit-details-marker { display: none; }
+.bl-toc { overflow: auto; max-height: calc(100vh - 210px); font-size: 14px; line-height: 1.45; overscroll-behavior: contain; }
+.bl-toc summary { cursor: pointer; padding: 6px 4px; font-weight: 600; color: var(--text); border-radius: 6px; }
+.bl-toc summary:hover { background: var(--surface-2); }
+.bl-toc-p > summary { font-size: 13px; text-transform: uppercase; letter-spacing: 0.02em; color: var(--accent); }
+.bl-toc-c { margin-left: 6px; }
+.bl-toc-c > summary { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.bl-toc-m { margin: 6px 0 2px 12px; font-size: 12px; font-weight: 600; color: var(--text-3); }
+.bl-toc ul { list-style: none; margin: 0 0 6px; padding: 0 0 0 10px; }
+.bl-toc li a { display: block; padding: 5px 8px; border-radius: 8px; color: var(--text-2); text-decoration: none; }
+.bl-toc li a b { color: var(--text); font-weight: 600; }
+.bl-toc li a:hover { background: var(--surface-2); color: var(--text); }
+.bl-toc li a[aria-current='true'] { background: var(--accent-soft); color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.bl-toc li a[aria-current='true'] b { color: var(--accent); }
+.bl-main { min-width: 0; }
+.bl-nav { display: flex; justify-content: space-between; gap: 10px; max-width: 76ch; margin: 0 auto 14px; }
+.bl-nav:last-child { margin-top: 22px; }
+.bl-article { max-width: 76ch; margin: 0 auto; font-family: var(--font-serif); font-size: var(--bl-size, 19px); line-height: 1.75; color: var(--text); }
+.bl-article p { margin: 0 0 0.62em; overflow-wrap: anywhere; }
+.bl-crumbs { font-family: var(--font-sans); font-size: 13px !important; line-height: 1.5; color: var(--text-3); display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px !important; }
+.bl-title { font-family: var(--font-serif); font-size: calc(var(--bl-size, 19px) * 1.38); line-height: 1.3; font-weight: 700; margin: 0 0 18px; letter-spacing: -0.01em; }
+.bl-article h3 { font-family: var(--font-sans); font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); margin: 0 0 10px; }
+.bl-vb { background: var(--surface-2); border: 1px solid var(--line); border-left: 4px solid var(--gold-500); border-radius: 12px; padding: 16px 20px 10px; margin-bottom: 26px; }
+.bl-vb p.k { margin-top: 0.5em; }
+.bl-vb p.d, .bl-bl p.d { padding-left: 1.6em; }
+.bl-bl > h3 { color: var(--accent); }
+.bl-bl p.li { padding-left: 1.3em; text-indent: -1.05em; }
+.bl-bl p.num { margin-top: 0.9em; }
+.bl-bl p.lead { font-weight: 600; margin-top: 0.8em; }
+.bl-none { color: var(--text-3); font-style: italic; }
+.bl-fn a { font-family: var(--font-sans); font-size: 0.7em; padding: 0 2px; color: var(--accent); text-decoration: none; font-weight: 600; }
+.bl-notes { margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 0.86em; color: var(--text-2); }
+.bl-notes ol { padding-left: 1.6em; margin: 0; }
+.bl-notes li { margin-bottom: 0.4em; }
+.bl-article mark, .bl-results mark { background: #ffe7a3; color: inherit; border-radius: 3px; padding: 0 1px; }
+.bl-results { max-width: 80ch; margin: 0 auto; }
+.bl-results h2 { font-size: 18px; margin: 0 0 12px; }
+.bl-results ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.bl-results li { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.bl-results li a { font-weight: 600; text-decoration: none; color: var(--text); }
+.bl-results li p { margin: 6px 0 0; color: var(--text-2); font-family: var(--font-serif); font-size: 16px; line-height: 1.6; }
+.bl-empty { max-width: 680px; margin: 30px auto; text-align: center; padding: 34px 28px; display: grid; gap: 14px; justify-items: center; }
+.bl-empty-ic .ic { width: 42px; height: 42px; color: var(--accent); }
+.bl-empty p { color: var(--text-2); line-height: 1.65; margin: 0; }
+/* Liên kết "Điều …" ở mọi màn hình → mở bình luận. */
+.law-link { color: inherit; text-decoration: underline dotted var(--accent); text-underline-offset: 3px; cursor: pointer; border-radius: 3px; }
+.law-link:hover, .law-link:focus-visible { color: var(--accent); background: var(--accent-soft); text-decoration-style: solid; outline: none; }
+.bl-modal { max-width: min(920px, 96vw); }
+.bl-modal .bl-modal-body { max-height: min(72vh, 900px); overflow: auto; padding-right: 6px; }
+.bl-modal .bl-article { max-width: none; font-size: 18px; }
+.bl-modal-tabs { display: flex; gap: 6px; margin: 4px 0 12px; flex-wrap: wrap; }
+:root[data-theme='dark'] .bl-article mark, :root[data-theme='dark'] .bl-results mark { background: #6b5517; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .bl-article mark, :root:not([data-theme='light']) .bl-results mark { background: #6b5517; }
+}
+@media (max-width: 900px) {
+  .bl-layout { grid-template-columns: 1fr; gap: 14px; }
+  .bl-toc-wrap { position: static; }
+  .bl-toc { max-height: 55vh; }
+  .bl-search .input { width: 100%; }
+  .bl-tools { width: 100%; }
+  .bl-search { flex: 1; }
+}
+.bl-badge { cursor: pointer; border: 0; font: inherit; display: inline-flex; align-items: center; gap: 4px; }
+.bl-badge:hover { filter: brightness(0.95); }
+.lg-crime-art[data-bl-dieu] { cursor: pointer; }
+.lg-crime-art[data-bl-dieu]:hover, .lg-crime-art[data-bl-dieu]:focus-visible { outline: 3px solid var(--gold-200); outline-offset: 2px; }

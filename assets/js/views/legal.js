@@ -354,10 +354,10 @@ export function render(ctx, params = []) {
       ${wizardBarHtml()}
       <nav class="lg-crumbs" aria-label="Đường dẫn">${escapeHtml(domain.ten)} ${icon('chevron-down', 'ic-sm rot')} ${escapeHtml(group.ten)} ${icon('chevron-down', 'ic-sm rot')} <strong>Điều ${crime.dieu}</strong></nav>
       <header class="lg-crime">
-        <div class="lg-crime-art">Điều<strong>${crime.dieu}</strong></div>
+        <div class="lg-crime-art" role="button" tabindex="0" data-bl-dieu="${crime.dieu}" title="Đọc bình luận khoa học Điều ${crime.dieu}">Điều<strong>${crime.dieu}</strong></div>
         <div class="lg-crime-body">
           <h1>${escapeHtml(crime.ten)}</h1>
-          <p class="lg-crime-ch">${escapeHtml(crime.chuong)}${crime.phapNhan ? ' · <span class="badge">Pháp nhân thương mại chịu TNHS</span>' : ''}${crime.generic ? ' · <span class="badge" title="Cấu thành và câu hỏi sinh theo mẫu của chương">Theo mẫu chương</span>' : ' · <span class="badge badge-success">Dữ liệu chuyên sâu</span>'}${crime.kiemTra ? ' · <span class="badge badge-warning">Cần đối chiếu tên điều</span>' : ''}${crime.nguyenVan ? ' · <span class="badge badge-success">Có nguyên văn</span>' : ''}</p>
+          <p class="lg-crime-ch">${escapeHtml(crime.chuong)}${crime.phapNhan ? ' · <span class="badge">Pháp nhân thương mại chịu TNHS</span>' : ''}${crime.generic ? ' · <span class="badge" title="Cấu thành và câu hỏi sinh theo mẫu của chương">Theo mẫu chương</span>' : ' · <span class="badge badge-success">Dữ liệu chuyên sâu</span>'}${crime.kiemTra ? ' · <span class="badge badge-warning">Cần đối chiếu tên điều</span>' : ''}${crime.nguyenVan ? ' · <span class="badge badge-success">Có nguyên văn</span>' : ''} · <button type="button" class="badge badge-accent bl-badge" data-bl-dieu="${crime.dieu}">${icon('book', 'ic-sm')}Bình luận Điều ${crime.dieu}</button></p>
           ${crime.tenChinhThuc && crime.tenChinhThuc.toLowerCase() !== crime.ten.toLowerCase() ? `<p class="note warn">${icon('info', 'ic-sm')}<span>Tên điều theo văn bản đã nạp: <strong>${escapeHtml(crime.tenChinhThuc)}</strong></span></p>` : ''}
           <dl class="lg-elements">
             <div><dt>Khách thể</dt><dd>${escapeHtml(crime.khachThe)}</dd></div>

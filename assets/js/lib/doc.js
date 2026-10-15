@@ -101,7 +101,7 @@ const cp1252 = new TextDecoder('windows-1252');
 const utf16 = new TextDecoder('utf-16le');
 
 /** Chuỗi ký tự Word (có ký tự điều khiển) → văn bản thuần. Bỏ mã trường (giữ kết quả), ảnh, dấu chú thích. */
-export function cleanWordText(s) {
+export function cleanWordText(s, { keepNoteRefs = false } = {}) {
   let out = '';
   const fields = []; // mỗi trường: true = đang ở phần mã (ẩn)
   let cell = false; // vừa hết một ô bảng: dấu 0x07 kế tiếp là hết hàng
@@ -131,6 +131,7 @@ export function cleanWordText(s) {
     else if (c === 0x09) out += '\t';
     else if (c === 0x1e || c === 0x2011) out += '-';
     else if (c === 0xa0) out += ' ';
+    else if (c === 0x02 && keepNoteRefs) out += '\ue000'; // dấu chú thích chân trang (tự đánh số) — giữ vị trí
     else if (c === 0x1f) out += '\u00ad'; // gạch nối mềm — trong phông TCVN3 đây là chữ “ư”, xử lý sau khi nhận diện phông
     else if (c < 0x20) continue;
     else out += ch;
@@ -144,7 +145,7 @@ export function cleanWordText(s) {
 }
 
 /** .doc nhị phân (Word 97-2003; Word 6/95) → văn bản thuần. */
-export function docBinaryToText(bytes) {
+export function docBinaryToText(bytes, { notes = false } = {}) {
   const cfb = readCfb(bytes);
   const wd = cfb.stream('WordDocument');
   if (!wd || wd.length < 0x200) throw new DocReadError('Tệp .doc không có nội dung văn bản Word (có thể là bảng tính hoặc tệp hỏng)');
@@ -197,6 +198,11 @@ export function docBinaryToText(bytes) {
   const part = (len) => text.slice(cp, (cp += len));
   const [main, ftn, , mcr, atn, edn, txbx] = [part(ccp[0]), part(ccp[1]), part(ccp[2]), part(ccp[3]), part(ccp[4]), part(ccp[5]), part(ccp[6])];
   void mcr;
+  if (notes) {
+    // Chú thích chân trang: mỗi chú thích trong phần chú thích bắt đầu bằng ký tự 0x02, cùng thứ tự với dấu 0x02 trong thân.
+    const list = ftn.split('\x02').slice(1).map((x) => cleanWordText(x));
+    return { text: cleanWordText([main, txbx].filter((x) => x.replace(/[\s\x00-\x1f]/g, '')).join('\r'), { keepNoteRefs: true }), notes: list };
+  }
   return cleanWordText([main, txbx, ftn, edn, atn].filter((x) => x.replace(/[\s\x00-\x1f]/g, '')).join('\r'));
 }
 
@@ -390,4 +396,24 @@ export async function docToDocx(buffer, name) {
   const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   if (sniffDoc(bytes) === 'docx') return bytes;
   return textToDocx(await docToText(bytes, name));
+}
+
+/**
+ * Như docToText nhưng giữ chú thích chân trang: trong văn bản, chỗ đặt chú thích thứ n được đánh dấu {{fn:n}};
+ * notes[n-1] là nội dung chú thích đó. Dùng cho tài liệu cần giữ nguyên 100% nội dung (sách bình luận…).
+ */
+export async function docToTextWithNotes(buffer, name = 'tệp') {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  if (sniffDoc(bytes) !== 'doc') return { text: await docToText(bytes, name), notes: [] };
+  let r;
+  try {
+    r = docBinaryToText(bytes, { notes: true });
+  } catch (e) {
+    throw new Error(e instanceof DocReadError ? `“${name}”: ${e.message}` : `Không đọc được “${name}” (tệp .doc hỏng hoặc định dạng lạ)`);
+  }
+  let n = 0;
+  const text = fixLegacy(r.text)
+    .replace(/\u00ad/g, '')
+    .replace(/\ue000/g, () => `{{fn:${++n}}}`);
+  return { text, notes: r.notes.map((x) => fixLegacy(x).replace(/\u00ad/g, '')) };
 }
