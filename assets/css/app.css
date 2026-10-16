@@ -3689,3 +3689,51 @@ mark.err-mark.is-ai {
     flex-wrap: wrap;
   }
 }
+
+/* ---------- Tra cứu (một ô tìm mọi dữ liệu) ---------- */
+.tc-page { max-width: 860px; }
+.tc-title { font-family: var(--font-serif); font-size: 30px; margin: 4px 0 12px; }
+.tc-search { position: relative; display: block; }
+.tc-search .ic { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.tc-search .input { height: 52px; padding-left: 44px; font-size: 17px; border-radius: 14px; box-shadow: var(--shadow-xs); }
+.tc-filters { display: flex; gap: 6px; overflow-x: auto; padding: 10px 0 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.tc-filters::-webkit-scrollbar { display: none; }
+.tc-filters .chip { white-space: nowrap; flex: none; }
+.tc-filters .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tc-count { color: var(--text-3); font-size: 13px; margin: 8px 2px; }
+.tc-group { margin-top: 18px; }
+.tc-group h2 { display: flex; align-items: center; gap: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); margin: 0 2px 8px; }
+.tc-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.tc-list li + li { border-top: 1px solid var(--line); }
+.tc-list a { display: grid; gap: 3px; padding: 12px 14px; color: var(--text); text-decoration: none; min-height: 48px; }
+.tc-list a:hover, .tc-list a:focus-visible { background: var(--surface-2); }
+.tc-list strong { font-weight: 600; line-height: 1.4; }
+.tc-list small { color: var(--text-3); font-size: 13px; }
+.tc-snip { color: var(--text-2); font-size: 14px; line-height: 1.5; font-family: var(--font-serif); }
+.tc-list mark { background: #ffe7a3; color: inherit; border-radius: 3px; padding: 0 1px; }
+:root[data-theme='dark'] .tc-list mark { background: #6b5517; }
+.tc-more { margin-top: 6px; }
+.tc-empty { display: flex; gap: 10px; align-items: flex-start; color: var(--text-2); padding: 18px 4px; }
+.tc-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+.tc-tile { display: grid; gap: 4px; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; text-decoration: none; color: var(--text); }
+.tc-tile .ic { color: var(--accent); width: 22px; height: 22px; }
+.tc-tile small { color: var(--text-3); font-size: 12.5px; }
+.tc-tile:hover { border-color: var(--line-strong); box-shadow: var(--shadow-xs); }
+
+/* ---------- Bản đọc biên bản (điện thoại, chế độ xem) ---------- */
+.rd-page { max-width: 760px; }
+.rd-back { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); text-decoration: none; font-size: 14px; margin-bottom: 10px; }
+.rd-head { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+.rd-kind { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin: 0 0 4px; font-weight: 600; }
+.rd-head h1 { font-family: var(--font-serif); font-size: 26px; margin: 0 0 6px; line-height: 1.25; }
+.rd-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; color: var(--text-3); font-size: 13.5px; margin: 0 0 12px; }
+.rd-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.rd-qa { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.rd-qa li { display: grid; grid-template-columns: auto 1fr; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.rd-n { width: 26px; height: 26px; border-radius: 8px; background: var(--surface-2); display: grid; place-items: center; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.rd-q, .rd-a { margin: 0; font-family: var(--font-serif); font-size: 18px; line-height: 1.65; }
+.rd-q { color: var(--text-2); margin-bottom: 6px; }
+.rd-a { color: var(--text); }
+.rd-note { display: flex; gap: 6px; align-items: flex-start; margin-top: 16px; }
+.mode-toggle { gap: 4px; }
+.mode-toggle[aria-pressed='true'] { background: var(--warning-soft); color: var(--warning); }

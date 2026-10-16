@@ -1,6 +1,7 @@
 // Ứng dụng chính: khung giao diện, điều hướng theo hash, tài khoản, bảng lệnh.
 import { $, $$, icon, toast, bindThemeToggles, escapeHtml, need, needAttr } from './ui.js';
 import { store, docsRepo, getEnv } from './lib/store.js';
+import { isPhone, viewMode, PHONE_QUERY } from './lib/phone.js';
 import { PROVIDERS, setAIHooks, setLocalEndpoint, isPrivateEndpoint, isOffline, normalizeLocalBase } from './lib/ai.js';
 import { accounts, vault, systemConfig, audit } from './lib/accounts.js';
 import { applyNetworkGuard, secureOn, securityPolicy, aiEndpointAllowed, setSecurityBlockHook } from './lib/security.js';
@@ -33,6 +34,7 @@ import * as caseMap from './views/case-map.js';
 import * as statements from './views/statements.js';
 import * as security from './views/security.js';
 import * as binhLuan from './views/binh-luan.js';
+import * as traCuu from './views/tra-cuu.js';
 import { openBlPopup } from './views/bl-popup.js';
 import { loadBook, onBookChange } from './legal/binh-luan-store.js';
 import { startLawLinks, stopLawLinks } from './lib/law-links.js';
@@ -45,6 +47,7 @@ import { casesRepo } from './legal/repo.js';
 // perm: quyền cần có để mở màn hình.
 const ROUTES = {
   dashboard: { mod: dashboard, title: 'Tổng quan' },
+  'tra-cuu': { mod: traCuu, title: 'Tra cứu' },
   compose: { mod: compose, title: 'Soạn văn bản', perm: 'docs' },
   legal: { mod: legal, title: 'Cây hỏi đáp pháp luật', perm: 'legal' },
   interview: { mod: interview, title: 'Ghi lời khai', perm: 'legal' },
@@ -193,10 +196,29 @@ export const ctx = {
 };
 
 /* ---------- Router ---------- */
+/* ---------- Điện thoại: chủ yếu để xem, tra cứu ---------- */
+// Chế độ xem: ẩn nút sửa / xóa / thêm, mở biên bản, văn bản dạng bản đọc. Người dùng bật "Sửa" khi thật cần.
+function applyViewMode() {
+  document.body.classList.toggle('view-mode', viewMode());
+  document.body.classList.toggle('is-phone', isPhone());
+  const b = $('[data-mode-toggle]');
+  if (b) {
+    const on = viewMode();
+    b.hidden = !isPhone();
+    b.setAttribute('aria-pressed', String(!on));
+    b.title = on ? 'Đang ở chế độ xem — bấm để bật chỉnh sửa' : 'Đang chỉnh sửa — bấm để về chế độ xem';
+    b.innerHTML = `${icon(on ? 'eye' : 'wand', 'ic-sm')}<span>${on ? 'Xem' : 'Sửa'}</span>`;
+  }
+}
+matchMedia(PHONE_QUERY).addEventListener?.('change', () => {
+  applyViewMode();
+  renderBottomNav();
+});
+
 function parseHash() {
   const raw = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
   const [name, ...rest] = raw.split('/');
-  return { name: name || 'dashboard', params: rest };
+  return { name: name || (isPhone() ? 'tra-cuu' : 'dashboard'), params: rest };
 }
 
 function route() {
@@ -354,9 +376,10 @@ function renderBottomNav() {
   const user = accounts.current();
   if (!host || !user) return;
   const has = (p) => user.permSet.has(p);
+  // Điện thoại chủ yếu để xem, tra cứu: thanh dưới ưu tiên Tra cứu, Hồ sơ, Bình luận, Biểu mẫu.
   const items = has('legal')
-    ? [['dashboard', 'home', 'Tổng quan'], ['cases', 'folder', 'Hồ sơ'], ['interview', 'message', 'Lời khai'], ['kho', 'sparkles', 'Trợ lý hồ sơ']]
-    : [['dashboard', 'home', 'Tổng quan'], ['compose', 'file', 'Soạn thảo'], ['chat', 'sparkles', 'Trợ lý AI'], ['docs', 'folder', 'Tài liệu']];
+    ? [['tra-cuu', 'search', 'Tra cứu'], ['cases', 'folder', 'Hồ sơ'], ['binh-luan', 'book', 'Bình luận'], ['forms', 'clipboard', 'Biểu mẫu']]
+    : [['tra-cuu', 'search', 'Tra cứu'], ['docs', 'folder', 'Tài liệu'], ['templates', 'grid', 'Mẫu'], ['chat', 'sparkles', 'Trợ lý AI']];
   const shown = items.filter(([k]) => !ROUTES[k].perm || has(ROUTES[k].perm));
   const main = new Set(shown.map(([k]) => k));
   host.style.gridTemplateColumns = `repeat(${shown.length + 1}, minmax(0, 1fr))`;
@@ -790,6 +813,9 @@ function renderPalette() {
     const t = norm(c.label + ' ' + c.group);
     return words.every((w) => t.includes(w));
   });
+  // Gõ từ khóa → thêm lựa chọn tra cứu trong toàn bộ dữ liệu (hồ sơ, biên bản, điều luật, bình luận, biểu mẫu…).
+  const raw = pInput.value.trim();
+  if (raw.length >= 2) pItems.push({ group: 'Tra cứu dữ liệu', icon: 'search', label: `Tra cứu “${raw}” trong hồ sơ, biên bản, điều luật, biểu mẫu…`, run: () => ctx.navigate(`#tra-cuu/${encodeURIComponent(raw)}`) });
   pIndex = Math.min(pIndex, Math.max(0, pItems.length - 1));
   if (!pItems.length) {
     pList.innerHTML = `<li class="palette-empty">Không tìm thấy kết quả phù hợp</li>`;
@@ -825,7 +851,14 @@ function runPalette(i) {
   closePalette();
   c.run();
 }
-$('[data-palette-open]').addEventListener('click', openPalette);
+$('[data-palette-open]').addEventListener('click', () => (isPhone() ? ctx.navigate('#tra-cuu') : openPalette()));
+$('[data-mode-toggle]')?.addEventListener('click', () => {
+  store.set('phone-mode', viewMode() ? 'sua' : 'xem');
+  applyViewMode();
+  toast(viewMode() ? 'Chế độ xem: ẩn nút sửa, xóa; biên bản, văn bản mở dạng bản đọc' : 'Đã bật chỉnh sửa trên điện thoại', { type: 'info' });
+  route();
+});
+applyViewMode();
 pInput.addEventListener('input', () => {
   pIndex = 0;
   renderPalette();

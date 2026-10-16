@@ -7,6 +7,7 @@ import { isoToday } from '../lib/vn-date.js';
 import { store, docsRepo, usage } from '../lib/store.js';
 import { streamClaude, composePrompt, extractJson, localCompose } from '../lib/ai.js';
 import { deleteWithUndo, repoOps } from '../lib/undo-delete.js';
+import { viewMode } from '../lib/phone.js';
 
 const HEAD_KEYS = ['coQuanChuQuan', 'coQuan', 'vietTat', 'so', 'diaDanh', 'ngay'];
 const SIGN_KEYS = ['quyenHan', 'tapThe', 'chucVu', 'nguoiKy', 'noiNhan'];
@@ -401,6 +402,8 @@ export function render(ctx, params = []) {
     if (p === 'preview') requestAnimationFrame(applyZoom);
   }
   $$('[data-pane-btn]', root).forEach((b) => b.addEventListener('click', () => setPane(b.dataset.paneBtn)));
+  // Điện thoại (chế độ xem): mở văn bản đã lưu ở bản xem trước.
+  if (viewMode() && params[0] === 'doc') setPane('preview');
 
   /* ----- Phím tắt ----- */
   const onKey = (e) => {

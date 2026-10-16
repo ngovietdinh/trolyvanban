@@ -15,6 +15,7 @@ import { mobilePanes } from '../lib/panes.js';
 import { openNextStatement } from './next-statement.js';
 import { BUOC } from '../legal/engine.js';
 import { attachSuggest, questionSuggestions } from '../lib/suggest.js';
+import { viewMode } from '../lib/phone.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const COV = { ro: ['Đã rõ', 'ok'], 'mot-phan': ['Một phần', 'part'], chua: ['Chưa rõ', 'no'] };
@@ -99,6 +100,34 @@ function renderList(ctx) {
   draw();
 }
 
+/* ---------------- Bản đọc biên bản (điện thoại, chế độ xem) ---------------- */
+const STATUS = { 'hoan-thanh': ['Đã hoàn thành', 'badge-success'], 'dang-ghi': ['Đang ghi', 'badge-warning'] };
+function renderReader(ctx, rec) {
+  const c = rec.caseId ? casesRepo.get(rec.caseId) : null;
+  const role = getRole(rec.roleId);
+  const st = STATUS[rec.status] || STATUS['dang-ghi'];
+  const qa = (rec.qa || []).filter((x) => String(x.q || '').trim() || String(x.a || '').trim());
+  ctx.view.innerHTML = `<div class="page rd-page">
+    <a class="rd-back" href="${c ? `#cases/${c.id}` : '#interview'}">${icon('chevron-left', 'ic-sm')}${c ? escapeHtml(c.ten) : 'Danh sách biên bản'}</a>
+    <header class="rd-head">
+      <p class="rd-kind">${escapeHtml(role.bienBan || 'Biên bản ghi lời khai')} · lần ${rec.lan || 1}</p>
+      <h1>${escapeHtml(rec.nguoiKhai?.hoTen || 'Chưa ghi tên')}</h1>
+      <p class="rd-meta"><span>${escapeHtml(role.ten.split('/')[0].trim())}</span>${rec.ngay ? `<span>${escapeHtml(rec.ngay.split('-').reverse().join('/'))}</span>` : ''}<span class="badge ${st[1]}">${st[0]}</span><span>${qa.length} lượt hỏi – đáp</span></p>
+      <div class="rd-actions"><button class="btn btn-sm" type="button" data-rd-print>${icon('eye', 'ic-sm')}Bản in đầy đủ</button><button class="btn btn-sm" type="button" data-rd-export>${icon('download', 'ic-sm')}Tải Word</button></div>
+    </header>
+    ${qa.length ? `<ol class="rd-qa">${qa.map((x, i) => `<li><span class="rd-n">${i + 1}</span><div><p class="rd-q"><b>Hỏi:</b> ${escapeHtml(x.q || '')}</p><p class="rd-a"><b>Đáp:</b> ${x.a ? escapeHtml(x.a) : '<em>(chưa trả lời)</em>'}</p></div></li>`).join('')}</ol>` : '<div class="empty"><p>Biên bản chưa có lượt hỏi – đáp nào.</p></div>'}
+    <p class="hint rd-note">${icon('info', 'ic-sm')}<span>Đang ở chế độ xem trên điện thoại. Cần sửa thì bấm nút <strong>Xem</strong> trên thanh trên cùng để chuyển sang <strong>Sửa</strong>.</span></p>
+  </div>`;
+  $('[data-rd-export]', ctx.view).addEventListener('click', () => {
+    const doc = buildRecordDocument(rec);
+    downloadBlob(buildDocx(doc, doc.title.name), safeFileName(`${doc.title.name}-${rec.nguoiKhai?.hoTen || 'bien-ban'}-${rec.ngay}`), DOCX_MIME);
+    toast('Đã tải biên bản (.docx)');
+  });
+  $('[data-rd-print]', ctx.view).addEventListener('click', () =>
+    ctx.modal(`<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button><div class="preview-modal-body print-area">${renderDocumentHtml(buildRecordDocument(rec))}</div><div class="modal-actions"><button class="btn" type="button" data-close>Đóng</button></div>`, { className: 'modal-wide preview-modal', label: 'Bản in biên bản' }),
+  );
+}
+
 /* ---------------- Ghi lời khai ---------------- */
 export function render(ctx, params = []) {
   if (!params[0]) return renderList(ctx);
@@ -107,6 +136,8 @@ export function render(ctx, params = []) {
     toast('Không tìm thấy biên bản', { type: 'error' });
     return renderList(ctx);
   }
+  // Điện thoại (chế độ xem): mở biên bản dạng bản đọc, không hiện khung nhập.
+  if (viewMode()) return renderReader(ctx, rec);
   const crime = rec.plan?.dieu ? findCrime(rec.plan.dieu) : null;
   let current = { q: '', issueId: null, editIndex: null };
   let aiTab = 'suggest';

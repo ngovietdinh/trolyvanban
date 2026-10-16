@@ -66,6 +66,9 @@ test.describe('Giao diện di động', () => {
 
 test('ghi lời khai trên điện thoại: kế hoạch, ghi hỏi – đáp, không tràn ngang', async ({ page }) => {
   await freshApp(page, '#legal/354');
+  // Điện thoại mặc định ở chế độ xem → bật "Sửa" để ghi lời khai trực tiếp.
+  await page.click('[data-mode-toggle]');
+  await expect(page.locator('body')).not.toHaveClass(/view-mode/);
   await page.locator('[data-start]').click();
   await page.fill('#st-name', 'Lê Văn Cường');
   await page.locator('.modal button[type="submit"]').click();
@@ -86,11 +89,11 @@ test.describe('Điều hướng và bố cục điện thoại', () => {
     await freshApp(page, '#cases');
     const nav = page.locator('[data-bottom-nav]');
     await expect(nav).toBeVisible();
-    await expect(nav.locator('[data-bn]')).toHaveText(['Tổng quan', 'Hồ sơ', 'Lời khai', 'Trợ lý hồ sơ']);
+    await expect(nav.locator('[data-bn]')).toHaveText(['Tra cứu', 'Hồ sơ', 'Bình luận', 'Biểu mẫu']);
     await expect(nav.locator('[data-bn="cases"]')).toHaveAttribute('aria-current', 'page');
-    await nav.locator('[data-bn="interview"]').click();
-    await expect(page).toHaveURL(/#interview$/);
-    await expect(nav.locator('[data-bn="interview"]')).toHaveAttribute('aria-current', 'page');
+    await nav.locator('[data-bn="binh-luan"]').click();
+    await expect(page).toHaveURL(/#binh-luan$/);
+    await expect(nav.locator('[data-bn="binh-luan"]')).toHaveAttribute('aria-current', 'page');
     await page.goto('/app.html#spell');
     await expect(nav.locator('[data-bn-more]')).toHaveAttribute('aria-current', 'page');
     await nav.locator('[data-bn-more]').click();
@@ -120,6 +123,7 @@ test.describe('Điều hướng và bố cục điện thoại', () => {
 
   test('hộp thoại hiện dạng tấm trượt từ dưới lên, nút thao tác vừa tay', async ({ page }) => {
     await freshApp(page, '#cases');
+    await page.click('[data-mode-toggle]'); // chế độ Sửa: hiện nút Tạo hồ sơ
     await page.locator('[data-new]').first().click();
     await page.waitForTimeout(500); // chờ hiệu ứng trượt lên kết thúc
     const box = await page.locator('.modal').boundingBox();
@@ -164,3 +168,69 @@ test.describe('Điều hướng và bố cục điện thoại', () => {
     t.assertClean();
   });
 });
+
+test.describe('Điện thoại để xem, tra cứu', () => {
+  async function seed(page) {
+    return page.evaluate(async () => {
+      const { casesRepo, recordsRepo } = await import('/assets/js/legal/repo.js');
+      const { newRecord } = await import('/assets/js/legal/record.js');
+      const c = casesRepo.save({ ten: 'Vụ tham ô tại Ban QLDA huyện X', soHoSo: '12/2026', toiDanh: ['353'], persons: [{ id: 'p1', hoTen: 'Nguyễn Văn An', roleId: 'bi-can' }] });
+      const r = newRecord({ caseItem: c, person: c.persons[0], roleId: 'bi-can', plan: null, settings: {} });
+      r.qa = [{ id: 'q1', q: 'Anh chuyển tiền cho ai?', a: 'Tôi chuyển 100 triệu đồng cho ông Trần Văn Bình.' }];
+      recordsRepo.save(r);
+      return c.id;
+    });
+  }
+
+  test('mở ứng dụng vào trang Tra cứu; tìm theo nội dung lời khai, số điều; bấm kết quả mở bản đọc biên bản', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#dashboard');
+    await seed(page);
+    await page.goto('/app.html');
+    await expect(page.locator('[data-view-title]')).toHaveText('Tra cứu');
+    await expect(page.locator('body')).toHaveClass(/view-mode/);
+    await expect(page.locator('.tc-tile')).not.toHaveCount(0);
+    await expect(page.locator('.tc-group', { hasText: 'Hồ sơ gần đây' })).toContainText('Vụ tham ô tại Ban QLDA huyện X');
+    // Tìm không dấu theo nội dung trả lời trong biên bản.
+    await page.fill('[data-tc-q]', 'tran van binh');
+    const rec = page.locator('.tc-group', { hasText: 'Biên bản lời khai' });
+    await expect(rec).toContainText('Nguyễn Văn An — lần 1');
+    await expect(rec.locator('.tc-snip mark').first()).toHaveText('Trần');
+    await rec.locator('a').first().click();
+    // Bản đọc: không có khung nhập, có Hỏi – Đáp, tải Word được.
+    await expect(page.locator('.rd-page h1')).toHaveText('Nguyễn Văn An');
+    await expect(page.locator('.rd-qa')).toContainText('Tôi chuyển 100 triệu đồng cho ông Trần Văn Bình.');
+    await expect(page.locator('[data-a]')).toHaveCount(0);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-rd-export]')]);
+    expect(dl.suggestedFilename()).toMatch(/\.docx$/);
+    // Số điều → điều luật.
+    await page.goto('/app.html#tra-cuu');
+    await page.fill('[data-tc-q]', '353');
+    await expect(page.locator('.tc-group', { hasText: 'Điều luật' })).toContainText('Điều 353.');
+    // Biểu tượng tìm trên thanh trên cùng mở trang Tra cứu.
+    await page.goto('/app.html#cases');
+    await page.click('[data-palette-open]');
+    await expect(page).toHaveURL(/#tra-cuu$/);
+    t.assertClean();
+  });
+
+  test('chế độ xem ẩn nút tạo / sửa / xóa; bấm “Xem” → “Sửa” để hiện lại; ghi nhớ lựa chọn', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#dashboard');
+    const id = await seed(page);
+    await page.goto(`/app.html#cases/${id}`);
+    await expect(page.locator('[data-mode-toggle]')).toContainText('Xem');
+    await expect(page.locator('[data-edit]')).toBeHidden();
+    await expect(page.locator('[data-interview]')).toBeHidden();
+    await expect(page.locator('#view')).toContainText('Vụ tham ô tại Ban QLDA huyện X');
+    await page.click('[data-mode-toggle]');
+    await expect(page.locator('[data-mode-toggle]')).toContainText('Sửa');
+    await expect(page.locator('[data-edit]')).toBeVisible();
+    await page.reload();
+    await expect(page.locator('[data-edit]')).toBeVisible();
+    await page.click('[data-mode-toggle]');
+    await expect(page.locator('[data-edit]')).toBeHidden();
+    t.assertClean();
+  });
+});
+

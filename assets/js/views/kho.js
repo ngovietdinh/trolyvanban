@@ -37,7 +37,7 @@ function threadTitle(msgs) {
   return first.length > 60 ? first.slice(0, 57) + '…' : first;
 }
 
-export function render(ctx) {
+export function render(ctx, params = []) {
   ctxMax = () => (chunkSizeFor(ctx.ai('legal')) < 8000 ? 6000 : 14000);
   let docs = []; // tài liệu tải lên (không kèm tệp gốc)
   let filterCase = store.get('kho-case', '');
@@ -709,5 +709,11 @@ export function render(ctx) {
   renderMode();
   renderMsgs();
   renderThreadInfo();
-  reload();
+  reload().then(() => {
+    // Mở thẳng một tài liệu (từ trang Tra cứu): #kho/xem/<id>.
+    if (params[0] === 'xem' && params[1]) {
+      const d = [...docs, ...appDocs()].find((x) => x.id === decodeURIComponent(params[1]));
+      if (d) viewDoc(d);
+    }
+  });
 }

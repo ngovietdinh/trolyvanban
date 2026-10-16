@@ -570,3 +570,22 @@
     transform: none;
   }
 }
+
+/* ---------- Điện thoại: chế độ XEM (chủ yếu xem, tra cứu — không phải nơi làm việc trực tiếp) ---------- */
+/* Ẩn nút tạo / sửa / xóa / tải lên; bấm nút "Xem" trên thanh trên cùng để chuyển sang "Sửa" khi thật cần. */
+body.view-mode .sb-new,
+body.view-mode .page-head [data-new], body.view-mode [data-edit], body.view-mode [data-del],
+body.view-mode [data-add-person], body.view-mode [data-edit-person], body.view-mode [data-del-person],
+body.view-mode [data-interview], body.view-mode [data-upload-rec], body.view-mode [data-del-rec],
+body.view-mode [data-del-plan], body.view-mode [data-del-ldoc], body.view-mode [data-del-this],
+body.view-mode .rec-bar, body.view-mode .rec-check, body.view-mode [data-del-sel],
+body.view-mode [data-act='del'], body.view-mode [data-act='dup'],
+body.view-mode .kho-drop, body.view-mode .kho-selbar, body.view-mode .kho-item [data-sel],
+body.view-mode [data-upload], body.view-mode .bl-more { display: none !important; }
+@media (max-width: 760px) {
+  .tc-title { display: none; } /* thanh trên đã ghi “Tra cứu” */
+  .tc-page { padding-top: 12px; }
+  .tc-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rd-q, .rd-a { font-size: 17px; }
+  .search-trigger kbd { display: none; }
+}
