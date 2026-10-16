@@ -1,9 +1,9 @@
 {
-  "version": "2.37.0",
-  "date": "2026-10-15",
+  "version": "2.38.0",
+  "date": "2026-10-16",
   "notes": [
-    "Mục mới Bình luận khoa học Bộ luật Hình sự: nạp một lần tệp sách của bạn (.doc/.docx), đọc từng điều — nguyên văn điều luật, bình luận, chú thích; mục lục, cỡ chữ, tìm không dấu",
-    "Giữ nguyên 100% nội dung: khi nạp, phần mềm đối chiếu từng dòng với bản gốc, lệch một dòng là không nạp",
-    "Bấm “Điều N” của Bộ luật Hình sự ở bất kỳ màn hình nào để mở bình luận của điều đó; nút Bình luận ở trang tội danh"
+    "Điện thoại chuyên để xem, tra cứu: mở vào trang Tra cứu, thanh dưới Tra cứu · Hồ sơ · Bình luận · Biểu mẫu; chế độ xem ẩn nút tạo, sửa, xóa; biên bản mở dạng bản đọc chữ lớn (tải Word, bản in); nút Xem / Sửa khi cần chỉnh",
+    "Trang Tra cứu một ô cho mọi dữ liệu: hồ sơ, người, nội dung lời khai, văn bản, kho tài liệu, điều luật, bình luận, biểu mẫu — gõ không dấu, khớp đầu từ, có trích đoạn và tô sáng",
+    "Máy tính: Ctrl K gõ từ khóa có thêm mục “Tra cứu …”"
   ]
 }

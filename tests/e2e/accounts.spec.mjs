@@ -87,7 +87,11 @@ test.describe('Tài khoản và phân quyền', () => {
     }
     await page.keyboard.press('Control+k');
     await page.keyboard.type('dieu 222');
-    await expect(page.locator('.palette-empty')).toBeVisible();
+    // Không có lệnh Tố tụng nào; chỉ còn mục tra cứu chung — và trang Tra cứu không trả dữ liệu Tố tụng.
+    await expect(page.locator('.palette-item')).toHaveCount(1);
+    await page.locator('.palette-item', { hasText: 'Tra cứu “dieu 222”' }).click();
+    await expect(page.locator('.tc-empty')).toContainText('Không tìm thấy');
+    await expect(page.locator('[data-tc-f="crimes"]')).toHaveCount(0);
   });
 
   test('quản trị cấp vai trò Điều tra viên → vào được Tố tụng nhưng mặc định ngoại tuyến', async ({ page }) => {
