@@ -40,6 +40,8 @@ export const recordsRepo = collection('records');
 export const plansRepo = collection('plans');
 /** Văn bản tố tụng đã lập từ biểu mẫu (quyết định, lệnh, biên bản…). */
 export const legalDocsRepo = collection('legal-docs');
+/** Hồ sơ xét xử của mục Tòa án (bản án, bị cáo, quyết định đã áp dụng, đơn khiếu nại). */
+export const courtRepo = collection('court-cases');
 
 /** Câu hỏi người dùng lưu vào “bộ câu hỏi của tôi”, khóa theo `${dieu}|${issueKey}`. */
 export const customBank = {

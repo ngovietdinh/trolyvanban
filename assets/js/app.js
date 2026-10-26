@@ -35,6 +35,7 @@ import * as statements from './views/statements.js';
 import * as security from './views/security.js';
 import * as binhLuan from './views/binh-luan.js';
 import * as traCuu from './views/tra-cuu.js';
+import * as toaAn from './views/toa-an.js';
 import { openBlPopup } from './views/bl-popup.js';
 import { loadBook, onBookChange } from './legal/binh-luan-store.js';
 import { startLawLinks, stopLawLinks } from './lib/law-links.js';
@@ -57,6 +58,7 @@ const ROUTES = {
   'so-do': { mod: caseMap, title: 'Sơ đồ vụ việc', perm: 'legal' },
   forms: { mod: forms, title: 'Biểu mẫu tố tụng', perm: 'legal' },
   'binh-luan': { mod: binhLuan, title: 'Bình luận Bộ luật Hình sự', perm: 'legal' },
+  'toa-an': { mod: toaAn, title: 'Tòa án — xem xét bản án', perm: 'legal' },
   kho: { mod: kho, title: 'Kho hồ sơ & Trợ lý AI', perm: 'legal' },
   chat: { mod: chat, title: 'Trợ lý AI', perm: 'docs' },
   spell: { mod: spell, title: 'Kiểm tra chính tả', perm: 'tools' },

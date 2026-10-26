@@ -5240,3 +5240,67 @@ body.dg-lock { overflow: hidden; }
 .bl-badge:hover { filter: brightness(0.95); }
 .lg-crime-art[data-bl-dieu] { cursor: pointer; }
 .lg-crime-art[data-bl-dieu]:hover, .lg-crime-art[data-bl-dieu]:focus-visible { outline: 3px solid var(--gold-200); outline-offset: 2px; }
+
+/* ---------- Tòa án: xem xét bản án ---------- */
+.ct-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.ct-list a { display: grid; gap: 4px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; text-decoration: none; color: var(--text); }
+.ct-list a:hover { border-color: var(--line-strong); box-shadow: var(--shadow-xs); }
+.ct-list small { color: var(--text-3); }
+.ct-page { max-width: 1180px; }
+.ct-name { font-family: var(--font-serif); font-size: 24px; font-weight: 600; border: 0; background: transparent; padding: 4px 0; margin-bottom: 10px; }
+.ct-name:focus { background: var(--surface); padding: 4px 8px; }
+.ct-sec { padding: 16px; margin-bottom: 16px; }
+.ct-sec > h2 { display: flex; align-items: center; gap: 8px; font-size: 16px; margin: 0 0 12px; }
+.ct-sec .la-drop { min-height: 0; padding: 10px; }
+.ct-sources { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
+.ct-sources li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; background: var(--surface-2); border-radius: 10px; }
+.ct-sources li span { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.ct-sources li strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-sources small { color: var(--text-3); white-space: nowrap; }
+.ct-def { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; background: var(--bg-elev); }
+.ct-def-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ct-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; font-size: 14px; }
+.ct-chips > span { color: var(--text-2); margin-right: 4px; }
+.ct-chips .chip { cursor: pointer; min-width: 30px; justify-content: center; }
+.ct-chips .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.ct-don-info { margin-top: 8px; }
+.ct-don-info summary { cursor: pointer; color: var(--text-2); font-size: 14px; margin-bottom: 8px; }
+.ct-tabs { margin: 6px 0 14px; flex-wrap: wrap; }
+.ct-tabs button { display: inline-flex; gap: 6px; align-items: center; }
+.ct-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+.ct-cols > section, .ct-check, .ct-appeal { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.ct-check { margin-bottom: 14px; }
+.ct-cols h3, .ct-check h3 { font-size: 16px; margin: 0 0 10px; }
+.ct-check h3 small { display: block; font-weight: 400; color: var(--text-3); font-size: 13px; margin-top: 2px; }
+.ct-crime { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.ct-crime:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+.ct-crime h4 { margin: 0 0 4px; font-size: 15px; }
+.ct-els { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 6px; font-size: 14px; }
+.ct-els li { display: flex; gap: 6px; align-items: flex-start; }
+.ct-els li.ok > .ic { color: var(--success); flex: none; margin-top: 3px; }
+.ct-els li.no > .ic { color: var(--warning); flex: none; margin-top: 3px; }
+.ct-law, .ct-fact { margin: 6px 0; padding: 8px 12px; border-radius: 10px; font-size: 14px; line-height: 1.55; font-family: var(--font-serif); }
+.ct-law { background: var(--surface-2); border-left: 3px solid var(--gold-500); }
+.ct-fact { background: var(--accent-soft); border-left: 3px solid var(--accent); color: var(--text); }
+.ct-huong { padding-left: 20px; display: grid; gap: 6px; font-size: 14.5px; line-height: 1.55; }
+.ct-fs { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.ct-f { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.ct-f.lv-loi { border-left: 4px solid var(--danger); }
+.ct-f.lv-canh { border-left: 4px solid var(--warning); }
+.ct-f.lv-goi { border-left: 4px solid var(--accent); }
+.ct-f.lv-dung { border-left: 4px solid var(--success); }
+.ct-f-head { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+.ct-f p { margin: 6px 0 0; font-size: 14px; color: var(--text-2); }
+.ct-yc { display: flex; gap: 6px; align-items: flex-start; font-weight: 600; color: var(--text) !important; }
+.ct-pick { align-items: flex-start; gap: 8px; }
+.ct-ai { margin-top: 10px; padding: 12px; background: var(--surface-2); border-radius: 12px; font-size: 14.5px; line-height: 1.6; }
+.ct-disclaimer { display: flex; gap: 6px; align-items: flex-start; margin-top: 14px; }
+.ct-book { margin-bottom: 12px; }
+.badge-danger { background: var(--danger-soft); color: var(--danger); }
+@media (max-width: 900px) {
+  .ct-cols { grid-template-columns: 1fr; }
+  .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-3 { grid-template-columns: 1fr; }
+}
