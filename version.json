@@ -1,9 +1,9 @@
 {
-  "version": "2.39.0",
+  "version": "2.39.1",
   "date": "2026-10-26",
   "notes": [
-    "Mục Tòa án: phân tích hành vi phạm tội và hướng giải quyết",
-    "Kiểm tra tội danh, khung, mức hình phạt đã áp dụng (Điều 38, 51, 52, 54, 65) theo nguyên văn điều luật",
-    "Yêu cầu khiếu nại / kháng cáo có căn cứ pháp lý và thực tế, xuất đơn Word"
+    "Tòa án: tab 3 thành Xem xét đơn khiếu nại / kháng cáo nhận được — tải đơn, tách từng yêu cầu",
+    "Mỗi yêu cầu: Có căn cứ / Một phần / Cần xác minh / Không có căn cứ, căn cứ từ tài liệu vụ án và nguyên văn điều luật; kiểm tra thời hạn kháng cáo",
+    "Xuất phiếu xem xét đơn (Word); bỏ phần tạo đơn"
   ]
 }
