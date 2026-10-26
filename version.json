@@ -1,9 +1,9 @@
 {
-  "version": "2.38.0",
-  "date": "2026-10-16",
+  "version": "2.39.0",
+  "date": "2026-10-26",
   "notes": [
-    "Điện thoại chuyên để xem, tra cứu: mở vào trang Tra cứu, thanh dưới Tra cứu · Hồ sơ · Bình luận · Biểu mẫu; chế độ xem ẩn nút tạo, sửa, xóa; biên bản mở dạng bản đọc chữ lớn (tải Word, bản in); nút Xem / Sửa khi cần chỉnh",
-    "Trang Tra cứu một ô cho mọi dữ liệu: hồ sơ, người, nội dung lời khai, văn bản, kho tài liệu, điều luật, bình luận, biểu mẫu — gõ không dấu, khớp đầu từ, có trích đoạn và tô sáng",
-    "Máy tính: Ctrl K gõ từ khóa có thêm mục “Tra cứu …”"
+    "Mục Tòa án: phân tích hành vi phạm tội và hướng giải quyết",
+    "Kiểm tra tội danh, khung, mức hình phạt đã áp dụng (Điều 38, 51, 52, 54, 65) theo nguyên văn điều luật",
+    "Yêu cầu khiếu nại / kháng cáo có căn cứ pháp lý và thực tế, xuất đơn Word"
   ]
 }
