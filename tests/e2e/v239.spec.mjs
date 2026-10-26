@@ -71,7 +71,18 @@ QUYẾT ĐỊNH: Tuyên bố bị cáo Nguyễn Văn An phạm tội "Lừa đ�
 Áp dụng điểm a khoản 3 Điều 174; điểm s khoản 1 Điều 51; điểm b khoản 1 Điều 52 của Bộ luật Hình sự.
 Xử phạt bị cáo Nguyễn Văn An 08 (tám) năm tù, thời hạn tù tính từ ngày bắt tạm giam.`;
 
-test.describe('v2.39 — Tòa án: phân tích, kiểm tra bản án, yêu cầu khiếu nại', () => {
+const DON = `ĐƠN KHÁNG CÁO
+Kính gửi: Tòa án nhân dân thành phố Hà Nội
+Tôi tên là: Nguyễn Văn An, sinh năm 1985
+Nơi cư trú: thôn Đông, xã Tây, huyện Nam, tỉnh Bắc
+Là bị cáo trong vụ án theo Bản án hình sự sơ thẩm số 25/2026/HS-ST ngày 15/10/2026 của Tòa án nhân dân huyện X.
+1. Tòa án áp dụng khoản 3 Điều 174 là không đúng, số tiền chỉ 180.000.000 đồng nên phải xử theo khoản 2 Điều 174.
+2. Gia đình tôi đã bồi thường toàn bộ thiệt hại cho bị hại.
+Vì vậy tôi kính đề nghị Tòa án cấp phúc thẩm xem xét giảm nhẹ hình phạt.
+Tôi bị điều tra viên ép cung trong quá trình điều tra.
+Hà Nội, ngày 20 tháng 10 năm 2026`;
+
+test.describe('v2.39 — Tòa án: phân tích, kiểm tra bản án, xem xét đơn khiếu nại', () => {
   test('chưa nạp sách: báo thiếu; nút đọc bản án báo thiếu tài liệu', async ({ page }) => {
     const t = trackErrors(page);
     await freshApp(page, '#toa-an');
@@ -84,7 +95,7 @@ test.describe('v2.39 — Tòa án: phân tích, kiểm tra bản án, yêu cầu
     t.assertClean();
   });
 
-  test('nạp sách → dán bản án → đọc quyết định, phân tích, kiểm tra khung/mức, đơn kháng cáo có căn cứ, xuất Word', async ({ page }) => {
+  test('nạp sách → dán bản án → đọc quyết định, phân tích, kiểm tra khung/mức, xem xét đơn kháng cáo nhận được, xuất phiếu Word', async ({ page }) => {
     const t = trackErrors(page);
     await freshApp(page, '#binh-luan');
     await page.locator('[data-bl-file]').setInputFiles({ name: 'binh-luan-mau.txt', mimeType: 'text/plain', buffer: Buffer.from(BOOK) });
@@ -113,27 +124,47 @@ test.describe('v2.39 — Tòa án: phân tích, kiểm tra bản án, yêu cầu
     await expect(check.locator('.ct-law').first()).toBeVisible();
     await expect(check.locator('.ct-fact', { hasText: '180.000.000 đồng' }).first()).toBeVisible();
 
-    // Tab 3: yêu cầu kháng cáo có căn cứ → xem trước, bỏ chọn hết thì báo thiếu, xuất Word.
+    // Tab 3: xem xét đơn người khác gửi đến — chưa có đơn thì báo thiếu; dán đơn → từng yêu cầu có kết luận, căn cứ.
     await page.click('[data-ct-tab="khieu-nai"]');
-    const picks = page.locator('[data-pick]');
-    await expect(picks.first()).toBeVisible();
-    expect(await picks.count()).toBeGreaterThan(1);
+    await expect(page.locator('[data-ct-don]')).toBeVisible();
+    await page.click('[data-don-add]');
+    await expect(page.locator('.toast').last()).toContainText('Chưa có đơn');
+    await page.fill('[data-don-paste]', DON);
+    await page.click('[data-don-add]');
+    await expect(page.locator('[data-don-list]')).toContainText('Đơn dán 1');
+    const review = page.locator('[data-ct-out] .ct-review');
+    await expect(review.locator('.ct-don-meta')).toContainText('Đơn kháng cáo');
+    await expect(review.locator('.ct-don-meta')).toContainText('Nguyễn Văn An, sinh năm 1985');
+    await expect(review.locator('.ct-don-meta')).toContainText('25/2026/HS-ST ngày 15/10/2026');
+    await expect(review.locator('[data-don-overall]')).toHaveText('Đơn có căn cứ một phần');
+    await expect(review.locator('[data-yc="doi-khoan"] .badge').first()).toHaveText('Có căn cứ');
+    await expect(review.locator('[data-yc="thu-tuc"] .badge').first()).toHaveText('Cần xác minh thêm');
+    await expect(review.locator('[data-yc="thu-tuc"] .ct-don-q')).toContainText('Tôi bị điều tra viên ép cung');
+    await expect(review.locator('[data-yc="them-giam-nhe"] .ct-fact').first()).toContainText('Gia đình bị cáo đã bồi thường cho bị hại 50.000.000 đồng.');
+    await expect(review.locator('.ct-notes')).toContainText('trong thời hạn kháng cáo 15 ngày');
     await page.click('[data-don-preview]');
     const modal = page.locator('.preview-modal');
-    await expect(modal).toContainText('ĐƠN KHÁNG CÁO');
-    await expect(modal).toContainText('Nguyễn Văn An');
+    await expect(modal).toContainText('PHIẾU XEM XÉT ĐƠN');
+    await expect(modal).toContainText('Đơn có căn cứ một phần');
     await expect(modal).toContainText('Căn cứ pháp lý');
     await expect(modal).toContainText('Căn cứ thực tế');
     await modal.locator('.modal-actions [data-close]').click();
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-don-export]')]);
     expect(dl.suggestedFilename()).toMatch(/\.docx$/);
-    for (const c of await picks.all()) await c.uncheck();
-    await page.click('[data-don-export]');
-    await expect(page.locator('.toast').last()).toContainText('Chưa có yêu cầu nào được chọn');
+    // Đổi tab rồi quay lại: đơn vẫn còn; bỏ đơn → báo chưa có đơn.
+    await page.click('[data-ct-tab="kiem-tra"]');
+    await expect(page.locator('[data-ct-don]')).toBeHidden();
+    await page.click('[data-ct-tab="khieu-nai"]');
+    await expect(review.locator('[data-don-overall]')).toBeVisible();
+    await page.click('[data-don-del]');
+    await expect(page.locator('[data-ct-out]')).toContainText('Tải đơn khiếu nại / kháng cáo đã nhận');
+    await page.fill('[data-don-paste]', DON);
+    await page.click('[data-don-add]');
 
     // Lưu trên máy: quay lại danh sách thấy hồ sơ.
     await page.goto('/app.html#toa-an');
     await expect(page.locator('.ct-list')).toContainText('Nguyễn Văn An');
+    await expect(page.locator('.ct-list')).toContainText('1 đơn');
     t.assertClean();
   });
 });

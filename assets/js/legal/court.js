@@ -1,5 +1,5 @@
 // Mục "Tòa án": đọc bản án / cáo trạng, phân tích hành vi phạm tội, kiểm tra tội danh – khung – mức hình phạt đã áp dụng,
-// lập các yêu cầu khiếu nại / kháng cáo có căn cứ.
+// xem xét đơn khiếu nại / kháng cáo người khác gửi đến có căn cứ hay không.
 //
 // Nguyên tắc: chỉ dựa trên NỘI DUNG HIỆN CÓ — nguyên văn điều luật lấy từ sách Bình luận BLHS đã nạp (khung hình phạt,
 // Điều 9, 38, 51, 52, 54, 65), dữ liệu cấu thành tội phạm của phần mềm, và câu trích nguyên văn trong tài liệu vụ án.
@@ -280,7 +280,7 @@ const MITIGATE_CUES = [
   [/hạn chế khả năng nhận thức hoặc khả năng điều khiển/u, /tâm thần|hạn chế khả năng nhận thức/iu],
   [/lập công/u, /lập công/iu],
 ];
-const K2_CUE = /đầu thú|gia đình (?:có công|chính sách)|(?:bố|mẹ|cha|ông|bà|anh|chị)[^.]{0,40}(?:có công|liệt sĩ|huân chương|huy chương)|bị hại (?:có đơn )?(?:xin giảm nhẹ|bãi nại)|đơn xin giảm nhẹ/iu;
+const K2_CUE = /đầu thú|gia đình (?:có công|chính sách)|hoàn cảnh (?:gia đình )?(?:đặc biệt )?khó khăn|lao động chính|(?:bố|mẹ|cha|ông|bà|anh|chị)[^.]{0,40}(?:có công|liệt sĩ|huân chương|huy chương)|bị hại (?:có đơn )?(?:xin giảm nhẹ|bãi nại)|đơn xin giảm nhẹ/iu;
 // Tình tiết tăng nặng đã áp dụng cần có căn cứ trong tài liệu.
 const AGGRAVATE_CUES = [
   [/có tổ chức/u, /có tổ chức|bàn bạc|phân công|câu kết chặt chẽ/iu],
@@ -362,6 +362,8 @@ export function checkDefendant(d, { book, sources = [], rules = generalRules(boo
       add({
         id: 'khung-tien',
         level: 'loi',
+        nangHon: heavier,
+        khoanDung: best.k,
         nhom: 'khung',
         title: `Giá trị ${fmtVnd(amount)} thuộc khoản ${best.k}, không phải khoản ${applied.k} Điều ${main.dieu}`,
         detail: heavier ? 'Theo giá trị tài sản, khung đã áp dụng NHẸ hơn quy định (căn cứ để Viện kiểm sát kháng nghị / bị hại kháng cáo tăng nặng).' : 'Theo giá trị tài sản, khung đã áp dụng NẶNG hơn quy định (căn cứ để bị cáo kháng cáo).',
@@ -452,7 +454,16 @@ export function checkDefendant(d, { book, sources = [], rules = generalRules(boo
   const extra = F.filter((f) => /^bo-sot-51-[a-zđ]$/.test(f.id)).length;
   if (applied && !d.dieu54 && nK1 + extra >= 2 && applied.k > 1 && hp.loai === 'tu' && hp.thang != null && hp.thang >= (applied.penalty.tuMin ?? 0))
     add({ id: 'de-nghi-54', level: 'goi', nhom: 'muc', title: `Có ${nK1 + extra} tình tiết giảm nhẹ khoản 1 Điều 51${extra ? ` (gồm ${extra} tình tiết chưa được áp dụng)` : ''} — có thể đề nghị xử dưới mức thấp nhất của khung`, law: rules.a54.slice(0, 1).map((x) => ({ ref: `khoản ${x.k} Điều 54 BLHS`, quote: x.text })), yeuCau: `Đề nghị áp dụng khoản 1 Điều 54 BLHS, quyết định hình phạt dưới mức thấp nhất của khoản ${applied.k} Điều ${main.dieu} BLHS.` });
-  return F;
+  return F.map((f) => ({ ...f, chieu: chieuOf(f) }));
+}
+
+/** Phát hiện có lợi cho bị cáo ('giam') hay theo hướng nặng hơn ('tang') — dùng khi xem xét đơn của từng bên. */
+function chieuOf(f) {
+  if (f.level === 'dung') return null;
+  if (f.id === 'khung-tien') return f.nangHon ? 'tang' : 'giam';
+  if (/^(tren-khung|chung-than|tu-hinh|trung-52-|can-cu-52-|bo-sot-51|de-nghi-54|de-nghi-an-treo|toi-danh-thieu)/.test(f.id)) return 'giam';
+  if (/^(duoi-khung-khong-54|dieu-54-thieu|dieu-54-lien-ke|an-treo-qua-3|an-treo-tang-nang|trung-51-)/.test(f.id)) return 'tang';
+  return null;
 }
 
 /* ---------------- Phân tích hành vi & hướng giải quyết ---------------- */
@@ -521,59 +532,403 @@ export function analyzeCase({ sources = [], book = null, primary = null, defenda
   return { crimes, mitig, aggr, huong, money, defendants };
 }
 
-/* ---------------- Yêu cầu khiếu nại / kháng cáo có căn cứ ---------------- */
-export const DON = {
-  'khang-cao': { ten: 'ĐƠN KHÁNG CÁO', ve: 'Kháng cáo bản án sơ thẩm', gui: 'Tòa án nhân dân đã xét xử sơ thẩm' },
-  'giam-doc-tham': { ten: 'ĐƠN ĐỀ NGHỊ XEM XÉT THEO THỦ TỤC GIÁM ĐỐC THẨM', ve: 'Đề nghị xem xét lại bản án đã có hiệu lực pháp luật', gui: 'Chánh án Tòa án nhân dân / Viện trưởng Viện kiểm sát nhân dân có thẩm quyền' },
-  'khieu-nai': { ten: 'ĐƠN KHIẾU NẠI', ve: 'Khiếu nại quyết định, hành vi tố tụng', gui: 'Cơ quan, người có thẩm quyền giải quyết khiếu nại' },
-};
 
-/** Gom các phát hiện có yêu cầu thành căn cứ khiếu nại / kháng cáo (sai rõ trước, rồi đề nghị). */
-export function appealGrounds(findings = []) {
-  const order = { loi: 0, canh: 1, goi: 2 };
-  return findings
-    .filter((f) => f.yeuCau && f.level !== 'dung')
-    .sort((a, b) => order[a.level] - order[b.level])
-    .map((f) => ({ id: f.id, level: f.level, yeuCau: f.yeuCau, lyDo: [f.title, f.detail].filter(Boolean).join('. '), law: f.law || [], facts: f.facts || [] }));
+/* ---------------- Xem xét đơn khiếu nại / kháng cáo (đơn do người khác gửi đến) ---------------- */
+// Lời trình bày trong đơn KHÔNG phải chứng cứ: chỉ tài liệu vụ án đã nạp (bản án, cáo trạng, lời khai…) và nguyên văn điều
+// luật mới là căn cứ để kết luận từng yêu cầu của đơn có căn cứ hay không. Tình tiết chỉ có trong đơn → "cần xác minh".
+export const KET_LUAN = { co: 'Có căn cứ', 'mot-phan': 'Có căn cứ một phần', 'xac-minh': 'Cần xác minh thêm', khong: 'Không có căn cứ' };
+export const LOAI_DON = { 'khang-cao': 'Đơn kháng cáo', 'giam-doc-tham': 'Đơn đề nghị giám đốc thẩm, tái thẩm', 'khieu-nai': 'Đơn khiếu nại', 'to-cao': 'Đơn tố cáo', 'kien-nghi': 'Đơn kiến nghị, đề nghị' };
+
+// Các loại yêu cầu thường gặp trong đơn (khớp theo câu trong đơn).
+const YEU_CAU = [
+  { type: 'keu-oan', label: 'Kêu oan, cho rằng không phạm tội', re: /kêu oan|bị oan|oan sai|không phạm tội|vô tội|không (?:hề )?(?:có|thực hiện) hành vi|đình chỉ (?:vụ án|điều tra|bị can)/iu },
+  { type: 'huy-an', label: 'Hủy bản án, điều tra / xét xử lại', re: /hủy (?:bỏ )?(?:toàn bộ |một phần )?(?:bản )?án(?! treo)|điều tra lại|xét xử lại|điều tra bổ sung/iu },
+  { type: 'doi-toi', label: 'Xem xét lại tội danh', re: /(?:chuyển|đổi|thay đổi|xem xét lại|xác định lại) tội danh|tội danh (?:khác|không đúng|chưa đúng|sai)|định tội (?:sai|chưa đúng|không đúng)|(?:sang|thành) tội\s/iu },
+  { type: 'doi-khoan', label: 'Áp dụng khoản (khung hình phạt) khác', re: /khoản\s+\d+\s+Điều\s+\d+|khung (?:hình phạt )?(?:nặng|cao|nhẹ|thấp) hơn|(?:sai|không đúng|chưa đúng) khung/iu },
+  { type: 'bo-tang-nang', label: 'Không áp dụng tình tiết tăng nặng', re: /(?:không|bỏ)[^.;]{0,30}(?:áp dụng )?tình tiết tăng nặng|tình tiết tăng nặng[^.;]{0,50}(?:không đúng|không có căn cứ|sai|chưa đúng)|Điều 52[^.;]{0,40}(?:không đúng|không có căn cứ|sai)/iu },
+  { type: 'them-giam-nhe', label: 'Áp dụng thêm tình tiết giảm nhẹ', re: /(?:áp dụng|xem xét|bổ sung|chưa (?:được )?(?:xem xét|áp dụng)|không (?:được )?(?:xem xét|áp dụng))[^.;]{0,40}tình tiết giảm nhẹ|khoản\s+[12]\s+Điều\s+51/iu },
+  { type: 'an-treo', label: 'Cho hưởng án treo', re: /án treo|cải tạo (?:tại|ở) (?:địa phương|nhà|gia đình)|không (?:phải )?(?:đi |chấp hành (?:hình phạt )?)tù/iu },
+  { type: 'giam-an', label: 'Giảm hình phạt', re: /giảm (?:nhẹ )?(?:một phần )?(?:hình phạt|án|mức án|mức hình phạt)|xin (?:được )?(?:xem xét )?giảm|xử (?:nhẹ|giảm)|(?:mức án|hình phạt)[^.;]{0,25}(?:quá )?(?:nặng|cao|nghiêm khắc)|khoan hồng|dưới mức thấp nhất/iu },
+  { type: 'tang-an', label: 'Tăng hình phạt, không cho hưởng án treo', re: /tăng (?:nặng )?(?:hình phạt|mức án|án)|xử (?:nặng|nghiêm|thật nghiêm)|(?:mức án|hình phạt)[^.;]{0,25}(?:quá )?(?:nhẹ|thấp|chưa tương xứng|không tương xứng)|không (?:cho )?(?:bị cáo )?(?:được )?hưởng án treo|hủy (?:phần )?(?:quyết định )?(?:cho hưởng )?án treo/iu },
+  { type: 'dan-su', label: 'Bồi thường, phần dân sự, tài sản', re: /(?:buộc|yêu cầu|đề nghị)[^.;]{0,40}(?:bồi thường|trả lại|hoàn trả)|trách nhiệm dân sự|phần dân sự|mức bồi thường|kê biên|tài sản bị (?:tịch thu|thu giữ|tạm giữ)|xử lý vật chứng/iu },
+  { type: 'thu-tuc', label: 'Vi phạm thủ tục tố tụng', re: /vi phạm (?:nghiêm trọng )?(?:thủ tục )?tố tụng|ép cung|bức cung|mớm cung|nhục hình|đánh đập|không (?:được )?(?:có |mời |chỉ định )?(?:luật sư|người bào chữa)|không (?:được )?(?:tống đạt|giao|nhận)[^.;]{0,25}(?:bản án|cáo trạng|quyết định|giấy triệu tập)|không (?:được )?triệu tập|không (?:được )?(?:đối chất|thực nghiệm)|thiếu khách quan|không khách quan|(?:thay đổi|từ chối) (?:thẩm phán|kiểm sát viên|điều tra viên|người tiến hành)/iu },
+];
+const NAME_ANY = '((?:[A-ZĐÀ-Ỹ][\\p{L}\\u0300-\\u036f]*)(?:\\s+[A-ZĐÀ-Ỹ][\\p{L}\\u0300-\\u036f]*){1,4})';
+const vnDate = (d, m, y) => `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+const toDate = (s) => {
+  const m = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(s || ''));
+  return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null;
+};
+const splitSents = (text) =>
+  String(text || '')
+    .replace(/\r/g, '')
+    .split(/(?<=[.!?;])\s+|\n+/u)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 8);
+
+/**
+ * Đọc đơn: loại đơn, người gửi (họ tên, năm sinh, nơi cư trú, tư cách), ngày đơn, bản án bị kháng cáo / khiếu nại,
+ * các yêu cầu (loại + câu nguyên văn), tình tiết đơn nêu (theo nội dung điểm Điều 51), điều luật đơn viện dẫn.
+ */
+export function parseComplaint(text, { book = null } = {}) {
+  const src = String(text || '').replace(/\r/g, '');
+  const head = src.slice(0, 600);
+  const sents = splitSents(src);
+  const loai = /giám đốc thẩm|tái thẩm/iu.test(head) ? 'giam-doc-tham' : /kháng cáo/iu.test(head) ? 'khang-cao' : /tố cáo/iu.test(head) ? 'to-cao' : /khiếu nại/iu.test(head) ? 'khieu-nai' : /kháng cáo/iu.test(src) ? 'khang-cao' : /khiếu nại/iu.test(src) ? 'khieu-nai' : /kiến nghị|đề nghị/iu.test(head) ? 'kien-nghi' : null;
+  const nguoi = {};
+  const nm = new RegExp(`(?:Tôi\\s+(?:tên\\s+)?là|Họ (?:và )?tên(?: người (?:làm|viết|gửi) đơn)?)\\s*:?\\s*(?:ông|bà|anh|chị)?\\s*${NAME_ANY}`, 'u').exec(src);
+  if (nm) nguoi.hoTen = nm[1].trim();
+  const ns = /sinh (?:năm|ngày)[^0-9\n]{0,5}(?:\d{1,2}[/-]\d{1,2}[/-])?(\d{4})/iu.exec(src);
+  if (ns) nguoi.namSinh = ns[1];
+  const dc = /(?:Nơi cư trú|Địa chỉ|Trú tại|Thường trú|HKTT)\s*:?\s*([^\n]{5,150}?)(?:[.;]?\s*(?:\n|$|Số điện thoại|Điện thoại|Là\b))/iu.exec(src);
+  if (dc) nguoi.diaChi = dc[1].trim().replace(/[.,;]$/, '');
+  const tc = /tư cách[^:\n]{0,40}:\s*([^\n.;]{3,80})/iu.exec(src);
+  const than = new RegExp(`là (bố|mẹ|cha|vợ|chồng|con|anh|chị|em)(?: đẻ| ruột)? của bị cáo\\s+${NAME_ANY}`, 'iu').exec(src);
+  const role = /(người bị hại|bị hại|bị cáo|người bào chữa|luật sư|người đại diện hợp pháp|nguyên đơn dân sự|bị đơn dân sự|người có quyền lợi, nghĩa vụ liên quan)/iu.exec(src.slice(0, 1200));
+  nguoi.tuCach = tc ? tc[1].trim() : than ? `${than[1].charAt(0).toUpperCase()}${than[1].slice(1)} của bị cáo ${than[2]}` : role ? role[1].charAt(0).toUpperCase() + role[1].slice(1) : '';
+  // Ngày đơn: dòng "Địa danh, ngày … tháng … năm …"; không có thì ngày đầu tiên dạng đó.
+  const dm = /,\s*ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/iu.exec(src) || /ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/iu.exec(src);
+  const ngay = dm ? vnDate(dm[1], dm[2], dm[3]) : '';
+  const ba = /bản án[^.\n]{0,50}?số\s*:?\s*([0-9]{1,5}\/[0-9]{4}\/[A-ZĐ][A-ZĐ\-]*)/iu.exec(src);
+  let banAnNgay = '';
+  if (ba) {
+    const after = src.slice(ba.index + ba[0].length, ba.index + ba[0].length + 60);
+    const d1 = /ngày\s+(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/u.exec(after) || /ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/u.exec(after);
+    if (d1) banAnNgay = vnDate(d1[1], d1[2], d1[3]);
+  }
+  const biCao = [...new Set([...src.matchAll(new RegExp(`bị cáo\\s+${NAME_ANY}`, 'gu'))].map((m) => m[1].trim()))];
+
+  // Yêu cầu: loại + câu nguyên văn (một câu có thể có nhiều yêu cầu).
+  const yeuCau = [];
+  for (const t of sents) {
+    for (const y of YEU_CAU) {
+      if (!y.re.test(t)) continue;
+      if (y.type === 'keu-oan' && /không\s+(?:hề\s+)?kêu oan|(?<!không\s)thừa nhận/iu.test(t)) continue;
+      if (y.type === 'an-treo' && YEU_CAU.find((x) => x.type === 'tang-an').re.test(t) && /án treo/iu.test(t)) continue;
+      if (y.type === 'doi-khoan' && !/khung/iu.test(t) && !parseCitations(t).some((c) => c.khoan && findCrime(c.dieu))) continue;
+      const cur = yeuCau.find((x) => x.type === y.type);
+      if (cur) cur.quotes.length < 3 && !cur.quotes.includes(t) && cur.quotes.push(t);
+      else yeuCau.push({ type: y.type, label: y.label, quotes: [t] });
+    }
+  }
+  // Tình tiết giảm nhẹ đơn nêu (theo nội dung điểm của khoản 1 Điều 51 trong sách) và điều luật đơn viện dẫn.
+  const rules = generalRules(book);
+  const giamNhe = [];
+  for (const p of rules.a51.k1) {
+    const cue = MITIGATE_CUES.find(([k]) => k.test(p.text));
+    const q = cue && sents.find((t) => cue[1].test(t));
+    if (q) giamNhe.push({ d: p.d, text: p.text, quote: q });
+  }
+  const cites = parseCitations(src);
+  for (const c of cites.filter((x) => x.dieu === '51' && x.khoan === 1))
+    for (const d of c.diem) if (!giamNhe.some((g) => g.d === d)) giamNhe.push({ d, text: rules.a51.k1.find((p) => p.d === d)?.text || '', quote: sents.find((t) => new RegExp(`điểm[^.;]*\\b${d}\\b[^.;]*Điều 51`, 'iu').test(t)) || '' });
+  const k2 = sents.find((t) => K2_CUE.test(t)) || (cites.some((c) => c.dieu === '51' && c.khoan === 2) ? sents.find((t) => /khoản 2 Điều 51/iu.test(t)) || '' : null);
+  const tangNang = [...new Set(cites.filter((x) => x.dieu === '52').flatMap((x) => x.diem))];
+  const dieuLuat = cites.filter((c) => findCrime(c.dieu));
+  // Đơn nêu tình tiết giảm nhẹ (lý do) mà không có câu yêu cầu riêng → vẫn xem xét như yêu cầu áp dụng tình tiết giảm nhẹ.
+  if ((giamNhe.length || k2) && !yeuCau.some((x) => x.type === 'them-giam-nhe')) {
+    const quotes = [...new Set([...giamNhe.map((g) => g.quote), k2].filter(Boolean))].slice(0, 3);
+    yeuCau.push({ type: 'them-giam-nhe', label: YEU_CAU.find((x) => x.type === 'them-giam-nhe').label, quotes });
+  }
+  return { loai, nguoi, ngay, banAn: { so: ba?.[1] || '', ngay: banAnNgay }, biCao, yeuCau, giamNhe, k2: k2 ?? null, tangNang, dieuLuat, sents };
 }
 
+/** Bị cáo mà đơn đề cập (theo tên trong đơn / tên người gửi); không rõ thì bị cáo đầu tiên. */
+function targetOf(defendants, parsed) {
+  const key = (n) => fold(n).split(' ').filter(Boolean).slice(-2).join(' ');
+  const names = [...parsed.biCao, parsed.nguoi.hoTen].filter(Boolean).map(key);
+  return defendants.find((d) => d.hoTen && names.includes(key(d.hoTen))) || defendants.find((d) => d.hoTen && fold(parsed.sents.join(' ')).includes(key(d.hoTen))) || defendants[0] || null;
+}
+
+/**
+ * Xem xét đơn: mỗi yêu cầu → kết luận (Có căn cứ / Có căn cứ một phần / Cần xác minh thêm / Không có căn cứ), lý do,
+ * căn cứ pháp lý (nguyên văn điều luật) và căn cứ thực tế (trích tài liệu vụ án); kết luận chung của đơn; lưu ý thời hạn.
+ */
+export function assessComplaint({ text = '', defendants = [], sources = [], book = null, banAn = {} } = {}) {
+  const parsed = parseComplaint(text, { book });
+  const d = targetOf(defendants, parsed);
+  const rules = generalRules(book);
+  const sents = sentencesOf(sources);
+  const facts = sources.map((s) => s.text).join('\n');
+  const F = d ? checkDefendant(d, { book, sources, rules }) : [];
+  const main = d?.toiDanh?.[0] || {};
+  const hp = d?.hinhPhat || {};
+  const frames = main.dieu ? (articleFrames(book, main.dieu) || []).filter((x) => !x.boSung) : [];
+  const applied = frames.find((x) => x.k === main.khoan) || null;
+  const lawK = (x) => ({ ref: bl(main.dieu, x.k), quote: x.text.split('\n')[0] });
+  const law51 = (p) => ({ ref: `điểm ${p.d} khoản 1 Điều 51 BLHS`, quote: p.text });
+  const law65 = rules.a65.quote ? [{ ref: 'khoản 1 Điều 65 BLHS', quote: rules.a65.quote }] : [];
+  const fromF = (f) => ({ text: [f.title, f.detail].filter(Boolean).join('. '), law: f.law || [], facts: f.facts || [] });
+  const giamF = F.filter((f) => f.chieu === 'giam' && !/^(de-nghi-an-treo|toi-danh-thieu)$/.test(f.id));
+  const tangF = F.filter((f) => f.chieu === 'tang');
+  const ev = (re) => evidence(sents, re, { name: d?.hoTen || '' });
+  const hpText = hp.loai === 'tu' && hp.thang != null ? `${fmtMonths(hp.thang)} tù${hp.anTreo ? ' (án treo)' : ''}` : hp.loai === 'cai-tao' ? `${fmtMonths(hp.thang)} cải tạo không giam giữ` : hp.loai === 'chung-than' ? 'tù chung thân' : hp.loai === 'tu-hinh' ? 'tử hình' : '';
+  const baseline = () => {
+    const tk = F.find((f) => f.id === 'trong-khung');
+    if (!tk) return null;
+    const used = (d.giamNhe || []).map((x) => `điểm ${x}`).join(', ');
+    return { text: `${tk.title}; ${used ? `bản án đã áp dụng tình tiết giảm nhẹ ${used} khoản 1 Điều 51` : 'tài liệu không thể hiện tình tiết giảm nhẹ chưa được áp dụng'}${(d.tangNang || []).length ? `, tăng nặng điểm ${d.tangNang.join(', ')} khoản 1 Điều 52` : ''}.`, law: tk.law };
+  };
+  // Tình tiết giảm nhẹ đơn nêu: đã áp dụng / có chứng cứ trong tài liệu / chỉ có trong đơn.
+  const claimed51 = () => {
+    const out = { co: [], khong: [], xacMinh: [] };
+    for (const g of parsed.giamNhe) {
+      const p = rules.a51.k1.find((x) => x.d === g.d) || { d: g.d, text: g.text };
+      const lq = p.text ? [law51(p)] : [];
+      if ((d.giamNhe || []).includes(g.d)) out.khong.push({ text: `Tình tiết “${p.text.replace(/;$/, '')}” (điểm ${g.d} khoản 1 Điều 51) mà đơn nêu đã được bản án áp dụng.`, law: lq, don: g.quote });
+      else {
+        const cue = MITIGATE_CUES.find(([k]) => k.test(p.text || ''));
+        const e = cue ? ev(cue[1]) : null;
+        if (e) out.co.push({ text: `Tình tiết “${p.text.replace(/;$/, '')}” (điểm ${g.d} khoản 1 Điều 51) có trong tài liệu nhưng bản án chưa áp dụng.`, law: lq, facts: [{ quote: e.t, src: e.src }], don: g.quote });
+        else out.xacMinh.push({ text: `Đơn nêu tình tiết “${(p.text || `điểm ${g.d}`).replace(/;$/, '')}” (điểm ${g.d} khoản 1 Điều 51) nhưng tài liệu đã nạp chưa có chứng cứ — yêu cầu người gửi đơn cung cấp tài liệu chứng minh (nếu là tình tiết mới phát sinh sau xét xử sơ thẩm thì xem xét tại phúc thẩm).`, law: lq, don: g.quote });
+      }
+    }
+    if (parsed.k2 != null) {
+      const lq = rules.a51.k2 ? [{ ref: 'khoản 2 Điều 51 BLHS', quote: rules.a51.k2 }] : [];
+      if (d.giamNheK2) out.khong.push({ text: 'Tình tiết đơn nêu thuộc khoản 2 Điều 51 — bản án đã áp dụng khoản 2 Điều 51.', law: lq, don: parsed.k2 });
+      else {
+        const e = ev(K2_CUE);
+        if (e) out.co.push({ text: 'Tài liệu có tình tiết có thể coi là giảm nhẹ theo khoản 2 Điều 51 (đầu thú, gia đình có công, bị hại xin giảm nhẹ…) nhưng bản án chưa áp dụng.', law: lq, facts: [{ quote: e.t, src: e.src }], don: parsed.k2 });
+        else out.xacMinh.push({ text: 'Đơn nêu tình tiết thuộc khoản 2 Điều 51 nhưng tài liệu đã nạp chưa có chứng cứ — cần tài liệu chứng minh (giấy chứng nhận, đơn xin giảm nhẹ của bị hại…).', law: lq, don: parsed.k2 });
+      }
+    }
+    return out;
+  };
+
+  const items = parsed.yeuCau.map((y) => {
+    const it = { ...y, co: [], khong: [], xacMinh: [], kl: null };
+    if (!d || !main.dieu) {
+      it.xacMinh.push({ text: 'Chưa có quyết định của bản án để đối chiếu — đọc bản án (phần 1) hoặc nhập tội danh, hình phạt ở phần Bị cáo.' });
+      return it;
+    }
+    switch (y.type) {
+      case 'giam-an': {
+        it.co.push(...giamF.filter((f) => !parsed.giamNhe.some((g) => f.id === `bo-sot-51-${g.d}`) && !(f.id === 'bo-sot-51-k2' && parsed.k2 != null)).map(fromF));
+        const c = claimed51();
+        it.co.push(...c.co);
+        it.khong.push(...c.khong);
+        it.xacMinh.push(...c.xacMinh);
+        if (applied && hp.loai === 'tu' && hp.thang != null && hp.thang === applied.penalty.tuMin && !d.dieu54 && (d.giamNhe || []).length < 2)
+          it.khong.push({ text: `Mức ${fmtMonths(hp.thang)} tù đã là mức thấp nhất của khoản ${applied.k}; chỉ xử dưới mức này khi đủ điều kiện Điều 54 (ít nhất hai tình tiết giảm nhẹ khoản 1 Điều 51).`, law: [lawK(applied), ...rules.a54.slice(0, 1).map((x) => ({ ref: `khoản ${x.k} Điều 54 BLHS`, quote: x.text }))] });
+        if (!it.co.length && !it.khong.length && !it.xacMinh.length) {
+          const b = baseline();
+          if (b) it.khong.push(b);
+          else it.xacMinh.push({ text: 'Chưa đủ dữ liệu để đối chiếu mức hình phạt (cần nguyên văn khung từ sách Bình luận và mức án đã tuyên).' });
+        }
+        break;
+      }
+      case 'an-treo': {
+        if (hp.anTreo) it.khong.push({ text: 'Bản án đã cho bị cáo hưởng án treo.', law: law65 });
+        else if (hp.loai !== 'tu' || hp.thang == null) it.xacMinh.push({ text: 'Chưa có mức phạt tù đã tuyên để đối chiếu điều kiện Điều 65.', law: law65 });
+        else if (hp.thang > rules.a65.maxTu) {
+          if (giamF.length) it.xacMinh.push({ text: `Mức tù đã tuyên ${fmtMonths(hp.thang)} quá ${fmtMonths(rules.a65.maxTu)} — chỉ xem xét án treo nếu mức tù được giảm xuống không quá ${fmtMonths(rules.a65.maxTu)} (đơn/tài liệu có căn cứ giảm hình phạt, xem yêu cầu giảm hình phạt).`, law: law65 });
+          else it.khong.push({ text: `Mức tù đã tuyên ${fmtMonths(hp.thang)} quá ${fmtMonths(rules.a65.maxTu)} — không đủ điều kiện cho hưởng án treo.`, law: law65 });
+        } else {
+          const nMit = (d.giamNhe || []).length + F.filter((f) => /^bo-sot-51-[a-zđ]$/.test(f.id)).length;
+          const aggr = (d.tangNang || []).filter((x) => !F.some((f) => f.id === `trung-52-${x}` || f.id === `can-cu-52-${x}`));
+          const tot = ev(/nhân thân tốt|chưa có tiền án|nơi cư trú rõ ràng/iu);
+          if (nMit >= 2) it.co.push({ text: `Mức tù ${fmtMonths(hp.thang)} không quá ${fmtMonths(rules.a65.maxTu)}; có ${nMit} tình tiết giảm nhẹ khoản 1 Điều 51.`, law: law65, facts: tot ? [{ quote: tot.t, src: tot.src }] : [] });
+          else it.khong.push({ text: `Chỉ có ${nMit} tình tiết giảm nhẹ khoản 1 Điều 51 — chưa thể hiện điều kiện “nhiều tình tiết giảm nhẹ” để xem xét án treo.`, law: law65 });
+          if (aggr.length) it.khong.push({ text: `Bị cáo có tình tiết tăng nặng điểm ${aggr.join(', ')} khoản 1 Điều 52 (có căn cứ trong tài liệu).`, law: aggr.map((x) => rules.a52.k1.find((p) => p.d === x)).filter(Boolean).map((p) => ({ ref: `điểm ${p.d} khoản 1 Điều 52 BLHS`, quote: p.text })) });
+          if (!tot) it.xacMinh.push({ text: 'Cần xác minh nhân thân, nơi cư trú rõ ràng của bị cáo (tài liệu đã nạp chưa thể hiện).' });
+        }
+        break;
+      }
+      case 'keu-oan': {
+        const ok = F.find((f) => f.id === 'toi-danh-ok');
+        const thieu = F.find((f) => f.id === 'toi-danh-thieu');
+        if (thieu) it.xacMinh.push({ text: `${thieu.title}. ${thieu.detail} — cần đối chiếu hồ sơ gốc; nếu hồ sơ cũng không có chứng cứ thì yêu cầu kêu oan có căn cứ.`, facts: thieu.facts });
+        else if (ok) it.khong.push({ text: `${ok.title}: tài liệu thể hiện đủ các yếu tố cấu thành tội phạm.`, facts: ok.facts });
+        else it.xacMinh.push({ text: 'Tài liệu đã nạp chưa đủ để đánh giá yếu tố cấu thành — bổ sung bản án, cáo trạng, lời khai.' });
+        break;
+      }
+      case 'doi-toi': {
+        const targets = [...new Set(parsed.dieuLuat.map((c) => c.dieu).filter((x) => x !== main.dieu))];
+        const alts = F.filter((f) => /^toi-danh-khac-/.test(f.id));
+        if (targets.length) {
+          for (const x of targets) {
+            const alt = alts.find((f) => f.id === `toi-danh-khac-${x}`);
+            const cr = findCrime(x);
+            if (alt) it.co.push(fromF(alt));
+            else {
+              const a = assessCrime(x, facts, { ctxText: facts });
+              const miss = (a?.yeuTo || []).filter((e) => e.req && !e.ok);
+              if (a?.show && !miss.length) it.co.push({ text: `Tài liệu có đủ dấu hiệu Điều ${x} (${cr?.ten || ''}) mà đơn đề nghị.`, facts: groupQuotes((a.yeuTo || []).filter((e) => e.ok)).slice(0, 2) });
+              else it.khong.push({ text: `Tài liệu chưa thể hiện dấu hiệu Điều ${x}${cr ? ` (${cr.ten})` : ''} mà đơn đề nghị${miss.length ? `: thiếu ${miss.map((e) => e.label).join('; ')}` : ''}.` });
+            }
+          }
+        } else if (alts.length) it.co.push(...alts.map(fromF));
+        const ok = F.find((f) => f.id === 'toi-danh-ok');
+        if (!it.co.length && ok) it.khong.push({ text: `${ok.title}.`, facts: ok.facts });
+        if (!it.co.length && !it.khong.length) it.xacMinh.push({ text: 'Tài liệu đã nạp chưa đủ để đánh giá lại tội danh.' });
+        break;
+      }
+      case 'doi-khoan': {
+        const kt = F.find((f) => f.id === 'khung-tien');
+        const ktOk = F.find((f) => f.id === 'khung-tien-ok');
+        const req = [...new Set(parsed.dieuLuat.filter((c) => c.dieu === main.dieu && c.khoan && c.khoan !== main.khoan).map((c) => c.khoan))];
+        if (kt && (!req.length || req.includes(kt.khoanDung))) it.co.push(fromF(kt));
+        else if (kt) it.khong.push({ text: `Theo giá trị tài sản, khoản phù hợp là khoản ${kt.khoanDung}, không phải khoản ${req.join(', ')} như đơn đề nghị.`, law: kt.law });
+        else if (ktOk) it.khong.push({ text: `${ktOk.title} — đơn đề nghị ${req.length ? `khoản ${req.join(', ')}` : 'khung khác'} không phù hợp giá trị tài sản.`, law: ktOk.law });
+        else if (applied) it.xacMinh.push({ text: `Chưa có giá trị tài sản / dấu hiệu định khung để đối chiếu khoản ${applied.k} đã áp dụng.`, law: [lawK(applied)] });
+        else it.xacMinh.push({ text: 'Chưa có nguyên văn khung hình phạt (nạp sách Bình luận) hoặc khoản đã áp dụng.' });
+        break;
+      }
+      case 'bo-tang-nang': {
+        const ds = parsed.tangNang.length ? parsed.tangNang : d.tangNang || [];
+        if (!(d.tangNang || []).length) it.khong.push({ text: 'Bản án không áp dụng tình tiết tăng nặng nào (khoản 1 Điều 52).' });
+        for (const x of ds) {
+          const p = rules.a52.k1.find((q) => q.d === x);
+          const lq = p ? [{ ref: `điểm ${x} khoản 1 Điều 52 BLHS`, quote: p.text }] : [];
+          const f = F.find((q) => q.id === `trung-52-${x}` || q.id === `can-cu-52-${x}`);
+          if (!(d.tangNang || []).includes(x)) continue;
+          if (f) it.co.push(fromF(f));
+          else {
+            const cue = p && AGGRAVATE_CUES.find(([k]) => k.test(p.text));
+            const e = cue ? ev(cue[1]) : null;
+            if (e) it.khong.push({ text: `Tình tiết tăng nặng điểm ${x} khoản 1 Điều 52 có căn cứ trong tài liệu.`, law: lq, facts: [{ quote: e.t, src: e.src }] });
+            else it.xacMinh.push({ text: `Cần kiểm tra căn cứ áp dụng tình tiết tăng nặng điểm ${x} khoản 1 Điều 52.`, law: lq });
+          }
+        }
+        break;
+      }
+      case 'them-giam-nhe': {
+        const c = claimed51();
+        it.co.push(...c.co);
+        it.khong.push(...c.khong);
+        it.xacMinh.push(...c.xacMinh);
+        if (!parsed.giamNhe.length && parsed.k2 == null) {
+          const bs = F.filter((f) => /^bo-sot-51/.test(f.id));
+          if (bs.length) it.co.push(...bs.map(fromF));
+          else it.khong.push({ text: `Các tình tiết giảm nhẹ có dấu hiệu trong tài liệu đã được bản án áp dụng${(d.giamNhe || []).length ? ` (điểm ${d.giamNhe.join(', ')} khoản 1 Điều 51)` : ''}.` });
+        }
+        break;
+      }
+      case 'tang-an': {
+        it.co.push(...tangF.map(fromF));
+        const kt = F.find((f) => f.id === 'khung-tien' && f.nangHon);
+        if (kt && !it.co.some((x) => x.text.startsWith(kt.title))) it.co.push(fromF(kt));
+        // Giảm nhẹ đã áp dụng nhưng tài liệu không có căn cứ; tăng nặng có căn cứ nhưng chưa áp dụng.
+        for (const x of d.giamNhe || []) {
+          const p = rules.a51.k1.find((q) => q.d === x);
+          const cue = p && MITIGATE_CUES.find(([k]) => k.test(p.text));
+          if (cue && sources.length && !ev(cue[1])) it.co.push({ text: `Chưa thấy căn cứ trong tài liệu cho tình tiết giảm nhẹ điểm ${x} khoản 1 Điều 51 mà bản án đã áp dụng.`, law: [law51(p)] });
+        }
+        for (const p of rules.a52.k1) {
+          if ((d.tangNang || []).includes(p.d)) continue;
+          const cue = AGGRAVATE_CUES.find(([k]) => k.test(p.text));
+          const e = cue ? ev(cue[1]) : null;
+          if (e && !/chức vụ/u.test(p.text)) it.co.push({ text: `Tài liệu thể hiện tình tiết tăng nặng “${p.text.replace(/;$/, '')}” (điểm ${p.d} khoản 1 Điều 52) nhưng bản án chưa áp dụng (trừ khi đã là dấu hiệu định tội, định khung).`, law: [{ ref: `điểm ${p.d} khoản 1 Điều 52 BLHS`, quote: p.text }], facts: [{ quote: e.t, src: e.src }] });
+        }
+        if (!it.co.length) {
+          const b = baseline();
+          if (b) it.khong.push(b);
+          else it.xacMinh.push({ text: 'Chưa đủ dữ liệu để đối chiếu mức hình phạt (cần nguyên văn khung và mức án đã tuyên).' });
+        }
+        break;
+      }
+      case 'dan-su': {
+        const money = parseVerdict(facts).money.sort((a, b) => b.v - a.v).slice(0, 2);
+        it.xacMinh.push({ text: 'Yêu cầu về bồi thường, tài sản, vật chứng — đối chiếu chứng cứ về thiệt hại, biên bản thu giữ, thỏa thuận bồi thường (Điều 47, 48 BLHS và quy định dân sự); phần mềm chỉ kiểm tra phần hình sự.', facts: money.map((m) => ({ quote: m.quote, src: 'Tài liệu' })) });
+        break;
+      }
+      case 'thu-tuc': {
+        const q = y.quotes.join(' ');
+        const hints = [];
+        if (/ép cung|bức cung|mớm cung|nhục hình|đánh đập/iu.test(q)) hints.push('đối chiếu các biên bản lấy lời khai, ghi âm ghi hình có âm thanh (nếu có), lời khai các lần, kết quả giám định thương tích (nếu có)');
+        if (/luật sư|người bào chữa/iu.test(q)) hints.push('kiểm tra việc chỉ định, tham gia của người bào chữa (trường hợp bắt buộc có người bào chữa)');
+        if (/tống đạt|giao|nhận|triệu tập/iu.test(q)) hints.push('kiểm tra biên bản giao, tống đạt, giấy triệu tập');
+        if (/khách quan|thay đổi|từ chối/iu.test(q)) hints.push('kiểm tra căn cứ thay đổi người tiến hành tố tụng');
+        const e = sents.find((x) => /bào chữa|luật sư|tống đạt|triệu tập|ghi âm|ghi hình/iu.test(x.t));
+        it.xacMinh.push({ text: `Cần kiểm tra hồ sơ tố tụng: ${hints.join('; ') || 'đối chiếu hồ sơ về thủ tục đơn nêu'}.`, facts: e ? [{ quote: e.t, src: e.src }] : [] });
+        break;
+      }
+      case 'huy-an': {
+        const thieu = F.find((f) => f.id === 'toi-danh-thieu');
+        const loi = F.filter((f) => f.level === 'loi');
+        if (thieu) it.xacMinh.push({ text: `${thieu.title} — nếu hồ sơ không bổ sung được tại phiên tòa thì có căn cứ hủy án để điều tra lại.`, facts: thieu.facts });
+        if (loi.length) it.xacMinh.push({ text: `Có sai sót về áp dụng pháp luật (${loi.map((f) => f.title).join('; ')}) — thường được sửa tại phúc thẩm, chỉ hủy án khi không sửa được.` });
+        it.xacMinh.push({ text: 'Hủy án khi có vi phạm nghiêm trọng thủ tục tố tụng hoặc cần điều tra, xét xử lại — cần kiểm tra hồ sơ.' });
+        break;
+      }
+      default:
+        it.xacMinh.push({ text: 'Đối chiếu thủ công nội dung yêu cầu với hồ sơ.' });
+    }
+    it.kl = it.co.length && !it.khong.length ? 'co' : it.co.length ? 'mot-phan' : it.xacMinh.length ? 'xac-minh' : 'khong';
+    return it;
+  });
+  if (!items.length) items.push({ type: 'khac', label: 'Chưa nhận ra yêu cầu cụ thể', quotes: [], co: [], khong: [], xacMinh: [{ text: 'Đơn không có câu yêu cầu rõ (giảm án, án treo, kêu oan, đổi tội danh, khung, tình tiết, dân sự, thủ tục…) — đọc đơn và đối chiếu thủ công.' }], kl: 'xac-minh' });
+
+  // Lưu ý: thời hạn kháng cáo (Điều 333 BLTTHS: 15 ngày kể từ ngày tuyên án), bị cáo đơn đề cập.
+  const notes = [];
+  const tuyen = toDate(parsed.banAn.ngay || banAn.ngay);
+  const ngayDon = toDate(parsed.ngay);
+  if (parsed.loai === 'khang-cao' && tuyen && ngayDon) {
+    const days = Math.round((ngayDon - tuyen) / 86400000);
+    notes.push(days > 15 ? { level: 'canh', text: `Đơn đề ngày ${parsed.ngay}, sau ngày tuyên án ${parsed.banAn.ngay || banAn.ngay} là ${days} ngày — quá thời hạn kháng cáo 15 ngày (Điều 333 BLTTHS); kiểm tra ngày gửi đơn thực tế (dấu bưu điện) và lý do kháng cáo quá hạn.` } : { level: 'dung', text: `Đơn đề ngày ${parsed.ngay}, ${days} ngày sau ngày tuyên án — trong thời hạn kháng cáo 15 ngày (Điều 333 BLTTHS), tính theo ngày ghi trên đơn.` });
+  }
+  if (d && defendants.length > 1) notes.push({ level: 'goi', text: `Đơn được đối chiếu với quyết định của bị cáo ${d.hoTen || '(chưa ghi tên)'}.` });
+  if (!book) notes.push({ level: 'canh', text: 'Chưa nạp sách Bình luận BLHS — chưa đối chiếu được khung, mức hình phạt, Điều 51, 52, 54, 65.' });
+
+  const kls = items.map((x) => x.kl);
+  const overall = kls.every((k) => k === 'khong') ? 'khong' : kls.every((k) => k === 'co') ? 'co' : kls.some((k) => k === 'co' || k === 'mot-phan') ? 'mot-phan' : kls.some((k) => k === 'khong') && !kls.some((k) => k === 'xac-minh') ? 'khong' : 'xac-minh';
+  return { parsed, defendant: d, hinhPhat: hpText, items, notes, overall };
+}
+
+/* ---------------- Phiếu xem xét đơn (Word) ---------------- */
 const run = (text, o = {}) => ({ text, ...o });
 const para = (runs, o = {}) => ({ runs: Array.isArray(runs) ? runs : [run(runs)], align: 'justify', indent: true, ...o });
 const head = (t) => para([run(t, { bold: true })], { indent: false, spaceBefore: true });
 
-/** Đơn kháng cáo / đề nghị giám đốc thẩm / khiếu nại (doc model) từ các căn cứ đã chọn. */
-export function buildAppealDocument({ kind = 'khang-cao', nguoi = {}, banAn = {}, grounds = [], diaDanh = '' } = {}) {
-  const k = DON[kind] || DON['khang-cao'];
+/** Phiếu xem xét đơn (doc model): thông tin đơn, kết luận chung, từng yêu cầu với lý do và căn cứ, lưu ý, đề xuất. */
+export function buildReviewDocument(result, { banAn = {}, org = {}, ten = '' } = {}) {
+  const { parsed, items, notes, overall, defendant, hinhPhat } = result;
+  const n = parsed.nguoi;
   const d = new Date();
   const body = [];
-  body.push(para([run('Kính gửi: ', { bold: true }), run(banAn.toa || k.gui)], { indent: false }));
-  body.push(para(`Tôi là: ${nguoi.hoTen || '…………………'}${nguoi.namSinh ? `, sinh năm ${nguoi.namSinh}` : ''}.`));
-  body.push(para(`Nơi cư trú: ${nguoi.diaChi || '…………………………………………'}.`));
-  body.push(para(`Tư cách tham gia tố tụng: ${nguoi.tuCach || '…………………'}.`));
-  body.push(para(`${k.ve}${banAn.so ? ` số ${banAn.so}` : ''}${banAn.ngay ? ` ngày ${banAn.ngay}` : ''}${banAn.toa ? ` của ${banAn.toa}` : ''}${banAn.biCao ? ` xét xử bị cáo ${banAn.biCao}` : ''}.`));
-  body.push(head('I. NỘI DUNG YÊU CẦU'));
-  grounds.forEach((g, i) => body.push(para(`${i + 1}. ${g.yeuCau}`)));
-  body.push(head('II. LÝ DO VÀ CĂN CỨ'));
-  grounds.forEach((g, i) => {
-    body.push(para([run(`${i + 1}. `, { bold: true }), run(g.lyDo)]));
-    g.law.forEach((l) => body.push(para([run('Căn cứ pháp lý: ', { italic: true }), run(`${l.ref}${l.quote ? `: “${l.quote}”` : ''}`)])));
-    g.facts.forEach((f) => body.push(para([run('Căn cứ thực tế: ', { italic: true }), run(`“${f.quote}”${f.src ? ` (${f.src})` : ''}`)])));
+  body.push(head('I. THÔNG TIN ĐƠN'));
+  body.push(para(`Loại đơn: ${LOAI_DON[parsed.loai] || 'Đơn'}${parsed.ngay ? `, đề ngày ${parsed.ngay}` : ''}.`));
+  body.push(para(`Người gửi: ${n.hoTen || '…………………'}${n.namSinh ? `, sinh năm ${n.namSinh}` : ''}${n.diaChi ? `; nơi cư trú: ${n.diaChi}` : ''}${n.tuCach ? `; tư cách: ${n.tuCach}` : ''}.`));
+  const so = parsed.banAn.so || banAn.so;
+  body.push(para(`Bản án bị kháng cáo / khiếu nại: ${so ? `số ${so}` : '…………'}${parsed.banAn.ngay || banAn.ngay ? ` ngày ${parsed.banAn.ngay || banAn.ngay}` : ''}${banAn.toa ? ` của ${banAn.toa}` : ''}${defendant?.hoTen ? `; bị cáo ${defendant.hoTen}` : ''}${defendant?.toiDanh?.[0]?.dieu ? `, ${defendant.toiDanh[0].khoan ? `khoản ${defendant.toiDanh[0].khoan} ` : ''}Điều ${defendant.toiDanh[0].dieu} BLHS` : ''}${hinhPhat ? `, ${hinhPhat}` : ''}.`));
+  body.push(head('II. KẾT LUẬN CHUNG'));
+  body.push(para([run(`Đơn ${KET_LUAN[overall].toLowerCase()}`, { bold: true }), run(` — ${items.length} yêu cầu: ${Object.keys(KET_LUAN).map((k) => [k, items.filter((x) => x.kl === k).length]).filter(([, c]) => c).map(([k, c]) => `${c} ${KET_LUAN[k].toLowerCase()}`).join(', ')}.`)]));
+  body.push(head('III. XEM XÉT TỪNG YÊU CẦU'));
+  items.forEach((it, i) => {
+    body.push(para([run(`${i + 1}. ${it.label}: `, { bold: true }), run(KET_LUAN[it.kl], { bold: true, italic: true })], { indent: false, spaceBefore: true }));
+    it.quotes.forEach((q) => body.push(para([run('Nội dung đơn: ', { italic: true }), run(`“${q}”`)])));
+    const block = (title, list) => {
+      list.forEach((r) => {
+        body.push(para([run(`${title}: `, { italic: true }), run(r.text)]));
+        (r.law || []).forEach((l) => body.push(para([run('Căn cứ pháp lý: ', { italic: true }), run(`${l.ref}${l.quote ? `: “${l.quote}”` : ''}`)])));
+        (r.facts || []).forEach((f) => body.push(para([run('Căn cứ thực tế: ', { italic: true }), run(`“${f.quote}”${f.src ? ` (${f.src})` : ''}`)])));
+      });
+    };
+    block('Có căn cứ', it.co);
+    block('Không có căn cứ', it.khong);
+    block('Cần xác minh', it.xacMinh);
   });
-  body.push(para('Vì các lý do trên, kính đề nghị cơ quan có thẩm quyền xem xét, giải quyết theo quy định của pháp luật.'));
-  body.push(para('Tài liệu kèm theo (nếu có): …………………………………………', { indent: false }));
-  const placeDate = `${diaDanh ? `${diaDanh}, ` : '……………, '}ngày ${d.getDate()} tháng ${d.getMonth() + 1} năm ${d.getFullYear()}`;
-  body.push(para([run(placeDate, { italic: true })], { indent: false, align: 'right', spaceBefore: true }));
-  // Đơn của công dân: bố cục mẫu (quốc hiệu giữa trang, không có ô cơ quan ban hành); người làm đơn ký bên phải.
+  if (notes.length) {
+    body.push(head('IV. LƯU Ý'));
+    notes.forEach((x) => body.push(para(`- ${x.text}`)));
+  }
+  body.push(head(`${notes.length ? 'V' : 'IV'}. ĐỀ XUẤT`));
+  const xm = items.filter((x) => x.kl === 'xac-minh').map((x) => x.label.toLowerCase());
+  const co = items.filter((x) => x.kl === 'co' || x.kl === 'mot-phan').map((x) => x.label.toLowerCase());
+  if (co.length) body.push(para(`Xem xét chấp nhận (toàn bộ hoặc một phần) các yêu cầu: ${co.join('; ')}.`));
+  if (xm.length) body.push(para(`Yêu cầu bổ sung tài liệu, xác minh đối với: ${xm.join('; ')}.`));
+  const kh = items.filter((x) => x.kl === 'khong').map((x) => x.label.toLowerCase());
+  if (kh.length) body.push(para(`Không chấp nhận các yêu cầu: ${kh.join('; ')} (lý do nêu tại mục III).`));
+  body.push(para([run('Phiếu lập trên cơ sở tài liệu đã nạp vào phần mềm; người có thẩm quyền đối chiếu hồ sơ gốc trước khi quyết định.', { italic: true })], { indent: false, spaceBefore: true }));
   return {
-    typeId: 'don-toa-an',
-    layout: 'form',
-    header: { parent: '', org: '', number: '', subject: null, placeDate },
-    title: { name: k.ten, subject: `(V/v ${k.ve.toLowerCase()})` },
+    typeId: 'phieu-xem-xet-don',
+    header: { parent: org.coQuanCapTren || '', org: org.coQuan || '', number: '', subject: null, placeDate: `${org.diaDanh ? `${org.diaDanh}, ` : ''}ngày ${d.getDate()} tháng ${d.getMonth() + 1} năm ${d.getFullYear()}` },
+    title: { name: 'PHIẾU XEM XÉT ĐƠN', subject: `${LOAI_DON[parsed.loai] || 'Đơn'}${n.hoTen ? ` của ${n.hoTen}` : ''}${ten ? ` — ${ten}` : ''}` },
     authority: null,
     recipients: null,
     body,
     sign: null,
     dualSign: null,
-    signers: [{ title: '', name: '' }, { title: 'NGƯỜI LÀM ĐƠN', hint: '(Ký, ghi rõ họ tên)', name: nguoi.hoTen || '' }],
+    signers: [{ title: 'NGƯỜI LẬP PHIẾU', hint: '(Ký, ghi rõ họ tên)', name: '' }],
   };
 }

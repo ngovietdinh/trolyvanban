@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseBinhLuan } from '../../assets/js/legal/binh-luan.js';
-import { penaltyOf, moneyRanges, parseDuration, articleFrames, generalRules, parseCitations, parseSentence, parseVerdict, checkDefendant, appealGrounds, buildAppealDocument, analyzeCase, crimeClass, fmtMonths } from '../../assets/js/legal/court.js';
+import { penaltyOf, moneyRanges, parseDuration, articleFrames, generalRules, parseCitations, parseSentence, parseVerdict, checkDefendant, parseComplaint, assessComplaint, buildReviewDocument, analyzeCase, crimeClass, fmtMonths } from '../../assets/js/legal/court.js';
 
 // Sách mẫu: chỉ nguyên văn điều luật (văn bản pháp luật công khai) theo cấu trúc sách Bình luận.
 const BOOK_TEXT = [
@@ -154,21 +154,75 @@ test('kiểm tra: dưới khung không có / không đủ điều kiện Điều
   assert.ok(ids(checkDefendant({ ...base, toiDanh: [{ dieu: '174', khoan: 1, diem: [] }], giamNhe: ['b', 's'], hinhPhat: { loai: 'tu', thang: 24 } }, { book })).includes('goi:de-nghi-an-treo'));
 });
 
-test('yêu cầu khiếu nại có căn cứ và đơn kháng cáo (căn cứ pháp lý nguyên văn + trích tài liệu)', () => {
-  const d = { hoTen: 'Nguyễn Văn An', toiDanh: [{ dieu: '174', khoan: 3, diem: ['a'] }], soTien: 180000000, giamNhe: ['s'], tangNang: ['b'], hinhPhat: { loai: 'tu', thang: 96 } };
-  const g = appealGrounds(checkDefendant(d, { book, sources: facts(FACTS) }));
-  assert.deepEqual(g.map((x) => x.level), [...g.map((x) => x.level)].sort((a, b) => ['loi', 'canh', 'goi'].indexOf(a) - ['loi', 'canh', 'goi'].indexOf(b)));
-  assert.match(g[0].yeuCau, /khoản 2 Điều 174 BLHS/);
-  const doc = buildAppealDocument({ kind: 'khang-cao', nguoi: { hoTen: 'Nguyễn Văn An', tuCach: 'Bị cáo' }, banAn: { so: '25/2026/HS-ST', toa: 'Tòa án nhân dân huyện X' }, grounds: g });
-  assert.equal(doc.title.name, 'ĐƠN KHÁNG CÁO');
-  const text = doc.body.map((p) => (p.runs || []).map((r) => r.text).join('')).join('\n');
-  assert.match(text, /Kính gửi: Tòa án nhân dân huyện X/);
-  assert.match(text, /Kháng cáo bản án sơ thẩm số 25\/2026\/HS-ST/);
-  assert.match(text, /Căn cứ pháp lý: điểm c khoản 2 Điều 174 BLHS: “Chiếm đoạt tài sản trị giá từ 50\.000\.000 đồng đến dưới 200\.000\.000 đồng;”/);
+const DON_BI_CAO = `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+Độc lập - Tự do - Hạnh phúc
+Hà Nội, ngày 20 tháng 10 năm 2026
+ĐƠN KHÁNG CÁO
+Kính gửi: Tòa án nhân dân thành phố Hà Nội
+Tôi tên là: Nguyễn Văn An, sinh năm 1985
+Nơi cư trú: thôn Đông, xã Tây, huyện Nam, tỉnh Bắc
+Là bị cáo trong vụ án theo Bản án hình sự sơ thẩm số 25/2026/HS-ST ngày 15/10/2026 của Tòa án nhân dân huyện X.
+1. Tòa án áp dụng khoản 3 Điều 174 là không đúng, số tiền chỉ 180.000.000 đồng nên phải xử theo khoản 2 Điều 174.
+2. Tình tiết tăng nặng "có tính chất chuyên nghiệp" là không có căn cứ.
+3. Gia đình tôi đã bồi thường toàn bộ thiệt hại cho bị hại. Tôi đã thành khẩn khai báo, ăn năn hối cải.
+4. Bố tôi là người có công với cách mạng được tặng Huân chương kháng chiến.
+Vì vậy tôi kính đề nghị Tòa án cấp phúc thẩm xem xét giảm nhẹ hình phạt và cho tôi được hưởng án treo.
+Tôi bị điều tra viên ép cung trong quá trình điều tra.`;
+const BI_CAO = { hoTen: 'Nguyễn Văn An', toiDanh: [{ dieu: '174', khoan: 3, diem: ['a'] }], soTien: 180000000, giamNhe: ['s'], tangNang: ['b'], hinhPhat: { loai: 'tu', thang: 96 } };
+const item = (r, type) => r.items.find((x) => x.type === type);
+
+test('đọc đơn nhận được: loại đơn, người gửi, ngày, bản án, từng yêu cầu (câu nguyên văn), tình tiết đơn nêu', () => {
+  const p = parseComplaint(DON_BI_CAO, { book });
+  assert.equal(p.loai, 'khang-cao');
+  assert.deepEqual(p.nguoi, { hoTen: 'Nguyễn Văn An', namSinh: '1985', diaChi: 'thôn Đông, xã Tây, huyện Nam, tỉnh Bắc', tuCach: 'Bị cáo' });
+  assert.equal(p.ngay, '20/10/2026');
+  assert.deepEqual(p.banAn, { so: '25/2026/HS-ST', ngay: '15/10/2026' });
+  assert.deepEqual(p.yeuCau.map((x) => x.type).sort(), ['an-treo', 'bo-tang-nang', 'doi-khoan', 'giam-an', 'them-giam-nhe', 'thu-tuc']);
+  assert.equal(p.yeuCau.find((x) => x.type === 'thu-tuc').quotes[0], 'Tôi bị điều tra viên ép cung trong quá trình điều tra.');
+  assert.deepEqual(p.giamNhe.map((g) => g.d), ['b', 's']);
+  assert.match(p.k2, /Bố tôi là người có công/);
+});
+
+test('xem xét đơn của bị cáo: từng yêu cầu có căn cứ / không / cần xác minh, căn cứ lấy từ tài liệu vụ án (không lấy lời đơn)', () => {
+  const r = assessComplaint({ text: DON_BI_CAO, defendants: [BI_CAO], sources: facts(FACTS), book });
+  assert.equal(item(r, 'doi-khoan').kl, 'co');
+  assert.match(item(r, 'doi-khoan').co[0].law[0].quote, /từ 50\.000\.000 đồng đến dưới 200\.000\.000 đồng/);
+  assert.equal(item(r, 'bo-tang-nang').kl, 'co');
+  // Điểm b (bồi thường): có trong tài liệu, chưa áp dụng → có căn cứ; điểm s đã áp dụng → không; khoản 2 (bố có công) chỉ có trong đơn → xác minh.
+  const g = item(r, 'them-giam-nhe');
+  assert.equal(g.kl, 'mot-phan');
+  assert.match(g.co[0].text, /điểm b khoản 1 Điều 51/);
+  assert.equal(g.co[0].facts[0].quote, 'Gia đình bị cáo đã bồi thường cho bị hại 50.000.000 đồng.');
+  assert.match(g.khong[0].text, /điểm s khoản 1 Điều 51\) mà đơn nêu đã được bản án áp dụng/);
+  assert.match(g.xacMinh[0].text, /khoản 2 Điều 51 nhưng tài liệu đã nạp chưa có chứng cứ/);
+  // 8 năm tù > 3 năm: án treo chưa xét được, phụ thuộc việc giảm hình phạt.
+  assert.equal(item(r, 'an-treo').kl, 'xac-minh');
+  assert.equal(item(r, 'thu-tuc').kl, 'xac-minh');
+  assert.equal(r.overall, 'mot-phan');
+  assert.match(r.notes[0].text, /5 ngày sau ngày tuyên án — trong thời hạn kháng cáo 15 ngày/);
+});
+
+test('xem xét đơn của bị hại (tăng hình phạt) và đơn kêu oan; quá hạn kháng cáo; phiếu xem xét đơn (Word)', () => {
+  const ok = { ...BI_CAO, toiDanh: [{ dieu: '174', khoan: 2, diem: ['c'] }], tangNang: [], giamNhe: ['b', 's'], hinhPhat: { loai: 'tu', thang: 36 } };
+  const donBiHai = 'ĐƠN KHÁNG CÁO\nTôi là Trần Thị Bình, là người bị hại. Bản án số 25/2026/HS-ST ngày 15/10/2026.\nTôi đề nghị tăng hình phạt đối với bị cáo Nguyễn Văn An vì mức án quá nhẹ.\nHà Nội, ngày 10 tháng 11 năm 2026';
+  const r = assessComplaint({ text: donBiHai, defendants: [ok], sources: facts(FACTS), book });
+  assert.equal(r.parsed.nguoi.tuCach, 'Người bị hại');
+  assert.equal(item(r, 'tang-an').kl, 'khong');
+  assert.match(item(r, 'tang-an').khong[0].text, /nằm trong khung khoản 2/);
+  assert.equal(r.overall, 'khong');
+  assert.match(r.notes[0].text, /26 ngày — quá thời hạn kháng cáo 15 ngày/);
+  // Kêu oan khi tài liệu thể hiện đủ yếu tố cấu thành → không có căn cứ.
+  const r2 = assessComplaint({ text: 'Tôi Nguyễn Văn An kêu oan, tôi không phạm tội.', defendants: [ok], sources: facts(FACTS), book });
+  assert.equal(item(r2, 'keu-oan').kl, 'khong');
+  // Phiếu xem xét đơn.
+  const doc = buildReviewDocument(assessComplaint({ text: DON_BI_CAO, defendants: [BI_CAO], sources: facts(FACTS), book }), { banAn: { toa: 'Tòa án nhân dân huyện X' }, org: { coQuan: 'TÒA ÁN NHÂN DÂN THÀNH PHỐ HÀ NỘI' } });
+  assert.equal(doc.title.name, 'PHIẾU XEM XÉT ĐƠN');
+  assert.equal(doc.header.org, 'TÒA ÁN NHÂN DÂN THÀNH PHỐ HÀ NỘI');
+  const text = doc.body.map((p) => (p.runs || []).map((x) => x.text).join('')).join('\n');
+  assert.match(text, /Người gửi: Nguyễn Văn An, sinh năm 1985/);
+  assert.match(text, /Đơn có căn cứ một phần/);
+  assert.match(text, /Nội dung đơn: “Tôi bị điều tra viên ép cung trong quá trình điều tra\.”/);
   assert.match(text, /Căn cứ thực tế: “Gia đình bị cáo đã bồi thường cho bị hại 50\.000\.000 đồng\.” \(Bản án\)/);
-  assert.equal(doc.layout, 'form');
-  assert.equal(doc.signers.at(-1).title, 'NGƯỜI LÀM ĐƠN');
-  assert.match(doc.body.at(-1).runs[0].text, /^……………, ngày \d+ tháng \d+ năm \d{4}$/);
 });
 
 test('phân tích hành vi & hướng giải quyết: tội danh có căn cứ, khung theo giá trị, tình tiết, biện pháp tư pháp', () => {
