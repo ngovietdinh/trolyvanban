@@ -118,7 +118,19 @@ export function render(ctx, params = []) {
   rec.dons = rec.dons || [];
   let donSel = rec.dons[rec.dons.length - 1]?.id || null;
   // Giữ nguyên đối tượng hồ sơ (các tab Vụ án, Tính hình phạt, Biểu mẫu cùng tham chiếu) — chỉ cập nhật thời gian lưu.
-  const save = debounce(() => Object.assign(rec, courtRepo.save(rec)), 300);
+  let dirty = false;
+  const saveNow = () => {
+    dirty = false;
+    Object.assign(rec, courtRepo.save(rec));
+  };
+  const saveLater = debounce(() => dirty && saveNow(), 300);
+  const save = () => {
+    dirty = true;
+    saveLater();
+  };
+  // Rời trang / tải lại trong lúc chờ lưu → lưu ngay.
+  const flush = () => dirty && saveNow();
+  window.addEventListener('pagehide', flush);
   const root = ctx.view;
 
   const shell = () => {
@@ -169,7 +181,7 @@ export function render(ctx, params = []) {
   const addSource = (name, text) => {
     if (!String(text || '').trim()) return;
     rec.sources = [...(rec.sources || []).filter((s) => s.name !== name), { name, text: String(text) }];
-    save();
+    saveNow();
     drawSources();
     update();
   };
@@ -423,7 +435,7 @@ export function render(ctx, params = []) {
       ta.value = '';
       say('');
       $('[data-don-drop] [data-files]', root).innerHTML = '';
-      save();
+      saveNow();
       drawDons();
       update();
     });
@@ -433,7 +445,7 @@ export function render(ctx, params = []) {
       if (del) {
         rec.dons = rec.dons.filter((x) => x.id !== del.dataset.donDel);
         if (donSel === del.dataset.donDel) donSel = rec.dons[rec.dons.length - 1]?.id || null;
-        save();
+        saveNow();
       } else if (pick) donSel = pick.dataset.donPick;
       else return;
       drawDons();
@@ -600,6 +612,10 @@ export function render(ctx, params = []) {
     drawDefs();
     update();
   });
-  return () => aiBusy?.abort();
+  return () => {
+    aiBusy?.abort();
+    flush();
+    window.removeEventListener('pagehide', flush);
+  };
 }
 
