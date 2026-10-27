@@ -1,9 +1,9 @@
 {
-  "version": "2.39.1",
-  "date": "2026-10-26",
+  "version": "2.40.0",
+  "date": "2026-10-27",
   "notes": [
-    "Tòa án: tab 3 thành Xem xét đơn khiếu nại / kháng cáo nhận được — tải đơn, tách từng yêu cầu",
-    "Mỗi yêu cầu: Có căn cứ / Một phần / Cần xác minh / Không có căn cứ, căn cứ từ tài liệu vụ án và nguyên văn điều luật; kiểm tra thời hạn kháng cáo",
-    "Xuất phiếu xem xét đơn (Word); bỏ phần tạo đơn"
+    "Tòa án: sổ vụ án sơ thẩm, phúc thẩm; đọc cáo trạng; thời hạn tố tụng, cảnh báo quá hạn / sắp đến hạn",
+    "Tính hình phạt: khoảng hợp pháp (Điều 54, 57, 101), tổng hợp (Điều 55, 56), trừ tạm giam, ngày chấp hành xong",
+    "25 biểu mẫu Tòa án soạn sẵn tự điền; tải mẫu Word của đơn vị lên thay (riêng từng tài khoản)"
   ]
 }
