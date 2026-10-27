@@ -87,8 +87,9 @@ test.describe('v2.39 — Tòa án: phân tích, kiểm tra bản án, xem xét �
     const t = trackErrors(page);
     await freshApp(page, '#toa-an');
     await expect(page.locator('.empty')).toContainText('Chưa có hồ sơ xét xử');
-    await page.click('[data-new]');
-    await expect(page).toHaveURL(/#toa-an\/.+/);
+    await page.click('[data-new="so-tham"]');
+    await expect(page).toHaveURL(/#toa-an\/.+\/vu-an$/);
+    await page.click('[data-ct-tab="tai-lieu"]');
     await expect(page.locator('[data-ct-book]')).toBeVisible();
     await page.click('[data-ct-parse]');
     await expect(page.locator('.toast').last()).toContainText('Chưa có tài liệu');
@@ -101,7 +102,8 @@ test.describe('v2.39 — Tòa án: phân tích, kiểm tra bản án, xem xét �
     await page.locator('[data-bl-file]').setInputFiles({ name: 'binh-luan-mau.txt', mimeType: 'text/plain', buffer: Buffer.from(BOOK) });
     await expect(page.locator('.toast').last()).toContainText('Đã nạp');
     await page.goto('/app.html#toa-an');
-    await page.click('[data-new]');
+    await page.click('[data-new="so-tham"]');
+    await page.click('[data-ct-tab="tai-lieu"]');
     await expect(page.locator('[data-ct-book]')).toBeHidden();
     await page.fill('[data-ct-paste]', BAN_AN);
     await page.click('[data-ct-parse]');
@@ -110,7 +112,8 @@ test.describe('v2.39 — Tòa án: phân tích, kiểm tra bản án, xem xét �
     await expect(page.locator('[data-def="0"] [data-f="hoTen"]')).toHaveValue('Nguyễn Văn An');
     await expect(page.locator('[data-def="0"] [data-t="dieu"]')).toHaveValue('174');
 
-    // Tab 1: phân tích hành vi, hướng giải quyết.
+    // Tab phân tích hành vi, hướng giải quyết.
+    await page.click('[data-ct-tab="phan-tich"]');
     await expect(page.locator('.ct-crime h4').first()).toContainText('Điều 174');
     await expect(page.locator('.ct-huong li').first()).toBeVisible();
 

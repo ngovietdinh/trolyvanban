@@ -6,7 +6,12 @@ import { courtRepo, casesRepo, recordsRepo } from '../legal/repo.js';
 import { uid } from '../lib/store.js';
 import { getRole } from '../legal/roles.js';
 import { findCrime } from '../legal/engine.js';
-import { parseVerdict, checkDefendant, analyzeCase, assessComplaint, buildReviewDocument, generalRules, fmtVnd, parseMoney, LEVELS, KET_LUAN, LOAI_DON } from '../legal/court.js';
+import { parseVerdict, parseIndictment, checkDefendant, analyzeCase, assessComplaint, buildReviewDocument, generalRules, fmtVnd, parseMoney, LEVELS, KET_LUAN, LOAI_DON } from '../legal/court.js';
+import { upcoming, TRANG_THAI, suggestLoaiToi } from '../legal/court-deadlines.js';
+import { fmtDate } from '../legal/court-penalty.js';
+import { mountCasePane, renderCourtSettings, courtRules, nextDeadline } from './toa-an-case.js';
+import { mountPenaltyPane } from './toa-an-tools.js';
+import { mountFormsPane, renderFormsLibrary } from './toa-an-forms.js';
 import { loadBook } from '../legal/binh-luan-store.js';
 import { dropzoneHtml, bindDropzone, readAll } from './acts-review.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
@@ -23,6 +28,14 @@ const LOAI_HP = [
   ['chung-than', 'Tù chung thân'],
   ['tu-hinh', 'Tử hình'],
 ];
+const NGAN_CHAN = [
+  ['', '— Không / chưa rõ —'],
+  ['tam-giam', 'Tạm giam'],
+  ['cam-di-khoi', 'Cấm đi khỏi nơi cư trú'],
+  ['bao-linh', 'Bảo lĩnh'],
+  ['dat-tien', 'Đặt tiền để bảo đảm'],
+  ['tai-ngoai', 'Tại ngoại'],
+];
 const VAI_TRO = [
   ['', 'Người thực hành / chủ mưu'],
   ['dong-pham', 'Đồng phạm'],
@@ -31,71 +44,107 @@ const VAI_TRO = [
 const LV_CLASS = { loi: 'badge-danger', canh: 'badge-warning', goi: 'badge-accent', dung: 'badge-success' };
 const KL_CLASS = { co: 'badge-success', 'mot-phan': 'badge-warning', 'xac-minh': '', khong: 'badge-danger' };
 const newDefendant = (x = {}) => ({ id: uid(), hoTen: '', tuoi: null, vaiTro: '', toiDanh: [{ dieu: '', khoan: null, diem: [] }], soTien: null, giamNhe: [], giamNheK2: false, tangNang: [], dieu54: false, dieu65: false, hinhPhat: {}, ...x });
+const crimeHint = (dieu) => {
+  const crime = findCrime(dieu);
+  return crime ? `Điều ${crime.dieu}: ${escapeHtml(crime.ten)}` : dieu ? `Phần mềm chưa có dữ liệu Điều ${escapeHtml(dieu)}.` : '';
+};
 const recordText = (r) => [`BIÊN BẢN ${getRole(r.roleId).ten.split('/')[0].trim().toUpperCase()}: ${r.nguoiKhai?.hoTen || ''} (lần ${r.lan || 1})`, ...(r.qa || []).map((x) => `Hỏi: ${x.q}\nĐáp: ${x.a || ''}`)].join('\n');
 
 /* ---------------- Danh sách ---------------- */
+const TABS = [
+  ['vu-an', 'folder', 'Vụ án, thời hạn'],
+  ['tai-lieu', 'upload', 'Tài liệu & bị cáo'],
+  ['phan-tich', 'activity', 'Phân tích hành vi'],
+  ['kiem-tra', 'check-circle', 'Kiểm tra bản án'],
+  ['hinh-phat', 'gavel', 'Tính hình phạt'],
+  ['khieu-nai', 'mail', 'Xem xét đơn'],
+  ['bieu-mau', 'file', 'Biểu mẫu'],
+];
+const CAP = { 'so-tham': 'Sơ thẩm', 'phuc-tham': 'Phúc thẩm' };
+const ST_CLASS = { 'qua-han': 'badge-danger', sap: 'badge-warning', con: '', moc: '' };
+function newCourtCase(ctx, cap) {
+  const org = ctx.settings?.().courtOrg || {};
+  return courtRepo.save({ ten: cap === 'phuc-tham' ? 'Vụ án phúc thẩm mới' : 'Vụ án sơ thẩm mới', cap, thuLy: {}, toa: { ten: org.toaAn || '', capTren: org.toaAnCapTren || '', diaDanh: org.diaDanh || '' }, hdxx: {}, moc: {}, caoTrang: {}, sources: [], defendants: [newDefendant()], nguoiThamGia: [], banAn: {}, dons: [] });
+}
 function renderList(ctx) {
-  const list = courtRepo.list();
-  ctx.view.innerHTML = `<div class="page">
-    <div class="page-head"><div><h1 class="page-title">Tòa án — <em>xem xét bản án</em></h1><p class="page-sub">Phân tích hành vi phạm tội và hướng giải quyết; kiểm tra tội danh, khung, mức hình phạt đã áp dụng có đúng không; xem xét đơn khiếu nại, kháng cáo nhận được có căn cứ hay không — dựa trên tài liệu vụ án, dữ liệu điều luật và nguyên văn sách Bình luận BLHS.</p></div>
-      <button class="btn btn-primary" type="button" data-new>${icon('plus', 'ic-sm')}Tạo hồ sơ xét xử</button></div>
+  const list = courtRepo.list().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const todo = upcoming(list, { rules: courtRules() }).filter((x) => x.trangThai !== 'moc').slice(0, 12);
+  ctx.view.innerHTML = `<div class="page ct-page">
+    <div class="page-head"><div><h1 class="page-title">Tòa án — <em>hồ sơ xét xử hình sự</em></h1><p class="page-sub">Sổ vụ án sơ thẩm, phúc thẩm; thời hạn tố tụng và cảnh báo; phân tích hành vi, kiểm tra bản án, tính hình phạt; xem xét đơn khiếu nại, kháng cáo; biểu mẫu Tòa án tự điền. Dữ liệu lưu trên máy, riêng tài khoản của bạn.</p></div>
+      <div class="inline"><button class="btn btn-primary" type="button" data-new="so-tham">${icon('plus', 'ic-sm')}Vụ án sơ thẩm</button><button class="btn" type="button" data-new="phuc-tham">${icon('plus', 'ic-sm')}Vụ án phúc thẩm</button></div></div>
+    <div class="inline ct-links"><a class="btn btn-sm btn-ghost" href="#toa-an/bieu-mau">${icon('file', 'ic-sm')}Biểu mẫu Tòa án</a><a class="btn btn-sm btn-ghost" href="#toa-an/cai-dat">${icon('settings', 'ic-sm')}Cài đặt Tòa án, thời hạn</a></div>
+    ${
+      todo.length
+        ? `<section class="panel ct-sec ct-todo"><h2>${icon('clock', 'ic-sm')}Việc cần làm theo thời hạn</h2><ul class="ct-dl">${todo
+            .map((it) => `<li class="st-${it.trangThai}"><div><a href="#toa-an/${it.rec.id}/vu-an"><strong>${escapeHtml(it.ten)}</strong></a><small>${escapeHtml(it.rec.ten || '')}${it.rec.thuLy?.so ? ` · thụ lý số ${escapeHtml(it.rec.thuLy.so)}` : ''}</small></div><div class="ct-dl-r"><b>${fmtDate(it.han)}</b><span class="badge ${ST_CLASS[it.trangThai]}">${TRANG_THAI[it.trangThai]} · ${it.con < 0 ? `quá ${-it.con} ngày` : it.con === 0 ? 'hôm nay' : `còn ${it.con} ngày`}</span></div></li>`)
+            .join('')}</ul></section>`
+        : ''
+    }
     ${
       list.length
-        ? `<ul class="ct-list">${list.map((c) => `<li><a href="#toa-an/${c.id}"><strong>${escapeHtml(c.ten || 'Hồ sơ xét xử')}</strong><small>${(c.defendants || []).map((d) => escapeHtml(d.hoTen || 'Chưa ghi tên')).join(', ') || 'Chưa có bị cáo'} · ${(c.sources || []).length} tài liệu · ${(c.dons || []).length} đơn · ${new Date(c.updatedAt).toLocaleDateString('vi-VN')}</small></a></li>`).join('')}</ul>`
-        : `<section class="panel"><div class="empty"><div class="empty-icon">${icon('gavel', 'ic-lg')}</div><h3>Chưa có hồ sơ xét xử</h3><p>Tạo hồ sơ, tải bản án / cáo trạng / kết luận điều tra (hoặc chọn hồ sơ vụ án có sẵn) — phần mềm đọc tội danh, hình phạt đã áp dụng và đối chiếu với điều luật.</p></div></section>`
+        ? `<ul class="ct-list">${list
+            .map((c) => {
+              const nd = nextDeadline(c);
+              return `<li><a href="#toa-an/${c.id}"><span class="ct-list-h"><span class="badge">${CAP[c.cap] || 'Hồ sơ xét xử'}</span><strong>${escapeHtml(c.ten || 'Hồ sơ xét xử')}</strong></span><small>${c.thuLy?.so ? `Thụ lý số ${escapeHtml(c.thuLy.so)} · ` : ''}${(c.defendants || []).map((d) => escapeHtml(d.hoTen || 'Chưa ghi tên')).join(', ') || 'Chưa có bị cáo'} · ${(c.sources || []).length} tài liệu · ${(c.dons || []).length} đơn · ${new Date(c.updatedAt).toLocaleDateString('vi-VN')}</small>${nd ? `<span class="badge ${nd.cls}">${escapeHtml(nd.text)}</span>` : ''}</a></li>`;
+            })
+            .join('')}</ul>`
+        : `<section class="panel"><div class="empty"><div class="empty-icon">${icon('gavel', 'ic-lg')}</div><h3>Chưa có hồ sơ xét xử</h3><p>Tạo vụ án sơ thẩm (thụ lý từ cáo trạng) hoặc phúc thẩm (có kháng cáo, kháng nghị). Tải cáo trạng / bản án để phần mềm tự điền bị cáo, tội danh, nhân thân; nhập ngày thụ lý để theo dõi thời hạn.</p></div></section>`
     }
   </div>`;
-  $('[data-new]', ctx.view).addEventListener('click', () => {
-    const rec = courtRepo.save({ ten: 'Hồ sơ xét xử mới', sources: [], defendants: [newDefendant()], banAn: {}, dons: [] });
-    ctx.navigate(`#toa-an/${rec.id}`);
-  });
+  ctx.view.querySelectorAll('[data-new]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const rec = newCourtCase(ctx, b.dataset.new);
+      ctx.navigate(`#toa-an/${rec.id}/vu-an`);
+    }),
+  );
 }
 
 /* ---------------- Hồ sơ xét xử ---------------- */
 export function render(ctx, params = []) {
   if (!params[0]) return renderList(ctx);
+  if (params[0] === 'bieu-mau') return renderFormsLibrary(ctx);
+  if (params[0] === 'cai-dat') return renderCourtSettings(ctx);
   let rec = courtRepo.get(params[0]);
   if (!rec) {
     toast('Không tìm thấy hồ sơ xét xử', { type: 'error' });
     return renderList(ctx);
   }
   let book = null;
-  let tab = 'phan-tich';
+  rec.cap ||= 'so-tham';
+  let tab = TABS.some(([t]) => t === params[1]) ? params[1] : (rec.sources || []).length || rec.thuLy?.so ? 'tai-lieu' : 'vu-an';
+  const panes = {};
   const aiText = { 'phan-tich': '', don: '' };
   let aiBusy = null;
   rec.dons = rec.dons || [];
   let donSel = rec.dons[rec.dons.length - 1]?.id || null;
-  const save = debounce(() => (rec = courtRepo.save(rec)), 300);
+  // Giữ nguyên đối tượng hồ sơ (các tab Vụ án, Tính hình phạt, Biểu mẫu cùng tham chiếu) — chỉ cập nhật thời gian lưu.
+  const save = debounce(() => Object.assign(rec, courtRepo.save(rec)), 300);
   const root = ctx.view;
 
   const shell = () => {
     root.innerHTML = `<div class="page ct-page">
       <a class="rd-back" href="#toa-an">${icon('chevron-left', 'ic-sm')}Hồ sơ xét xử</a>
-      <input class="input ct-name" value="${escapeHtml(rec.ten || '')}" data-ct-name aria-label="Tên hồ sơ xét xử" />
+      <div class="ct-title"><span class="badge" data-ct-cap>${CAP[rec.cap]}</span><input class="input ct-name" value="${escapeHtml(rec.ten || '')}" data-ct-name aria-label="Tên hồ sơ xét xử" /></div>
+      <div class="seg ct-tabs ct-maintabs" role="tablist">${TABS.map(([id, ic, l]) => `<button role="tab" data-ct-tab="${id}">${icon(ic, 'ic-sm')}${l}</button>`).join('')}</div>
       <p class="note warn ct-book" data-ct-book hidden>${icon('book', 'ic-sm')}<span>Chưa nạp sách Bình luận BLHS — chưa kiểm tra được khung, mức hình phạt (cần nguyên văn điều luật). <a href="#binh-luan">Nạp sách</a></span></p>
+      <div data-pane="vu-an" hidden></div>
+      <div data-pane="tai-lieu" hidden>
       <section class="panel ct-sec" data-ct-src><h2>${icon('upload', 'ic-sm')}1. Tài liệu vụ án</h2>
         <div class="grid-2">
           <div class="field"><label for="ct-case">Lấy từ hồ sơ vụ án</label><select class="select" id="ct-case" data-ct-case><option value="">— Chọn hồ sơ (lấy lời khai, tội danh, người) —</option>${casesRepo.list().map((c) => `<option value="${c.id}" ${c.id === rec.caseId ? 'selected' : ''}>${escapeHtml(c.ten)}</option>`).join('')}</select></div>
-          <div class="field"><label>Bản án / cáo trạng / kết luận điều tra</label>${dropzoneHtml('Word .doc/.docx, PDF (kể cả bản scan), ảnh chụp, .txt')}</div>
+          <div class="field"><label>Cáo trạng / bản án / kết luận điều tra</label>${dropzoneHtml('Word .doc/.docx, PDF (kể cả bản scan), ảnh chụp, .txt')}</div>
         </div>
-        <div class="field"><label for="ct-paste">Hoặc dán nội dung</label><textarea class="textarea" id="ct-paste" rows="3" data-ct-paste placeholder="Dán phần nhận định, quyết định của bản án…"></textarea></div>
-        <div class="inline"><button class="btn btn-sm" type="button" data-ct-add>${icon('plus', 'ic-sm')}Thêm tài liệu</button><button class="btn btn-sm btn-primary" type="button" data-ct-parse>${icon('search', 'ic-sm')}Đọc bản án: tội danh, hình phạt, tình tiết</button><span class="hint" data-ct-say aria-live="polite"></span></div>
+        <div class="field"><label for="ct-paste">Hoặc dán nội dung</label><textarea class="textarea" id="ct-paste" rows="3" data-ct-paste placeholder="Dán nội dung cáo trạng, bản án…"></textarea></div>
+        <div class="inline"><button class="btn btn-sm" type="button" data-ct-add>${icon('plus', 'ic-sm')}Thêm tài liệu</button><button class="btn btn-sm btn-primary" type="button" data-ct-indict>${icon('search', 'ic-sm')}Đọc cáo trạng: bị cáo, tội danh, nhân thân</button><button class="btn btn-sm btn-primary" type="button" data-ct-parse>${icon('search', 'ic-sm')}Đọc bản án: tội danh, hình phạt, tình tiết</button><span class="hint" data-ct-say aria-live="polite"></span></div>
         <ul class="ct-sources" data-ct-sources></ul>
       </section>
       <section class="panel ct-sec"><h2>${icon('user', 'ic-sm')}2. Bị cáo và quyết định đã áp dụng</h2>
         <div data-ct-defs></div>
         <button class="btn btn-sm" type="button" data-ct-adddef>${icon('plus', 'ic-sm')}Thêm bị cáo</button>
-        <details class="ct-don-info"><summary>Thông tin bản án (số, ngày tuyên án — dùng khi xem xét đơn)</summary><div class="grid-3">
-          <div class="field"><label>Số bản án</label><input class="input" data-ban="so" value="${escapeHtml(rec.banAn?.so || '')}" placeholder="vd: 25/2026/HS-ST" /></div>
-          <div class="field"><label>Ngày tuyên án</label><input class="input" data-ban="ngay" value="${escapeHtml(rec.banAn?.ngay || '')}" placeholder="vd: 15/10/2026" /></div>
-          <div class="field"><label>Tòa án xét xử</label><input class="input" data-ban="toa" value="${escapeHtml(rec.banAn?.toa || '')}" placeholder="vd: Tòa án nhân dân huyện X" /></div>
-        </div></details>
       </section>
-      <div class="seg ct-tabs" role="tablist">
-        <button role="tab" data-ct-tab="phan-tich">${icon('activity', 'ic-sm')}Phân tích hành vi &amp; hướng giải quyết</button>
-        <button role="tab" data-ct-tab="kiem-tra">${icon('check-circle', 'ic-sm')}Kiểm tra tội danh, hình phạt</button>
-        <button role="tab" data-ct-tab="khieu-nai">${icon('file', 'ic-sm')}Xem xét đơn khiếu nại / kháng cáo</button>
       </div>
+      <div data-pane="hinh-phat" hidden></div>
+      <div data-pane="bieu-mau" hidden></div>
       <section class="panel ct-sec" data-ct-don hidden><h2>${icon('mail', 'ic-sm')}Đơn nhận được</h2>
         <p class="hint">Tải đơn khiếu nại, kháng cáo, đề nghị giám đốc thẩm… người khác gửi đến — phần mềm tách từng yêu cầu trong đơn và đối chiếu với tài liệu vụ án (phần 1), quyết định đã áp dụng (phần 2), nguyên văn điều luật. Nội dung đơn không được coi là chứng cứ.</p>
         <div class="grid-2">
@@ -134,13 +183,19 @@ export function render(ctx, params = []) {
       list.length
         ? list.map((p) => `<label class="chip ${sel.includes(p.d) ? 'on' : ''}" title="${escapeHtml(p.text)}"><input type="checkbox" hidden data-chip="${key}" value="${p.d}" ${sel.includes(p.d) ? 'checked' : ''} />${p.d}</label>`).join('')
         : `<input class="input input-sm" data-chips-text="${key}" value="${escapeHtml(sel.join(', '))}" placeholder="vd: b, s" />`;
-    const crime = findCrime(t.dieu);
     return `<article class="ct-def" data-def="${i}">
       <div class="ct-def-head"><strong>Bị cáo ${i + 1}</strong>${rec.defendants.length > 1 ? `<button class="btn btn-ghost btn-sm" type="button" data-def-del>${icon('trash', 'ic-sm')}Bỏ</button>` : ''}</div>
       <div class="grid-3">
         <div class="field"><label>Họ tên</label><input class="input" data-f="hoTen" value="${escapeHtml(d.hoTen || '')}" /></div>
         <div class="field"><label>Tuổi khi phạm tội</label><input class="input" type="number" min="14" max="100" data-f="tuoi" value="${d.tuoi ?? ''}" /></div>
         <div class="field"><label>Vai trò</label><select class="select" data-f="vaiTro">${VAI_TRO.map(([v, l]) => `<option value="${v}" ${v === (d.vaiTro || '') ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="field"><label>Năm sinh</label><input class="input" data-f="namSinh" value="${escapeHtml(d.namSinh || '')}" /></div>
+        <div class="field span-2"><label>Nơi cư trú</label><input class="input" data-f="noiCuTru" value="${escapeHtml(d.noiCuTru || '')}" /></div>
+      </div>
+      <div class="grid-3">
+        <div class="field"><label>Biện pháp ngăn chặn</label><select class="select" data-n="loai">${NGAN_CHAN.map(([v, l]) => `<option value="${v}" ${v === (d.nganChan?.loai || '') ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="field"><label>Tạm giam từ ngày</label><input class="input" type="date" data-n="tu" value="${escapeHtml(d.nganChan?.tu || '')}" /></div>
+        <div class="field"><label>Hết hạn tạm giam (theo lệnh)</label><input class="input" type="date" data-n="den" value="${escapeHtml(d.nganChan?.den || '')}" /></div>
       </div>
       <div class="grid-4">
         <div class="field"><label>Điều (tội danh)</label><input class="input" data-t="dieu" value="${escapeHtml(t.dieu || '')}" placeholder="vd: 174" /></div>
@@ -148,7 +203,7 @@ export function render(ctx, params = []) {
         <div class="field"><label>Điểm</label><input class="input" data-t="diem" value="${escapeHtml((t.diem || []).join(', '))}" placeholder="vd: a" /></div>
         <div class="field"><label>Giá trị tài sản / thiệt hại</label><input class="input" data-f="soTien" value="${d.soTien != null ? fmtVnd(d.soTien) : ''}" placeholder="vd: 180.000.000 đồng" /></div>
       </div>
-      ${crime ? `<p class="hint">Điều ${crime.dieu}: ${escapeHtml(crime.ten)}</p>` : t.dieu ? `<p class="hint">Phần mềm chưa có dữ liệu Điều ${escapeHtml(t.dieu)}.</p>` : ''}
+      <p class="hint" data-def-crime>${crimeHint(t.dieu)}</p>
       <div class="grid-4">
         <div class="field"><label>Hình phạt chính</label><select class="select" data-h="loai">${LOAI_HP.map(([v, l]) => `<option value="${v}" ${v === (hp.loai || '') ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="field"><label>Thời hạn (năm)</label><input class="input" type="number" min="0" max="30" data-h="nam" value="${hp.thang != null ? Math.floor(hp.thang / 12) : ''}" /></div>
@@ -169,6 +224,9 @@ export function render(ctx, params = []) {
     d.hoTen = v('[data-f="hoTen"]').value.trim();
     d.tuoi = v('[data-f="tuoi"]').value ? +v('[data-f="tuoi"]').value : null;
     d.vaiTro = v('[data-f="vaiTro"]').value;
+    d.namSinh = v('[data-f="namSinh"]').value.trim();
+    d.noiCuTru = v('[data-f="noiCuTru"]').value.trim();
+    d.nganChan = { loai: v('[data-n="loai"]').value, tu: v('[data-n="tu"]').value, den: v('[data-n="den"]').value };
     d.soTien = parseMoney(v('[data-f="soTien"]').value);
     d.giamNheK2 = v('[data-f="giamNheK2"]').checked;
     d.dieu54 = v('[data-f="dieu54"]').checked;
@@ -276,8 +334,29 @@ export function render(ctx, params = []) {
     if (!out) return;
     $$('[data-ct-tab]', root).forEach((b) => b.setAttribute('aria-selected', String(b.dataset.ctTab === tab)));
     $('[data-ct-don]', root).hidden = tab !== 'khieu-nai';
+    $$('[data-pane]', root).forEach((p) => (p.hidden = p.dataset.pane !== tab));
+    const inOut = ['phan-tich', 'kiem-tra', 'khieu-nai'].includes(tab);
+    out.hidden = !inOut;
+    $('[data-ct-book]', root).hidden = !!book || !['kiem-tra', 'hinh-phat', 'tai-lieu'].includes(tab);
+    if (tab === 'vu-an') panes['vu-an'] ? panes['vu-an'].refresh() : (panes['vu-an'] = mountCasePane($('[data-pane="vu-an"]', root), { ctx, rec, save, getBook: () => book, onChange: onCaseChange }));
+    else if (tab === 'hinh-phat') panes['hinh-phat'] ? panes['hinh-phat'].refresh() : (panes['hinh-phat'] = mountPenaltyPane($('[data-pane="hinh-phat"]', root), { rec, save, getBook: () => book }));
+    else if (tab === 'bieu-mau') panes['bieu-mau'] ? panes['bieu-mau'].refresh() : (panes['bieu-mau'] = mountFormsPane($('[data-pane="bieu-mau"]', root), { ctx, rec, save }));
+    if (!inOut) return;
     out.innerHTML = tab === 'phan-tich' ? analysisHtml() : tab === 'kiem-tra' ? checkHtml() : reviewHtml();
   }, 120);
+
+  // Đổi cấp xét xử ở tab Vụ án → nhãn trên đầu; biểu mẫu vẽ lại theo cấp.
+  let lastCap = rec.cap;
+  function onCaseChange() {
+    $('[data-ct-cap]', root).textContent = CAP[rec.cap] || '';
+    if (rec.cap === lastCap || !panes['bieu-mau']) return (lastCap = rec.cap);
+    lastCap = rec.cap;
+    const fresh = document.createElement('div');
+    fresh.dataset.pane = 'bieu-mau';
+    fresh.hidden = true;
+    $('[data-pane="bieu-mau"]', root).replaceWith(fresh);
+    panes['bieu-mau'] = null;
+  }
 
   /* ----- Gắn sự kiện ----- */
   function bind() {
@@ -382,6 +461,32 @@ export function render(ctx, params = []) {
       update();
       toast(`Đã đọc ${v.defendants.length} bị cáo — kiểm tra lại các ô đã điền`, { timeout: 5000 });
     });
+    $('[data-ct-indict]', root).addEventListener('click', () => {
+      const ta = $('[data-ct-paste]', root);
+      if (ta.value.trim()) $('[data-ct-add]', root).click();
+      if (!(rec.sources || []).length) return warnMissing('Chưa có tài liệu: tải cáo trạng hoặc dán nội dung trước', $('[data-drop]', root));
+      const ct = parseIndictment(rec.sources.map((s) => s.text).join('\n'));
+      if (!ct.defendants.length) return warnMissing('Không đọc được phần truy tố (cần câu dạng “Truy tố bị can … về tội … theo … Điều …”) — nhập tay ở phần Bị cáo');
+      rec.caoTrang = { ...(rec.caoTrang || {}), ...(ct.so && { so: ct.so }), ...(ct.ngay && { ngay: ct.ngay }), ...(ct.vks && { vks: ct.vks }) };
+      rec.hdxx = { ...(rec.hdxx || {}) };
+      if (!rec.hdxx.vks && ct.vks) rec.hdxx.vks = ct.vks;
+      const maxMoney = ct.money.sort((a, b) => b.v - a.v)[0]?.v ?? null;
+      rec.defendants = ct.defendants.map((d) => {
+        const old = rec.defendants.find((x) => x.hoTen && x.hoTen === d.hoTen) || {};
+        return newDefendant({ ...old, ...d, id: old.id || uid(), soTien: old.soTien ?? maxMoney, nganChan: d.nganChan || old.nganChan || {} });
+      });
+      rec.nguoiThamGia = [...(rec.nguoiThamGia || [])];
+      for (const n of ct.biHai) if (!rec.nguoiThamGia.some((p) => p.hoTen === n)) rec.nguoiThamGia.push({ vaiTro: 'bi-hai', hoTen: n, diaChi: '' });
+      if (!rec.loaiToi) rec.loaiToi = suggestLoaiToi(rec.defendants, book) || '';
+      if (/^Vụ án (sơ|phúc) thẩm mới$|^Hồ sơ xét xử mới$/.test(rec.ten || '')) {
+        rec.ten = `${ct.defendants[0].tenToi || 'Vụ án'} — ${ct.defendants.map((d) => d.hoTen).join(', ')}`;
+        $('[data-ct-name]', root).value = rec.ten;
+      }
+      save();
+      drawDefs();
+      update();
+      toast(`Đã đọc cáo trạng${ct.so ? ` số ${ct.so}` : ''}: ${ct.defendants.length} bị cáo${ct.biHai.length ? `, ${ct.biHai.length} bị hại` : ''} — kiểm tra lại các ô đã điền`, { timeout: 5000 });
+    });
     $('[data-ct-sources]', root).addEventListener('click', (e) => {
       const b = e.target.closest('[data-src-del]');
       if (!b) return;
@@ -408,7 +513,7 @@ export function render(ctx, params = []) {
     defs.addEventListener('input', onDef);
     defs.addEventListener('change', (e) => {
       onDef(e);
-      if (e.target.matches('[data-t="dieu"]')) drawDefs();
+      if (e.target.matches('[data-t="dieu"]')) e.target.closest('[data-def]').querySelector('[data-def-crime]').innerHTML = crimeHint(e.target.value.trim());
     });
     defs.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-def-del]');
@@ -418,15 +523,10 @@ export function render(ctx, params = []) {
       drawDefs();
       update();
     });
-    $$('[data-ban]', root).forEach((inp) =>
-      inp.addEventListener('input', () => {
-        rec.banAn = { ...(rec.banAn || {}), [inp.dataset.ban]: inp.value.trim() };
-        save();
-      }),
-    );
     $$('[data-ct-tab]', root).forEach((b) =>
       b.addEventListener('click', () => {
         tab = b.dataset.ctTab;
+        history.replaceState(null, '', `#toa-an/${rec.id}/${tab}`);
         update();
       }),
     );
@@ -497,7 +597,6 @@ export function render(ctx, params = []) {
   loadBook().then((b) => {
     book = b;
     if (!root.isConnected) return;
-    $('[data-ct-book]', root).hidden = !!b;
     drawDefs();
     update();
   });

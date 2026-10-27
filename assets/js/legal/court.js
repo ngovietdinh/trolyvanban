@@ -247,6 +247,55 @@ export function parseVerdict(text) {
   return { defendants: out, money };
 }
 
+/**
+ * Đọc cáo trạng: số, ngày, Viện kiểm sát; bị can được truy tố (tội danh, điều – khoản – điểm), nhân thân (năm sinh, nơi cư
+ * trú), biện pháp ngăn chặn (tạm giam từ ngày…); bị hại. Chỉ lấy đúng chữ có trong văn bản.
+ */
+export function parseIndictment(text) {
+  const src = String(text || '').replace(/\r/g, '');
+  const lines = src.split('\n').map((l) => l.trim());
+  const so = /Số\s*:?\s*([0-9]{1,5}\/[^\s\n,;]*CT[^\s\n,;]*)/u.exec(src)?.[1] || '';
+  const iSo = lines.findIndex((l) => /^Số\s*:/u.test(l));
+  const vksLines = lines.slice(0, iSo > 0 ? iSo : 8).filter((l) => /^VIỆN KIỂM SÁT/u.test(l));
+  const vks = vksLines.length ? vksLines[vksLines.length - 1].replace(/\s{2,}.*$/, '') : '';
+  const dm = /,\s*ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/u.exec(src);
+  const ngay = dm ? `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}` : '';
+  const people = new Map();
+  const sents = src.split(/(?<=[.])\s+|\n+/u);
+  for (const s of sents) {
+    if (!/Truy tố/u.test(s)) continue;
+    const head = s.split(/\s(?:ra trước|về (?:các )?tội|để xét xử)/u)[0];
+    const names = [...head.matchAll(new RegExp(NAME, 'gu'))].map((m) => m[1]).filter((n) => !/^(Truy|Tòa|Viện|Bộ|Nhân)/u.test(n));
+    const cites = parseCitations(s).filter((c) => findCrime(c.dieu));
+    const tenToi = [...s.matchAll(/[“"]([^”"]{3,120})[”"]/gu)].map((m) => m[1].trim());
+    for (const n of names) {
+      const d = people.get(n) || { hoTen: n, toiDanh: [], tenToi: [] };
+      for (const c of cites) if (!d.toiDanh.some((x) => x.dieu === c.dieu && x.khoan === c.khoan)) d.toiDanh.push({ dieu: c.dieu, khoan: c.khoan, diem: c.diem });
+      d.tenToi.push(...tenToi.filter((t) => !d.tenToi.includes(t)));
+      people.set(n, d);
+    }
+  }
+  for (const d of people.values()) {
+    const i = src.search(new RegExp(`${d.hoTen.replace(/\s+/g, '\\s+')}[^\\n]{0,40}?(?:\\(|,\\s*sinh|sinh)`, 'u'));
+    const win = i >= 0 ? src.slice(i, i + 900) : '';
+    const sn = /sinh (?:ngày\s*(\d{1,2}[/-]\d{1,2}[/-](\d{4}))|năm\s*(\d{4}))/u.exec(win);
+    if (sn) {
+      d.ngaySinh = sn[1] || '';
+      d.namSinh = sn[2] || sn[3] || '';
+    }
+    const ct = /(?:Nơi cư trú|nơi cư trú|Nơi ở|nơi ở|Trú tại|trú tại|thường trú|HKTT)\s*:?\s*([^;\n]{5,160}?)(?:;|\.\s|\n|$)/u.exec(win);
+    if (ct) d.noiCuTru = ct[1].trim().replace(/[.,]$/, '');
+    const tg = /tạm giam (?:từ ngày|kể từ ngày|ngày)\s*(\d{1,2})[/-](\d{1,2})[/-](\d{4})/u.exec(win);
+    if (tg) d.nganChan = { loai: 'tam-giam', tu: `${tg[3]}-${tg[2].padStart(2, '0')}-${tg[1].padStart(2, '0')}`, den: '' };
+    else if (/cấm đi khỏi nơi cư trú/iu.test(win)) d.nganChan = { loai: 'cam-di-khoi' };
+    else if (/bảo lĩnh/iu.test(win)) d.nganChan = { loai: 'bao-linh' };
+    if (!d.toiDanh.length) d.toiDanh = [{ dieu: '', khoan: null, diem: [] }];
+    d.tenToi = d.tenToi.join('; ');
+  }
+  const biHai = [...new Set([...src.matchAll(new RegExp(`(?:người bị hại|bị hại)\\s*(?:là\\s*)?:?\\s*(?:ông|bà|anh|chị|cháu|em)?\\s*${NAME}`, 'giu'))].map((m) => m[1].trim()))];
+  return { so, ngay, vks, defendants: [...people.values()], biHai, money: parseVerdict(src).money };
+}
+
 /* ---------------- Căn cứ thực tế trong tài liệu (câu trích nguyên văn) ---------------- */
 export function sentencesOf(sources = []) {
   const out = [];

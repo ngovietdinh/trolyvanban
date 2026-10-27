@@ -58,7 +58,7 @@ const ROUTES = {
   'so-do': { mod: caseMap, title: 'Sơ đồ vụ việc', perm: 'legal' },
   forms: { mod: forms, title: 'Biểu mẫu tố tụng', perm: 'legal' },
   'binh-luan': { mod: binhLuan, title: 'Bình luận Bộ luật Hình sự', perm: 'legal' },
-  'toa-an': { mod: toaAn, title: 'Tòa án — xem xét bản án', perm: 'legal' },
+  'toa-an': { mod: toaAn, title: 'Tòa án — hồ sơ xét xử', perm: 'legal' },
   kho: { mod: kho, title: 'Kho hồ sơ & Trợ lý AI', perm: 'legal' },
   chat: { mod: chat, title: 'Trợ lý AI', perm: 'docs' },
   spell: { mod: spell, title: 'Kiểm tra chính tả', perm: 'tools' },
