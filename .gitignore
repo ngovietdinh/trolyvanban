@@ -11,3 +11,4 @@ bieu-mau-docx/
 
 # Sinh ra khi đóng gói (scripts/desktop.mjs)
 desktop/security-forced.json
+.tmp-review/
