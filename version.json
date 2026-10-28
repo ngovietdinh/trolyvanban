@@ -1,7 +1,8 @@
 {
-  "version": "2.44.1",
+  "version": "2.44.2",
   "date": "2026-10-28",
   "notes": [
-    "Điện thoại: ngăn kéo menu nền đục, không còn nhìn xuyên nội dung phía sau ở giao diện tối"
+    "Bình luận BLHS: tìm trong sách xếp theo mức khớp (tên điều trước, rồi điều luật, rồi bình luận) thay vì theo thứ tự sách nên điều đúng không còn bị đẩy xuống hay rớt khỏi danh sách",
+    "Tìm đủ mọi từ trong cùng một câu, thứ tự tùy ý, không cần dấu; hiện số chỗ khớp của từng điều; tô sáng từ khóa trong trích đoạn và trong bài"
   ]
 }

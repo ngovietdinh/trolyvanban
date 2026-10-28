@@ -5376,3 +5376,5 @@ body.dg-lock { overflow: hidden; }
   .ct-list-q { margin-left: 0; min-width: 0; width: 100%; }
   .ct-src-meta { margin-left: 0; width: 100%; }
 }
+/* Kết quả tìm trong sách Bình luận: số chỗ khớp đứng cạnh tên điều. */
+.bl-results li .bl-hits { margin-left: 8px; vertical-align: middle; }

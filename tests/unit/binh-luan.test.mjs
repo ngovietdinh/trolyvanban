@@ -103,6 +103,21 @@ test('tìm toàn văn không dấu, theo số điều; mục lục cây', () => 
   assert.deepEqual(r.map((x) => [x.so, x.where]), [['173', 'bl']]);
   assert.match(r[0].snippet, /4 khung hình phạt/);
   assert.equal(searchBook(b, 'trom cap')[0].where, 'ten');
+  // Xếp theo mức khớp: điều có từ khóa trong TÊN lên trước điều chỉ nhắc trong bình luận, dù đứng sau trong sách.
+  const many = parseBinhLuan(
+    [BOOK.split('\nMỤC LỤC')[0], ...Array.from({ length: 90 }, (_, i) => `Điều ${300 + i}. Tội mẫu ${i}\nNội dung.\nBình luận\nHành vi lừa đảo được nhắc ở đây.`), 'Điều 390. Tội lừa đảo chiếm đoạt tài sản\nNgười nào lừa đảo chiếm đoạt tài sản của người khác.\nBình luận\nLừa đảo là thủ đoạn gian dối.'].join('\n'),
+    NOTES,
+  );
+  const r2 = searchBook(many, 'lua dao', 80);
+  assert.equal(r2[0].so, '390');
+  assert.equal(r2[0].where, 'ten');
+  assert.equal(r2[0].hits, 2);
+  assert.equal(r2.length, 80);
+  // Đủ mọi từ trong cùng một câu, thứ tự tùy ý; khớp đầu từ.
+  assert.equal(searchBook(many, 'tai san chiem doat')[0].so, '390');
+  assert.deepEqual(searchBook(many, 'thu doan gian doi').map((x) => [x.so, x.where]), [['390', 'bl']]);
+  assert.match(searchBook(many, 'thu doan gian doi')[0].snippet, /thủ đoạn gian dối/);
+  assert.deepEqual(searchBook(many, 'gian doi khong co'), []);
   assert.equal(findArticle(b, '217A').so, '217a');
   const t = tocTree(b);
   assert.equal(t.length, 2);

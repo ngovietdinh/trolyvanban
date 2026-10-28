@@ -1,24 +1,33 @@
 // Hiển thị một điều của sách Bình luận BLHS: nguyên văn điều luật + phần Bình luận + chú thích.
 // Chỉ định dạng để dễ đọc (đoạn, thụt lề khoản / điểm / gạch đầu dòng) — KHÔNG sửa, thêm, bớt chữ nào.
 import { escapeHtml } from '../ui.js';
+import { tokens, matchAt } from '../lib/universal-search.js';
 
 // Bỏ dấu từng ký tự, giữ nguyên độ dài chuỗi → tìm không dấu và tô sáng đúng vị trí trong bản gốc.
 const foldChar = (c) => (c === 'đ' || c === 'Đ' ? 'd' : c.normalize('NFD')[0].toLowerCase());
 const foldKeep = (s) => [...s].map(foldChar).join('');
 
-/** Tô sáng mọi chỗ khớp (không dấu) trong một dòng đã cắt theo ký tự; trả HTML đã thoát. */
+/** Tô sáng mọi chỗ khớp (không dấu) trong một dòng đã cắt theo ký tự; trả HTML đã thoát.
+ *  Có cả cụm thì tô cụm; không thì tô từng từ khóa (khớp đầu từ) — cùng luật với searchBook. */
 function highlight(line, q) {
   if (!q) return escapeHtml(line);
   const chars = [...line];
   const folded = chars.map(foldChar).join('');
-  const fq = foldKeep(q);
+  const fq = foldKeep(q).replace(/\s+/g, ' ').trim();
+  if (!fq) return escapeHtml(line);
+  const ranges = [];
+  if (folded.includes(fq)) {
+    for (let at = folded.indexOf(fq); at >= 0; at = folded.indexOf(fq, at + fq.length)) ranges.push([at, at + fq.length]);
+  } else {
+    for (const t of tokens(q)) for (const at of matchAt(folded, t)) ranges.push([at, at + t.length]);
+    ranges.sort((a, b) => a[0] - b[0]);
+  }
   let out = '';
   let i = 0;
-  let at = folded.indexOf(fq);
-  while (at >= 0 && fq) {
-    out += escapeHtml(chars.slice(i, at).join('')) + `<mark>${escapeHtml(chars.slice(at, at + fq.length).join(''))}</mark>`;
-    i = at + fq.length;
-    at = folded.indexOf(fq, i);
+  for (const [a, b] of ranges) {
+    if (a < i) continue;
+    out += escapeHtml(chars.slice(i, a).join('')) + `<mark>${escapeHtml(chars.slice(a, b).join(''))}</mark>`;
+    i = b;
   }
   return out + escapeHtml(chars.slice(i).join(''));
 }

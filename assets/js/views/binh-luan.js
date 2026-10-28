@@ -5,6 +5,7 @@ import { store } from '../lib/store.js';
 import { tocTree, searchBook } from '../legal/binh-luan.js';
 import { loadBook, currentBook, importBookFile, removeBook } from '../legal/binh-luan-store.js';
 import { articleHtml } from './bl-render.js';
+import { foldKeep, tokens, matchAt } from '../lib/universal-search.js';
 
 const SIZE_KEY = 'bl-size';
 const LAST_KEY = 'bl-last';
@@ -12,6 +13,28 @@ let lastQuery = '';
 let tocScroll = 0;
 
 const fmt = (n) => Number(n || 0).toLocaleString('vi-VN');
+
+/** Tô sáng từ khóa (không dấu, khớp đầu từ) trong một đoạn ngắn; trả HTML đã thoát. */
+function markHits(text, q) {
+  const chars = [...String(text || '')];
+  const folded = foldKeep(chars.join(''));
+  const fq = foldKeep(q).replace(/\s+/g, ' ').trim();
+  const ranges = [];
+  if (fq && folded.includes(fq)) {
+    for (let at = folded.indexOf(fq); at >= 0; at = folded.indexOf(fq, at + fq.length)) ranges.push([at, at + fq.length]);
+  } else {
+    for (const t of tokens(q)) for (const at of matchAt(folded, t)) ranges.push([at, at + t.length]);
+    ranges.sort((a, b) => a[0] - b[0]);
+  }
+  let out = '';
+  let i = 0;
+  for (const [a, b] of ranges) {
+    if (a < i) continue;
+    out += escapeHtml(chars.slice(i, a).join('')) + `<mark>${escapeHtml(chars.slice(a, b).join(''))}</mark>`;
+    i = b;
+  }
+  return out + escapeHtml(chars.slice(i).join(''));
+}
 
 function emptyHtml() {
   return `<section class="bl-empty card">
@@ -99,9 +122,16 @@ export function render(ctx, params = []) {
   const showResults = (q) => {
     const main = $('[data-bl-main]', root);
     const res = searchBook(book, q, 80);
-    main.innerHTML = `<div class="bl-results"><h2>${res.length ? `${res.length >= 80 ? 'Hơn 80' : res.length} điều có “${escapeHtml(q)}”` : `Không thấy “${escapeHtml(q)}” trong sách`}</h2>
+    const where = { ten: 'Tên điều', vb: 'Điều luật', bl: 'Bình luận' };
+    main.innerHTML = `<div class="bl-results">
+      <h2>${res.length ? `${res.length >= 80 ? 'Hơn 80' : res.length} điều có “${escapeHtml(q)}”` : `Không thấy “${escapeHtml(q)}” trong sách`}</h2>
+      <p class="hint">${res.length ? 'Xếp theo mức khớp: tên điều trước, rồi điều luật, rồi bình luận; cần đủ mọi từ trong cùng một câu, không cần dấu.' : 'Thử bớt từ, bỏ dấu, hoặc gõ số điều (ví dụ 174).'}</p>
       <ul>${res
-        .map((r) => `<li><a href="#binh-luan/${encodeURIComponent(r.so)}"><b>Điều ${escapeHtml(r.so)}.</b> ${escapeHtml(r.ten)}</a>${r.snippet ? `<p><span class="badge">${r.where === 'vb' ? 'Điều luật' : 'Bình luận'}</span> ${escapeHtml(r.snippet)}</p>` : ''}</li>`)
+        .map(
+          (r) => `<li><a href="#binh-luan/${encodeURIComponent(r.so)}"><b>Điều ${escapeHtml(r.so)}.</b> ${markHits(r.ten, q)}</a>${
+            r.hits > 1 ? `<span class="badge bl-hits">${fmt(r.hits)} chỗ</span>` : ''
+          }${r.snippet ? `<p><span class="badge">${where[r.where]}</span> ${markHits(r.snippet, q)}</p>` : ''}</li>`,
+        )
         .join('')}</ul></div>`;
   };
 

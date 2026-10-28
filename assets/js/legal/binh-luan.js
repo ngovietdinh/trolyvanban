@@ -1,3 +1,4 @@
+import { foldKeep, tokens, matchAt, snippetOf } from '../lib/universal-search.js';
 // Sách "Bình luận khoa học Bộ luật Hình sự" — tách theo Phần / Chương / Mục / Điều để đọc trong phần mềm.
 //
 // Nguyên tắc: GIỮ NGUYÊN 100% NỘI DUNG. Bộ tách chỉ chia các dòng của sách vào đúng chỗ (tiêu đề cấu trúc, nguyên văn
@@ -172,40 +173,51 @@ export function findArticle(book, so) {
   return book.articles.find((a) => a.so === k) || null;
 }
 
-/** Tìm toàn văn (không dấu): trả về [{ so, ten, where: 'ten'|'vb'|'bl', snippet }] — tối đa limit kết quả. */
+/**
+ * Tìm toàn văn trong sách, không dấu. Xếp theo mức khớp chứ không theo thứ tự sách:
+ * tên điều (cả cụm 100 / đủ từ 80) → điều luật (cụm 50 / đủ từ 40) → bình luận (cụm 30 / đủ từ 20),
+ * cộng số dòng có khớp (tối đa 20) để điều nhắc nhiều lên trước; cùng điểm thì theo thứ tự sách.
+ * "Đủ từ": mọi từ khóa đều có trong cùng một dòng, khớp đầu từ, thứ tự tùy ý ("chiem doat tai san" ↔ "tài sản bị chiếm đoạt").
+ * Trả về { so, ten, where: 'ten'|'vb'|'bl', snippet, hits } — hits = số dòng có khớp (cả điều luật và bình luận).
+ */
 export function searchBook(book, query, limit = 60) {
-  const q = fold(query).trim();
+  const q = fold(query).replace(/\s+/g, ' ').trim();
   if (!book || q.length < 2) return [];
   const num = /^(?:dieu\s*)?(\d{1,3}[a-z]?)$/.exec(q);
   if (num) {
     const a = findArticle(book, num[1]);
-    return a ? [{ so: a.so, ten: a.ten, where: 'ten', snippet: '' }] : [];
+    return a ? [{ so: a.so, ten: a.ten, where: 'ten', snippet: '', hits: 1 }] : [];
   }
-  const out = [];
-  const snip = (line, idx) => {
-    const s = Math.max(0, idx - 60);
-    return `${s ? '…' : ''}${line.slice(s, idx + q.length + 80).replace(/\{\{fn:\d+\}\}/g, '')}${idx + q.length + 80 < line.length ? '…' : ''}`;
+  const toks = tokens(query);
+  if (!toks.length) return [];
+  const clean = (l) => String(l || '').replace(/\{\{fn:\d+\}\}/g, '');
+  // 2 = khớp cả cụm, 1 = đủ mọi từ (đầu từ), 0 = không.
+  const grade = (text) => {
+    const f = foldKeep(text).toLowerCase();
+    if (f.includes(q)) return 2;
+    return toks.every((t) => matchAt(f, t).length) ? 1 : 0;
   };
-  for (const a of book.articles) {
-    if (fold(a.ten).includes(q)) {
-      out.push({ so: a.so, ten: a.ten, where: 'ten', snippet: '' });
-      continue;
-    }
-    let hit = null;
+  const BASE = { ten: [0, 80, 100], vb: [0, 40, 50], bl: [0, 20, 30] };
+  const out = [];
+  book.articles.forEach((a, order) => {
+    const tg = grade(a.ten);
+    let best = null;
+    let hits = 0;
     for (const where of ['vb', 'bl']) {
-      for (const line of a[where]) {
-        const i = fold(line).indexOf(q);
-        if (i >= 0) {
-          hit = { so: a.so, ten: a.ten, where, snippet: snip(line, i) };
-          break;
-        }
+      for (const line of a[where] || []) {
+        const g = grade(line);
+        if (!g) continue;
+        hits++;
+        const sc = BASE[where][g];
+        if (!best || sc > best.sc) best = { sc, where, line };
       }
-      if (hit) break;
     }
-    if (hit) out.push(hit);
-    if (out.length >= limit) break;
-  }
-  return out;
+    if (!tg && !best) return;
+    const score = Math.max(BASE.ten[tg], best?.sc || 0) + Math.min(hits, 20);
+    out.push({ so: a.so, ten: a.ten, where: tg ? 'ten' : best.where, snippet: tg ? '' : snippetOf(clean(best.line), toks), hits: hits || 1, score, order });
+  });
+  out.sort((x, y) => y.score - x.score || x.order - y.order);
+  return out.slice(0, limit).map(({ score, order, ...r }) => r);
 }
 
 /** Cây mục lục: [{ phan, chuongs: [{ chuong, mucs: [{ muc, items: [{so, ten}] }] }] }]. */
