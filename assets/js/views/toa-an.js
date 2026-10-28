@@ -20,6 +20,7 @@ import { store } from '../lib/store.js';
 import { thamTraHtml, chungCuHtml, tuongTuHtml, bindThamTra, thamTraAiPrompt } from './toa-an-tham-tra.js';
 import { buildReplyLetter } from '../legal/court-review.js';
 import { renderKho } from './toa-an-kho.js';
+import { renderAnLe } from './toa-an-an-le.js';
 import { loadBook } from '../legal/binh-luan-store.js';
 import { dropzoneHtml, bindDropzone, readAll } from './acts-review.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
@@ -71,19 +72,20 @@ const TABS = [
   ['tuong-tu', 'book', 'Bản án tương tự, án lệ'],
   ['bieu-mau', 'file', 'Biểu mẫu'],
 ];
-const CAP = { 'so-tham': 'Sơ thẩm', 'phuc-tham': 'Phúc thẩm' };
+const CAP = { 'so-tham': 'Sơ thẩm', 'phuc-tham': 'Phúc thẩm', 'giam-doc-tham': 'Giám đốc thẩm' };
+const TEN_MOI = { 'so-tham': 'Vụ án sơ thẩm mới', 'phuc-tham': 'Vụ án phúc thẩm mới', 'giam-doc-tham': 'Vụ án giám đốc thẩm mới' };
 const ST_CLASS = { 'qua-han': 'badge-danger', sap: 'badge-warning', con: '', moc: '' };
 function newCourtCase(ctx, cap) {
   const org = ctx.settings?.().courtOrg || {};
-  return courtRepo.save({ ten: cap === 'phuc-tham' ? 'Vụ án phúc thẩm mới' : 'Vụ án sơ thẩm mới', cap, thuLy: {}, toa: { ten: org.toaAn || '', capTren: org.toaAnCapTren || '', diaDanh: org.diaDanh || '' }, hdxx: {}, moc: {}, caoTrang: {}, sources: [], defendants: [newDefendant()], nguoiThamGia: [], banAn: {}, dons: [] });
+  return courtRepo.save({ ten: TEN_MOI[cap] || TEN_MOI['so-tham'], cap, thuLy: {}, toa: { ten: org.toaAn || '', capTren: org.toaAnCapTren || '', diaDanh: org.diaDanh || '' }, hdxx: {}, moc: {}, caoTrang: {}, sources: [], defendants: [newDefendant()], nguoiThamGia: [], banAn: {}, dons: [] });
 }
 function renderList(ctx) {
   const list = courtRepo.list().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   const todo = upcoming(list, { rules: courtRules() }).filter((x) => x.trangThai !== 'moc').slice(0, 12);
   ctx.view.innerHTML = `<div class="page ct-page">
-    <div class="page-head"><div><h1 class="page-title">Tòa án — <em>hồ sơ xét xử hình sự</em></h1><p class="page-sub">Sổ vụ án sơ thẩm, phúc thẩm; thời hạn tố tụng và cảnh báo; phân tích hành vi, kiểm tra bản án, tính hình phạt; xem xét đơn khiếu nại, kháng cáo; biểu mẫu Tòa án tự điền. Dữ liệu lưu trên máy, riêng tài khoản của bạn.</p></div>
-      <div class="inline"><button class="btn btn-primary" type="button" data-new="so-tham">${icon('plus', 'ic-sm')}Vụ án sơ thẩm</button><button class="btn" type="button" data-new="phuc-tham">${icon('plus', 'ic-sm')}Vụ án phúc thẩm</button></div></div>
-    <div class="inline ct-links"><a class="btn btn-sm btn-ghost" href="#toa-an/bieu-mau">${icon('file', 'ic-sm')}Biểu mẫu Tòa án</a><a class="btn btn-sm btn-ghost" href="#toa-an/kho-ban-an">${icon('book', 'ic-sm')}Kho bản án, án lệ</a><a class="btn btn-sm btn-ghost" href="#toa-an/cai-dat">${icon('settings', 'ic-sm')}Cài đặt Tòa án, thời hạn, văn bản</a><input class="input input-sm ct-list-q" type="search" placeholder="Tìm hồ sơ: tên, bị cáo, số thụ lý…" data-list-q aria-label="Tìm hồ sơ xét xử" /></div>
+    <div class="page-head"><div><h1 class="page-title">Tòa án — <em>hồ sơ xét xử hình sự</em></h1><p class="page-sub">Sổ vụ án sơ thẩm, phúc thẩm, giám đốc thẩm; thời hạn tố tụng và cảnh báo; phân tích hành vi, kiểm tra bản án, tính hình phạt; xem xét đơn khiếu nại, kháng cáo; biểu mẫu Tòa án tự điền. Dữ liệu lưu trên máy, riêng tài khoản của bạn.</p></div>
+      <div class="inline"><button class="btn btn-primary" type="button" data-new="so-tham">${icon('plus', 'ic-sm')}Vụ án sơ thẩm</button><button class="btn" type="button" data-new="phuc-tham">${icon('plus', 'ic-sm')}Vụ án phúc thẩm</button><button class="btn" type="button" data-new="giam-doc-tham">${icon('plus', 'ic-sm')}Vụ án giám đốc thẩm</button></div></div>
+    <div class="inline ct-links"><a class="btn btn-sm btn-ghost" href="#toa-an/bieu-mau">${icon('file', 'ic-sm')}Biểu mẫu Tòa án</a><a class="btn btn-sm btn-ghost" href="#toa-an/kho-ban-an">${icon('book', 'ic-sm')}Kho bản án, án lệ</a><a class="btn btn-sm btn-ghost" href="#toa-an/an-le">${icon('layers', 'ic-sm')}Án lệ</a><a class="btn btn-sm btn-ghost" href="#toa-an/cai-dat">${icon('settings', 'ic-sm')}Cài đặt Tòa án, thời hạn, văn bản</a><input class="input input-sm ct-list-q" type="search" placeholder="Tìm hồ sơ: tên, bị cáo, số thụ lý…" data-list-q aria-label="Tìm hồ sơ xét xử" /></div>
     ${
       todo.length
         ? `<section class="panel ct-sec ct-todo"><h2>${icon('clock', 'ic-sm')}Việc cần làm theo thời hạn</h2><ul class="ct-dl">${todo
@@ -100,7 +102,7 @@ function renderList(ctx) {
               return `<tr><td><a href="#toa-an/${c.id}"><strong>${escapeHtml(c.ten || 'Hồ sơ xét xử')}</strong></a><small>${CAP[c.cap] || 'Hồ sơ xét xử'}</small>${c.thuLy?.so ? `<small>Thụ lý số ${escapeHtml(c.thuLy.so)}</small>` : ''}</td><td>${names || '<span class="ct-dash">Chưa có bị cáo</span>'}</td><td>${nd ? `<span class="badge ${nd.cls}">${escapeHtml(nd.text)}</span>` : '<span class="ct-dash">—</span>'}</td><td class="num-r">${(c.sources || []).length} tài liệu<small>${(c.dons || []).length} đơn</small></td><td class="num-r">${new Date(c.updatedAt).toLocaleDateString('vi-VN')}</td></tr>`;
             })
             .join('')}</tbody></table></div></section>`
-        : `<section class="panel"><div class="empty"><div class="empty-icon">${icon('gavel', 'ic-lg')}</div><h3>Chưa có hồ sơ xét xử</h3><p>Tạo vụ án sơ thẩm (thụ lý từ cáo trạng) hoặc phúc thẩm (có kháng cáo, kháng nghị). Tải cáo trạng / bản án để phần mềm tự điền bị cáo, tội danh, nhân thân; nhập ngày thụ lý để theo dõi thời hạn.</p></div></section>`
+        : `<section class="panel"><div class="empty"><div class="empty-icon">${icon('gavel', 'ic-lg')}</div><h3>Chưa có hồ sơ xét xử</h3><p>Tạo vụ án sơ thẩm (thụ lý từ cáo trạng), phúc thẩm (có kháng cáo, kháng nghị) hoặc giám đốc thẩm (có kháng nghị đối với bản án đã có hiệu lực). Tải cáo trạng / bản án để phần mềm tự điền bị cáo, tội danh, nhân thân; nhập ngày thụ lý để theo dõi thời hạn.</p></div></section>`
     }
   </div>`;
   const q = ctx.view.querySelector('[data-list-q]');
@@ -122,6 +124,7 @@ export function render(ctx, params = []) {
   if (params[0] === 'bieu-mau') return renderFormsLibrary(ctx);
   if (params[0] === 'cai-dat') return renderCourtSettings(ctx);
   if (params[0] === 'kho-ban-an') return renderKho(ctx);
+  if (params[0] === 'an-le') return renderAnLe(ctx, params.slice(1));
   let rec = courtRepo.get(params[0]);
   if (!rec) {
     toast('Không tìm thấy hồ sơ xét xử', { type: 'error' });

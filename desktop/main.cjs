@@ -1,7 +1,7 @@
 // Bản cài đặt máy tính (Windows/macOS) của Trợ Lý Văn Bản AI.
 // Nạp nguyên mã web trong thư mục web/ qua giao thức riêng app://trolyvanban — một origin cố định, bảo mật
 // (crypto.subtle, Worker, localStorage hoạt động như trên HTTPS) và dữ liệu lưu bền trong thư mục người dùng.
-const { app, BrowserWindow, protocol, shell, Menu, dialog, session, ipcMain } = require('electron');
+const { app, BrowserWindow, protocol, shell, Menu, dialog, session, ipcMain, net } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
@@ -241,6 +241,47 @@ function bindUpdater() {
     return secStatus();
   });
   ipcMain.handle('tlvb:version', () => ({ web: updater.activeVersion(), packaged: updater.packaged(), shell: app.getVersion() }));
+  // Tải một tệp / trang (bản án, án lệ) từ mạng cho mã web — không vướng hạn chế tải chéo của trình duyệt; tuân theo
+  // chế độ bảo mật như mọi yêu cầu khác (chỉ máy này, máy chủ khai báo). Trả base64 để mã web đọc như tệp người dùng chọn.
+  ipcMain.handle('tlvb:fetch', async (e, url) => {
+    if (!String(e.senderFrame?.url || '').startsWith(ORIGIN)) return { ok: false, error: 'Không được phép' };
+    let u;
+    try {
+      u = new URL(String(url || ''));
+    } catch {
+      return { ok: false, error: 'Đường dẫn không hợp lệ' };
+    }
+    if (!/^https?:$/.test(u.protocol)) return { ok: false, error: 'Chỉ tải qua http:// hoặc https://' };
+    if (!allowedRequest(u.href)) return { ok: false, error: 'Chế độ bảo mật: không tải từ Internet (chỉ máy này hoặc máy chủ đã khai báo)' };
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 45000);
+    try {
+      const res = await net.fetch(u.href, { signal: ctrl.signal, redirect: 'follow' });
+      const type = res.headers.get('content-type') || '';
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > 25 * 1024 * 1024) return { ok: false, status: res.status, error: 'Tệp lớn hơn 25 MB' };
+      const cd = res.headers.get('content-disposition') || '';
+      const m = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
+      let name = '';
+      if (m) {
+        try {
+          name = decodeURIComponent(m[1] || m[2]).trim();
+        } catch {
+          name = (m[1] || m[2]).trim();
+        }
+      }
+      if (!name) {
+        const base = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() || '');
+        const ext = { 'application/pdf': '.pdf', 'application/msword': '.doc', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx', 'text/plain': '.txt', 'text/html': '.html' }[type.split(';')[0].trim()] || '';
+        name = /\.[a-z0-9]{2,5}$/i.test(base) ? base : `${base || 'tai-ve'}${ext || '.html'}`;
+      }
+      return { ok: res.ok, status: res.status, type, name, data: buf.toString('base64') };
+    } catch (err) {
+      return { ok: false, error: err?.name === 'AbortError' ? 'Quá thời gian chờ (45 giây)' : err?.message || String(err) };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
   ipcMain.on('tlvb:ready', () => {
     clearTimeout(watchdog);
     updater.confirm().catch(() => {});

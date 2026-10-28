@@ -5,6 +5,10 @@ import { courtBaDb } from '../legal/court-ba-db.js';
 import { parseKhoDoc, hinhPhatNgan } from '../legal/court-similar.js';
 import { fmtVnd } from '../legal/court.js';
 import { dropzoneHtml, bindDropzone, readAll } from './acts-review.js';
+import { AN_LE_PORTAL, BAN_AN_PORTAL } from '../legal/an-le-catalog.js';
+import { fetchDocument, htmlToText, isHtmlFile } from '../lib/net-fetch.js';
+import { copyText } from '../ui.js';
+import { isDesktop } from '../lib/platform.js';
 
 export async function renderKho(ctx) {
   const root = ctx.view;
@@ -18,6 +22,11 @@ export async function renderKho(ctx) {
       <div class="grid-2"><div class="field"><label>Tệp bản án / án lệ (chọn được nhiều tệp)</label>${dropzoneHtml('Word .doc/.docx, PDF (kể cả bản scan), ảnh chụp, .txt')}</div>
       <div class="field"><label for="kho-paste">Hoặc dán nội dung</label><textarea class="textarea" id="kho-paste" rows="4" data-kho-paste placeholder="Dán toàn văn bản án hoặc án lệ…"></textarea></div></div>
       <div class="inline"><button class="btn btn-primary btn-sm" type="button" data-kho-add>${icon('plus', 'ic-sm')}Thêm vào kho</button><span class="hint" data-kho-say aria-live="polite"></span></div>
+    </section>
+    <section class="panel ct-sec" data-kho-net><h2>${icon('link', 'ic-sm')}Tìm bản án, án lệ trên mạng</h2>
+      <p class="hint">Bản án đã công bố nằm trên Cổng công bố bản án, quyết định của Tòa án; án lệ nằm trên Cổng án lệ. Hai cổng không cho phần mềm khác tìm hộ, nên phần mềm sao chép từ khóa rồi mở cổng trong trình duyệt. Tải tệp bản án (Word, PDF) về rồi kéo vào ô “Nạp văn bản” ở trên, hoặc dán đường dẫn tệp vào ô dưới để tải thẳng vào kho${isDesktop ? '' : ' (bản web chỉ tải được từ trang cho phép tải chéo; bản cài đặt máy tính tải được mọi đường dẫn)'}.</p>
+      <div class="inline"><input class="input input-sm kho-kw" type="search" data-kho-kw placeholder="Từ khóa: tội danh, điều luật, tên Tòa án, năm… (sao chép sẵn khi mở cổng)" aria-label="Từ khóa tìm trên mạng" /><button class="btn btn-sm" type="button" data-kho-open="ban-an">${icon('link', 'ic-sm')}Cổng công bố bản án</button><button class="btn btn-sm" type="button" data-kho-open="an-le">${icon('link', 'ic-sm')}Cổng án lệ</button><a class="btn btn-sm btn-ghost" href="#toa-an/an-le">${icon('layers', 'ic-sm')}Danh mục án lệ</a></div>
+      <div class="inline"><input class="input input-sm kho-url" type="url" data-kho-url placeholder="https://… đường dẫn tệp .doc/.docx/.pdf hoặc trang bản án" aria-label="Đường dẫn tải" /><button class="btn btn-sm btn-primary" type="button" data-kho-fetch>${icon('download', 'ic-sm')}Tải vào kho</button><span class="hint" data-kho-net-say aria-live="polite"></span></div>
     </section>
     <section class="panel ct-sec"><h2>${icon('book', 'ic-sm')}Văn bản trong kho <small data-kho-count></small></h2>
       <div class="inline"><select class="select input-sm" data-kho-loai><option value="">Tất cả</option><option value="ban-an">Bản án</option><option value="an-le">Án lệ</option></select><input class="input input-sm" type="search" data-kho-q placeholder="Lọc: số, tòa, bị cáo, điều…" aria-label="Lọc kho" /></div>
@@ -75,7 +84,45 @@ export async function renderKho(ctx) {
   page.addEventListener('change', (e) => {
     if (e.target.matches('[data-kho-loai]')) (filter.loai = e.target.value), drawList();
   });
+  const netSay = (t) => ($('[data-kho-net-say]', page).textContent = t);
   page.addEventListener('click', async (e) => {
+    const open = e.target.closest('[data-kho-open]');
+    const fetchBtn = e.target.closest('[data-kho-fetch]');
+    if (open) {
+      const kw = $('[data-kho-kw]', page).value.trim();
+      if (kw) {
+        await copyText(kw);
+        toast(`Đã sao chép “${kw}” — dán vào ô tìm kiếm của cổng`);
+      }
+      window.open(open.dataset.khoOpen === 'an-le' ? AN_LE_PORTAL : BAN_AN_PORTAL, '_blank', 'noopener');
+      return;
+    }
+    if (fetchBtn) {
+      const urlInp = $('[data-kho-url]', page);
+      const url = urlInp.value.trim();
+      if (!url) return warnMissing('Chưa có đường dẫn: dán địa chỉ tệp bản án hoặc trang bản án', urlInp);
+      fetchBtn.disabled = true;
+      netSay('Đang tải…');
+      try {
+        const { file, name } = await fetchDocument(url);
+        const text = isHtmlFile(file) ? htmlToText(await file.text()) : await readAll([file], '', netSay);
+        if (!text.trim()) throw new Error('Không đọc được chữ từ tệp đã tải');
+        const doc = parseKhoDoc(text, name);
+        doc.url = url;
+        await courtBaDb.put(doc);
+        docs = await courtBaDb.list();
+        drawList();
+        urlInp.value = '';
+        netSay('');
+        toast(`Đã tải “${name}” vào kho${doc.loai === 'an-le' ? ` (án lệ ${doc.so || ''})` : doc.so ? ` (bản án ${doc.so})` : ''}`);
+      } catch (err) {
+        netSay('');
+        toast(err.message, { type: 'error', timeout: 9000 });
+      } finally {
+        fetchBtn.disabled = false;
+      }
+      return;
+    }
     const del = e.target.closest('[data-kho-del]');
     const view = e.target.closest('[data-kho-view]');
     if (del) {

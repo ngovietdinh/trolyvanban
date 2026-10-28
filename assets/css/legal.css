@@ -5378,3 +5378,12 @@ body.dg-lock { overflow: hidden; }
 }
 /* Kết quả tìm trong sách Bình luận: số chỗ khớp đứng cạnh tên điều. */
 .bl-results li .bl-hits { margin-left: 8px; vertical-align: middle; }
+/* Trang Án lệ: bộ lọc một hàng, bảng số – tên – lĩnh vực – áp dụng – toàn văn. */
+.al-filters { flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.al-filters .al-q { flex: 1; min-width: 220px; }
+.al-table td small { display: block; color: var(--text-3); margin-top: 2px; }
+.al-table .al-so { white-space: nowrap; cursor: copy; }
+.al-table .al-so:hover b { text-decoration: underline dotted; }
+@media (max-width: 640px) { .al-filters .check { width: 100%; } }
+.kho-kw, .kho-url { flex: 1; min-width: 220px; }
+.al-table .badge { white-space: nowrap; }

@@ -43,6 +43,14 @@ const F = [
   ['banAnSo', 'Số bản án', 'text', 'Số bản án'],
   ['banAnNgay', 'Ngày bản án', 'date', 'Ngày bản án'],
   ['banAnToa', 'Tòa án đã xét xử sơ thẩm', 'text', 'Tòa án sơ thẩm'],
+  ['banAnCap', 'Cấp xét xử của bản án bị kháng nghị (sơ thẩm / phúc thẩm)', 'text', 'Cấp bản án'],
+  ['khangNghiNguoi', 'Người kháng nghị giám đốc thẩm', 'text', 'Người kháng nghị'],
+  ['khangNghiSo', 'Số quyết định kháng nghị', 'text', 'Số kháng nghị'],
+  ['khangNghiNgay', 'Ngày kháng nghị', 'date', 'Ngày kháng nghị'],
+  ['khangNghiCanCu', 'Căn cứ kháng nghị (Điều 371 BLTTHS, mỗi căn cứ một dòng)', 'lines', 'Căn cứ kháng nghị'],
+  ['khangNghiNoiDung', 'Nội dung kháng nghị, yêu cầu của người kháng nghị', 'long', 'Nội dung kháng nghị'],
+  ['hoiDong', 'Hội đồng giám đốc thẩm', 'text', 'Hội đồng giám đốc thẩm'],
+  ['ketQuaGdt', 'Quyết định của Hội đồng giám đốc thẩm (Điều 388)', 'long', 'Quyết định giám đốc thẩm'],
   ['khangCao', 'Kháng cáo, kháng nghị', 'long', 'Kháng cáo kháng nghị'],
   ['lyDo', 'Lý do / nội dung cần nêu', 'long', 'Lý do'],
   ['noiDungVuAn', 'Nội dung vụ án', 'long', 'Nội dung vụ án'],
@@ -162,6 +170,30 @@ export function quyetDinhText(defendants = []) {
     .join('\n');
 }
 
+/** Người có thẩm quyền kháng nghị giám đốc thẩm (Điều 373 BLTTHS). */
+export const NGUOI_KN = {
+  'ca-tc': 'Chánh án Tòa án nhân dân tối cao',
+  'vt-tc': 'Viện trưởng Viện kiểm sát nhân dân tối cao',
+  'ca-tinh': 'Chánh án Tòa án nhân dân cấp tỉnh',
+  'vt-tinh': 'Viện trưởng Viện kiểm sát nhân dân cấp tỉnh',
+};
+/** Thành phần Hội đồng giám đốc thẩm (Điều 382 BLTTHS). */
+export const HOI_DONG_GDT = {
+  'ubtp-3': 'Ủy ban Thẩm phán Tòa án nhân dân cấp tỉnh — Hội đồng 3 Thẩm phán',
+  'ubtp-toan-the': 'Toàn thể Ủy ban Thẩm phán Tòa án nhân dân cấp tỉnh',
+  'hdtp-5': 'Hội đồng Thẩm phán Tòa án nhân dân tối cao — Hội đồng 5 Thẩm phán',
+  'hdtp-toan-the': 'Toàn thể Hội đồng Thẩm phán Tòa án nhân dân tối cao',
+};
+/** Thẩm quyền của Hội đồng giám đốc thẩm (Điều 388 BLTTHS). */
+export const KET_QUA_GDT = {
+  'khong-chap-nhan': 'Không chấp nhận kháng nghị và giữ nguyên bản án, quyết định đã có hiệu lực pháp luật bị kháng nghị',
+  'huy-dieu-tra': 'Hủy bản án, quyết định đã có hiệu lực pháp luật để điều tra lại',
+  'huy-xet-xu': 'Hủy bản án, quyết định đã có hiệu lực pháp luật để xét xử lại',
+  'huy-dinh-chi': 'Hủy bản án, quyết định đã có hiệu lực pháp luật và đình chỉ vụ án',
+  sua: 'Sửa bản án, quyết định đã có hiệu lực pháp luật',
+  'dinh-chi-gdt': 'Đình chỉ xét xử giám đốc thẩm',
+};
+
 /** Giá trị tự điền từ hồ sơ xét xử + thông tin Tòa án trong cài đặt (org). */
 export function courtValues(rec = {}, { org = {}, now = new Date() } = {}) {
   const h = rec.hdxx || {};
@@ -173,6 +205,9 @@ export function courtValues(rec = {}, { org = {}, now = new Date() } = {}) {
   const VT = { 'bi-hai': 'Bị hại', 'nguoi-bao-chua': 'Người bào chữa', 'nguoi-lam-chung': 'Người làm chứng', 'nguyen-don': 'Nguyên đơn dân sự', 'bi-don': 'Bị đơn dân sự', 'nqlnvlq': 'Người có quyền lợi, nghĩa vụ liên quan', 'dai-dien': 'Người đại diện', 'giam-dinh': 'Người giám định', 'phien-dich': 'Người phiên dịch' };
   const tg = ds.find((d) => d.nganChan?.loai === 'tam-giam');
   const pt = rec.cap === 'phuc-tham';
+  const gdt = rec.cap === 'giam-doc-tham';
+  const kn = rec.khangNghi || {};
+  const CAN_CU_371 = { cc1: 'Kết luận trong bản án, quyết định của Tòa án không phù hợp với những tình tiết khách quan của vụ án (điểm a khoản 1 Điều 371 BLTTHS)', cc2: 'Có vi phạm nghiêm trọng thủ tục tố tụng trong điều tra, truy tố, xét xử dẫn đến sai lầm nghiêm trọng trong việc giải quyết vụ án (điểm b khoản 1 Điều 371 BLTTHS)', cc3: 'Có sai lầm nghiêm trọng trong việc áp dụng pháp luật (điểm c khoản 1 Điều 371 BLTTHS)' };
   return {
     toaAn: rec.toa?.ten || org.toaAn || '',
     toaAnCapTren: rec.toa?.capTren ?? org.toaAnCapTren ?? '',
@@ -208,11 +243,19 @@ export function courtValues(rec = {}, { org = {}, now = new Date() } = {}) {
     banAnNgay: rec.banAn?.ngay || '',
     banAnToa: rec.banAn?.toa || '',
     khangCao: rec.khangCao || '',
+    banAnCap: gdt ? ({ 'so-tham': 'sơ thẩm', 'phuc-tham': 'phúc thẩm' }[rec.banAn?.cap] || '') : '',
+    khangNghiNguoi: NGUOI_KN[kn.nguoi] || kn.nguoi || '',
+    khangNghiSo: kn.so || '',
+    khangNghiNgay: kn.ngay || '',
+    khangNghiCanCu: ['cc1', 'cc2', 'cc3'].filter((k) => kn[k]).map((k) => CAN_CU_371[k]).join('\n'),
+    khangNghiNoiDung: kn.noiDung || '',
+    hoiDong: HOI_DONG_GDT[h.hoiDong] || h.hoiDong || '',
+    ketQuaGdt: gdt ? KET_QUA_GDT[rec.gdt?.ketQua] || '' : '',
     lyDo: '',
     noiDungVuAn: '',
     nhanDinh: '',
-    quyetDinh: pt ? '' : quyetDinhText(ds),
-    anPhi: pt ? '' : `Căn cứ Điều 136 Bộ luật Tố tụng hình sự; Nghị quyết số 326/2016/UBTVQH14 ngày 30/12/2016 của Ủy ban Thường vụ Quốc hội: bị cáo ${ds.map((d) => d.hoTen).join(', ') || '……'} phải chịu ${ds.length > 1 ? 'mỗi bị cáo ' : ''}200.000 đồng án phí hình sự sơ thẩm.`,
+    quyetDinh: pt || gdt ? '' : quyetDinhText(ds),
+    anPhi: pt || gdt ? '' : `Căn cứ Điều 136 Bộ luật Tố tụng hình sự; Nghị quyết số 326/2016/UBTVQH14 ngày 30/12/2016 của Ủy ban Thường vụ Quốc hội: bị cáo ${ds.map((d) => d.hoTen).join(', ') || '……'} phải chịu ${ds.length > 1 ? 'mỗi bị cáo ' : ''}200.000 đồng án phí hình sự sơ thẩm.`,
     nguoiTrieuTap: '',
     tuCachTrieuTap: '',
     diaChiTrieuTap: '',
@@ -224,7 +267,7 @@ export function courtValues(rec = {}, { org = {}, now = new Date() } = {}) {
     bienPhapMoi: '',
     giaHanDen: '',
     hinhPhat: ds.map((d) => `${d.hoTen}: ${hinhPhatText(d.hinhPhat) || '……'}`).join('\n'),
-    ngayHieuLuc: m.ngayHieuLuc || '',
+    ngayHieuLuc: m.ngayHieuLuc || (gdt ? rec.banAn?.ngayHieuLuc : '') || '',
     coQuanThiHanh: '',
     noiNhan: '',
   };
@@ -267,9 +310,16 @@ const VKS_NOI = vksTen;
 const vuAn = (v) => `vụ án hình sự thụ lý số ${dots(v.soThuLy)} ${ngayChu(v.ngayThuLy)} đối với bị cáo ${dots(v.biCao)}`;
 const truyTo = (v) => `bị ${vksTen(v)} truy tố về tội “${dots(v.toiDanh)}” theo ${dots(v.dieuLuat)}${v.caoTrangSo ? ` (Cáo trạng số ${v.caoTrangSo} ${ngayChu(v.caoTrangNgay)})` : ''}`;
 const banAnST = (v) => `Bản án hình sự sơ thẩm số ${dots(v.banAnSo)} ${ngayChu(v.banAnNgay)} của ${dots(v.banAnToa)}`;
+const banAnKN = (v) => `Bản án hình sự ${v.banAnCap || '……'} số ${dots(v.banAnSo)} ${ngayChu(v.banAnNgay)} của ${dots(v.banAnToa)}`;
+const hdgdtLines = (v) => [
+  ...(v.hoiDong ? [P(`- ${v.hoiDong}.`)] : []),
+  P(`- Thẩm phán – Chủ tọa phiên tòa: ${dots(v.chuToa)}.`),
+  ...(lines(v.thamPhan).length ? lines(v.thamPhan).map((x) => P(`- Thẩm phán: ${x}.`)) : [P('- Các Thẩm phán: ……………………')]),
+  P(`- Thư ký phiên tòa: ${dots(v.thuKy)}.`),
+];
 
 /**
- * Danh mục biểu mẫu. cap: 'so' (sơ thẩm) | 'pt' (phúc thẩm) | 'tha' (sau xét xử, thi hành án).
+ * Danh mục biểu mẫu. cap: 'so' (sơ thẩm) | 'pt' (phúc thẩm) | 'gdt' (giám đốc thẩm) | 'tha' (sau xét xử, thi hành án).
  * fields: các trường hiển thị để điền / sửa (ngoài trường chung của phần đầu văn bản).
  */
 export const COURT_FORMS = [
@@ -654,8 +704,83 @@ export const COURT_FORMS = [
       P('Bản án phúc thẩm có hiệu lực pháp luật kể từ ngày tuyên án.'),
     ], sign: { noiNhan: lines(v.noiNhan).length ? lines(v.noiNhan) : [VKS_NOI(v), 'Tòa án đã xét xử sơ thẩm', 'Bị cáo, người tham gia tố tụng', 'Cơ quan thi hành án', 'Lưu hồ sơ vụ án'], authority: 'TM. HỘI ĐỒNG XÉT XỬ PHÚC THẨM', position: 'THẨM PHÁN – CHỦ TỌA PHIÊN TÒA', name: v.chuToa || '' } }),
   },
+  /* ----- Giám đốc thẩm (Chương XXV BLTTHS) ----- */
+  {
+    id: 'gdt-qd-khang-nghi', cap: 'gdt', nhom: 'Kháng nghị giám đốc thẩm', ten: 'Quyết định kháng nghị giám đốc thẩm',
+    fields: ['khangNghiNguoi', 'banAnCap', 'banAnSo', 'banAnNgay', 'banAnToa', 'ngayHieuLuc', 'biCaoChiTiet', 'toiDanh', 'dieuLuat', 'hinhPhat', 'nhanDinh', 'khangNghiCanCu', 'khangNghiNoiDung', 'hoiDong', 'nguoiKy', 'chucVuKy'],
+    build: (v) => doc('gdt-qd-khang-nghi', v, { kh: 'QĐ-KNGĐT', title: 'QUYẾT ĐỊNH', subject: 'KHÁNG NGHỊ GIÁM ĐỐC THẨM', authority: up(v.khangNghiNguoi || 'CHÁNH ÁN TÒA ÁN NHÂN DÂN'), body: [
+      P('Căn cứ Điều 371, Điều 373, Điều 377, Điều 378 và Điều 379 của Bộ luật Tố tụng hình sự;'),
+      P(`Sau khi nghiên cứu hồ sơ vụ án hình sự đối với ${lines(v.biCaoChiTiet).length ? 'người bị kết án:' : 'người bị kết án ……………………'}`),
+      ...(lines(v.biCaoChiTiet).length ? multi(v.biCaoChiTiet, '- ') : []),
+      P(`Bị ${banAnKN(v)} xử phạt về tội “${dots(v.toiDanh)}” theo ${dots(v.dieuLuat)}; hình phạt: ${lines(v.hinhPhat).join('; ') || '……………………'}. Bản án có hiệu lực pháp luật ${ngayChu(v.ngayHieuLuc)}.`),
+      H('NHẬN THẤY:'),
+      ...multi(v.nhanDinh),
+      H('XÉT THẤY:'),
+      P('Bản án, quyết định nêu trên có căn cứ để kháng nghị theo thủ tục giám đốc thẩm quy định tại khoản 1 Điều 371 của Bộ luật Tố tụng hình sự:'),
+      ...multi(v.khangNghiCanCu, '- '),
+      P([run('Vì các lẽ trên,', { italic: true })], { indent: false, spaceBefore: true }),
+      H('QUYẾT ĐỊNH:'),
+      P(`1. Kháng nghị ${banAnKN(v)} theo thủ tục giám đốc thẩm.`),
+      P(`2. Đề nghị ${v.hoiDong || 'Hội đồng giám đốc thẩm có thẩm quyền'} xét xử giám đốc thẩm theo hướng: ${dots(v.khangNghiNoiDung)}`),
+      P('3. Tạm đình chỉ thi hành bản án, quyết định bị kháng nghị cho đến khi có quyết định giám đốc thẩm (nếu xét thấy cần thiết — Điều 377 Bộ luật Tố tụng hình sự).'),
+    ], sign: ky(v, ['Tòa án có thẩm quyền giám đốc thẩm', 'Tòa án đã ra bản án bị kháng nghị', VKS_NOI(v), 'Người bị kết án, người có quyền lợi, nghĩa vụ liên quan', 'Cơ quan thi hành án hình sự'], { pos: v.chucVuKy === 'THẨM PHÁN' ? 'CHÁNH ÁN' : v.chucVuKy }) }),
+  },
+  {
+    id: 'gdt-thong-bao-khang-nghi', cap: 'gdt', nhom: 'Kháng nghị giám đốc thẩm', ten: 'Thông báo về việc kháng nghị giám đốc thẩm',
+    fields: ['khangNghiNguoi', 'khangNghiSo', 'khangNghiNgay', 'banAnCap', 'banAnSo', 'banAnNgay', 'banAnToa', 'biCao', 'toiDanh', 'khangNghiNoiDung', 'vks'],
+    build: (v) => doc('gdt-thong-bao-khang-nghi', v, { kh: 'TB-TA', title: 'THÔNG BÁO', subject: 'Về việc kháng nghị giám đốc thẩm', body: [
+      P([run('Kính gửi: ', { bold: true }), run(`${vksTen(v)}; người bị kết án và những người tham gia tố tụng có quyền lợi, nghĩa vụ liên quan đến việc kháng nghị.`)], { indent: false }),
+      P(`Căn cứ Điều 380 của Bộ luật Tố tụng hình sự, ${v.toaAn || 'Tòa án'} thông báo: ${v.khangNghiNguoi || 'Người có thẩm quyền'} đã ra Quyết định kháng nghị giám đốc thẩm số ${dots(v.khangNghiSo)} ${ngayChu(v.khangNghiNgay)} đối với ${banAnKN(v)} xét xử bị cáo ${dots(v.biCao)} về tội “${dots(v.toiDanh)}”.`),
+      P(`Nội dung kháng nghị: ${dots(v.khangNghiNoiDung)}`),
+      P('Người bị kết án, người có quyền lợi, nghĩa vụ liên quan đến việc kháng nghị có quyền gửi văn bản nêu ý kiến của mình về nội dung kháng nghị cho Tòa án có thẩm quyền giám đốc thẩm trước khi mở phiên tòa.'),
+    ], sign: ky(v, ['Như trên']) }),
+  },
+  {
+    id: 'gdt-thong-bao-phien-toa', cap: 'gdt', nhom: 'Phiên tòa giám đốc thẩm', ten: 'Thông báo mở phiên tòa giám đốc thẩm',
+    fields: ['soThuLy', 'ngayThuLy', 'khangNghiNguoi', 'khangNghiSo', 'khangNghiNgay', 'banAnCap', 'banAnSo', 'banAnNgay', 'banAnToa', 'biCao', 'ngayXetXu', 'gioXetXu', 'diaDiemXetXu', 'hoiDong', 'vks'],
+    build: (v) => doc('gdt-thong-bao-phien-toa', v, { kh: 'TB-TA', title: 'THÔNG BÁO', subject: 'Về việc mở phiên tòa giám đốc thẩm', body: [
+      P([run('Kính gửi: ', { bold: true }), run(`${vksTen(v)}.`)], { indent: false, align: 'center' }),
+      P(`Căn cứ Điều 383 và Điều 385 của Bộ luật Tố tụng hình sự, ${v.toaAn || 'Tòa án'} thông báo sẽ mở phiên tòa giám đốc thẩm xét xử vụ án hình sự thụ lý số ${dots(v.soThuLy)} ${ngayChu(v.ngayThuLy)} đối với người bị kết án ${dots(v.biCao)}, do có Quyết định kháng nghị giám đốc thẩm số ${dots(v.khangNghiSo)} ${ngayChu(v.khangNghiNgay)} của ${v.khangNghiNguoi || '……'} đối với ${banAnKN(v)}.`),
+      P(`Thời gian: ${v.gioXetXu ? `${v.gioXetXu}, ` : ''}${ngayChu(v.ngayXetXu)}. Địa điểm: ${dots(v.diaDiemXetXu)}.`),
+      P(`Hội đồng giám đốc thẩm: ${dots(v.hoiDong)}.`),
+      P('Đề nghị Viện kiểm sát cử Kiểm sát viên tham gia phiên tòa theo quy định.'),
+    ], sign: ky(v, ['Như trên'], { pos: v.chucVuKy === 'THẨM PHÁN' ? 'CHÁNH ÁN' : v.chucVuKy }) }),
+  },
+  {
+    id: 'gdt-giay-trieu-tap', cap: 'gdt', nhom: 'Phiên tòa giám đốc thẩm', ten: 'Giấy triệu tập người tham gia phiên tòa giám đốc thẩm',
+    fields: ['nguoiTrieuTap', 'tuCachTrieuTap', 'diaChiTrieuTap', 'khangNghiSo', 'khangNghiNgay', 'banAnCap', 'banAnSo', 'banAnNgay', 'banAnToa', 'ngayXetXu', 'gioXetXu', 'diaDiemXetXu'],
+    build: (v) => doc('gdt-giay-trieu-tap', v, { kh: 'GTT-TA', title: 'GIẤY TRIỆU TẬP', body: [
+      P(`${v.toaAn || 'Tòa án'} triệu tập: ${dots(v.nguoiTrieuTap)}; tư cách tham gia tố tụng: ${dots(v.tuCachTrieuTap)}; địa chỉ: ${dots(v.diaChiTrieuTap)}.`),
+      P(`Căn cứ Điều 383 của Bộ luật Tố tụng hình sự, đề nghị có mặt lúc ${v.gioXetXu || '…… giờ ……'} ${ngayChu(v.ngayXetXu)} tại ${dots(v.diaDiemXetXu)} để tham gia phiên tòa giám đốc thẩm xét Quyết định kháng nghị số ${dots(v.khangNghiSo)} ${ngayChu(v.khangNghiNgay)} đối với ${banAnKN(v)}.`),
+      P('Khi đến mang theo Giấy triệu tập này và giấy tờ tùy thân. Người được triệu tập vắng mặt thì Hội đồng giám đốc thẩm vẫn có thể tiến hành xét xử.'),
+    ], sign: ky(v, ['Người được triệu tập']) }),
+  },
+  {
+    id: 'gdt-quyet-dinh', cap: 'gdt', nhom: 'Quyết định giám đốc thẩm', ten: 'Quyết định giám đốc thẩm',
+    fields: ['soThuLy', 'ngayThuLy', 'hoiDong', 'chuToa', 'thamPhan', 'thuKy', 'kiemSatVien', 'vks', 'khangNghiNguoi', 'khangNghiSo', 'khangNghiNgay', 'banAnCap', 'banAnSo', 'banAnNgay', 'banAnToa', 'biCaoChiTiet', 'toiDanh', 'dieuLuat', 'hinhPhat', 'khangNghiNoiDung', 'noiDungVuAn', 'nhanDinh', 'ketQuaGdt', 'quyetDinh', 'ngayXetXu', 'diaDiemXetXu'],
+    build: (v) => doc('gdt-quyet-dinh', v, { kh: 'HS-GĐT', title: 'QUYẾT ĐỊNH GIÁM ĐỐC THẨM', subject: `Về vụ án hình sự đối với người bị kết án ${(lines(v.biCaoChiTiet)[0]?.split(';')[0] || '……').replace(/\.$/, '')}`, header: { placeDate: null }, body: [
+      P(`${ngayChu(v.ngayXetXu).replace(/^n/, 'N')}, tại ${dots(v.diaDiemXetXu)}, ${v.toaAn || 'Tòa án'} mở phiên tòa giám đốc thẩm xét xử vụ án hình sự thụ lý số ${dots(v.soThuLy)} ${ngayChu(v.ngayThuLy)}.`),
+      P('Hội đồng giám đốc thẩm gồm có:', { indent: false }),
+      ...hdgdtLines(v),
+      P(`Đại diện ${vksTen(v)} tham gia phiên tòa: ${dots(v.kiemSatVien)} – Kiểm sát viên.`),
+      P('Người bị kết án:', { indent: false }),
+      ...multi(v.biCaoChiTiet, '- '),
+      P(`Bị ${banAnKN(v)} xử phạt về tội “${dots(v.toiDanh)}” theo ${dots(v.dieuLuat)}; hình phạt: ${lines(v.hinhPhat).join('; ') || '……………………'}.`),
+      P(`Bản án bị kháng nghị theo Quyết định kháng nghị giám đốc thẩm số ${dots(v.khangNghiSo)} ${ngayChu(v.khangNghiNgay)} của ${v.khangNghiNguoi || '……'}, đề nghị: ${dots(v.khangNghiNoiDung)}`),
+      H('NỘI DUNG VỤ ÁN:'),
+      ...multi(v.noiDungVuAn),
+      H('NHẬN ĐỊNH CỦA HỘI ĐỒNG GIÁM ĐỐC THẨM:'),
+      ...multi(v.nhanDinh),
+      P([run('Vì các lẽ trên,', { italic: true })], { indent: false, spaceBefore: true }),
+      H('QUYẾT ĐỊNH:'),
+      P('Căn cứ Điều 382, Điều 388, Điều 394 và Điều 395 của Bộ luật Tố tụng hình sự;'),
+      P(`1. ${dots(v.ketQuaGdt)}.`),
+      ...multi(v.quyetDinh),
+      P('Quyết định giám đốc thẩm có hiệu lực pháp luật kể từ ngày Hội đồng giám đốc thẩm ra quyết định.'),
+    ], sign: { noiNhan: lines(v.noiNhan).length ? lines(v.noiNhan) : ['Người đã kháng nghị', 'Tòa án đã ra bản án bị kháng nghị', VKS_NOI(v), 'Người bị kết án, người có quyền lợi, nghĩa vụ liên quan', 'Cơ quan thi hành án hình sự, dân sự', 'Lưu hồ sơ vụ án'], authority: 'TM. HỘI ĐỒNG GIÁM ĐỐC THẨM', position: 'THẨM PHÁN – CHỦ TỌA PHIÊN TÒA', name: v.chuToa || '' } }),
+  },
 ];
-export const CAP_FORMS = { so: 'Sơ thẩm', pt: 'Phúc thẩm', tha: 'Sau xét xử, thi hành án' };
+export const CAP_FORMS = { so: 'Sơ thẩm', pt: 'Phúc thẩm', gdt: 'Giám đốc thẩm', tha: 'Sau xét xử, thi hành án' };
 export const courtForm = (id) => COURT_FORMS.find((f) => f.id === id) || null;
 /** Trường hiển thị khi điền một biểu mẫu: phần đầu văn bản + trường riêng của mẫu. */
 export const formFields = (form) => [...new Set(['toaAn', 'toaAnCapTren', 'diaDanh', 'soVb', 'ngayVb', ...form.fields, 'nguoiKy', 'chucVuKy', 'noiNhan'])].map(fieldOf).filter(Boolean);

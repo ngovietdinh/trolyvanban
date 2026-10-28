@@ -125,6 +125,30 @@ test('máy chủ AI nội bộ không bật CORS (kiểu BionicGPT): vẫn tải
   }
 });
 
+test('tải bản án từ đường dẫn qua vỏ ứng dụng: tên tệp, nội dung, đọc được thành bản ghi kho', async () => {
+  const srv = http.createServer((req, res) => {
+    if (req.url.endsWith('/tai'))
+      return res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'content-disposition': 'attachment; filename="ban-an-25.txt"' }).end('TÒA ÁN NHÂN DÂN KHU VỰC 3\nBản án số: 25/2026/HS-ST\nÁp dụng khoản 1 Điều 173 Bộ luật Hình sự. Xử phạt bị cáo Nguyễn Văn A 09 (chín) tháng tù.');
+    res.writeHead(404).end();
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  try {
+    const got = await page.evaluate(async (u) => {
+      const { fetchDocument } = await import('/assets/js/lib/net-fetch.js');
+      const { parseKhoDoc } = await import('/assets/js/legal/court-similar.js');
+      const r = await fetchDocument(u);
+      const d = parseKhoDoc(await r.file.text(), r.name);
+      return { name: r.name, so: d.so, loai: d.loai, bc: d.bc.map((b) => [b.hoTen, b.dieu]) };
+    }, `http://127.0.0.1:${srv.address().port}/tai`);
+    assert.equal(got.name, 'ban-an-25.txt');
+    assert.equal(got.loai, 'ban-an');
+    assert.equal(got.so, '25/2026/HS-ST');
+    assert.deepEqual(got.bc, [['Nguyễn Văn A', '173']]);
+  } finally {
+    srv.close();
+  }
+});
+
 test('dữ liệu lưu bền sau khi khởi động lại ứng dụng', async () => {
   await app.close();
   app = await electron.launch({ executablePath: EXE, args: launchArgs() });

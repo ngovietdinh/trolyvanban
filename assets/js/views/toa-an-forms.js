@@ -11,7 +11,7 @@ import { renderDocumentHtml } from '../lib/render-html.js';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const MAX_SIZE = 3 * 1024 * 1024;
-const capOf = (rec) => (rec.cap === 'phuc-tham' ? ['pt', 'tha'] : ['so', 'tha']);
+const capOf = (rec) => (rec.cap === 'phuc-tham' ? ['pt', 'tha'] : rec.cap === 'giam-doc-tham' ? ['gdt', 'tha'] : ['so', 'tha']);
 
 /** Đọc, kiểm tra tệp Word người dùng chọn và lưu làm mẫu của đơn vị cho biểu mẫu formId. */
 export async function uploadTemplate(formId, file) {
@@ -71,11 +71,12 @@ export function mountFormsPane(host, { ctx, rec, save }) {
     uploads = await courtTplDb.list().catch(() => ({}));
     const caps = all ? Object.keys(CAP_FORMS) : capOf(rec);
     const forms = COURT_FORMS.filter((f) => caps.includes(f.cap));
-    const groups = [...new Set(forms.map((f) => `${f.cap}|${f.nhom}`))];
+    // Nhóm của cấp đang xét lên đầu, mẫu sau xét xử xuống cuối.
+    const groups = [...new Set(forms.map((f) => `${f.cap}|${f.nhom}`))].sort((x, y) => caps.indexOf(x.split('|')[0]) - caps.indexOf(y.split('|')[0]));
     if (sel && !forms.some((f) => f.id === sel)) sel = null;
     host.innerHTML = `<div class="cf-wrap">
       <aside class="cf-list" aria-label="Danh mục biểu mẫu">
-        <label class="check cf-all"><input type="checkbox" data-cf-all ${all ? 'checked' : ''} />Hiện cả mẫu ${rec.cap === 'phuc-tham' ? 'sơ thẩm' : 'phúc thẩm'}</label>
+        <label class="check cf-all"><input type="checkbox" data-cf-all ${all ? 'checked' : ''} />Hiện cả mẫu của cấp khác</label>
         ${groups
           .map((g) => {
             const [cap, nhom] = g.split('|');

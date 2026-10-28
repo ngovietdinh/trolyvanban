@@ -1,4 +1,4 @@
-// Thời hạn tố tụng của Tòa án (hình sự sơ thẩm, phúc thẩm): từ các mốc của hồ sơ xét xử → danh sách hạn, còn bao nhiêu
+// Thời hạn tố tụng của Tòa án (hình sự sơ thẩm, phúc thẩm, giám đốc thẩm): từ các mốc của hồ sơ xét xử → danh sách hạn, còn bao nhiêu
 // ngày, sắp đến hạn / quá hạn. Số ngày đặt sẵn theo Bộ luật Tố tụng hình sự 2015 (sửa đổi) và SỬA ĐƯỢC trong
 // "Cài đặt thời hạn" (lưu theo tài khoản) — luật thay đổi thì người dùng chỉnh, không cần cập nhật phần mềm.
 //
@@ -34,6 +34,13 @@ export const DEFAULT_RULES = {
   'tam-giam-sau-tuyen-an': { ten: 'Tạm giam bị cáo sau khi tuyên án', n: 45, unit: 'ngay', canCu: 'khoản 1 Điều 329 BLTTHS' },
   'thi-hanh': { ten: 'Ra quyết định thi hành án kể từ ngày bản án có hiệu lực', n: 7, unit: 'ngay', canCu: 'khoản 1 Điều 364 BLTTHS' },
   'phuc-tham': { ten: 'Mở phiên tòa phúc thẩm kể từ ngày nhận hồ sơ vụ án', n: 60, unit: 'ngay', canCu: 'BLTTHS — thời hạn xét xử phúc thẩm (Tòa án cấp tỉnh)' },
+  // Giám đốc thẩm (Chương XXV BLTTHS).
+  'kn-gdt-bat-loi': { ten: 'Kháng nghị giám đốc thẩm theo hướng không có lợi cho người bị kết án (kể từ ngày bản án có hiệu lực)', n: 12, unit: 'thang', canCu: 'khoản 1 Điều 379 BLTTHS (theo hướng có lợi: không hạn chế thời gian)' },
+  'kn-gdt-dan-su': { ten: 'Kháng nghị giám đốc thẩm về phần dân sự trong vụ án hình sự', n: 36, unit: 'thang', canCu: 'khoản 3 Điều 379 BLTTHS, theo pháp luật tố tụng dân sự' },
+  'chuyen-ho-so-gdt': { ten: 'Chuyển hồ sơ vụ án cho người có thẩm quyền kháng nghị (kể từ ngày nhận văn bản yêu cầu)', n: 7, unit: 'ngay', canCu: 'Điều 376 BLTTHS' },
+  'phien-toa-gdt': { ten: 'Mở phiên tòa giám đốc thẩm kể từ ngày nhận kháng nghị kèm hồ sơ vụ án', n: 4, unit: 'thang', canCu: 'Điều 385 BLTTHS' },
+  'gui-qd-gdt': { ten: 'Gửi quyết định giám đốc thẩm (kể từ ngày ra quyết định)', n: 10, unit: 'ngay', canCu: 'Điều 395 BLTTHS' },
+  'chuyen-ho-so-lai': { ten: 'Chuyển hồ sơ vụ án để điều tra lại hoặc xét xử lại (kể từ ngày ra quyết định giám đốc thẩm)', n: 15, unit: 'ngay', canCu: 'Điều 396 BLTTHS' },
   'canh-bao': { ten: 'Báo “sắp đến hạn” trước', n: 5, unit: 'ngay', canCu: 'Cài đặt của người dùng' },
 };
 
@@ -70,7 +77,8 @@ export function suggestLoaiToi(defendants = [], book = null) {
 
 /**
  * Danh sách hạn của một hồ sơ xét xử.
- * rec: { cap: 'so-tham'|'phuc-tham', loaiToi, thuLy: { ngay }, moc: {...}, defendants: [{ hoTen, nganChan: { loai, den } }] }
+ * rec: { cap: 'so-tham'|'phuc-tham'|'giam-doc-tham', loaiToi, thuLy: { ngay }, moc: {...}, banAn: { ngayHieuLuc }, khangNghi: { ngay },
+ *        gdt: { ketQua }, defendants: [{ hoTen, nganChan: { loai, den } }] }
  * Trả về [{ id, ten, han (Date|null), canCu, trangThai: 'xong'|'tre'|'qua-han'|'sap'|'con'|'moc'|'da-qua'|'thieu', con, ghiChu }].
  */
 export function computeDeadlines(rec, { rules = mergeRules(), today = new Date() } = {}) {
@@ -91,6 +99,20 @@ export function computeDeadlines(rec, { rules = mergeRules(), today = new Date()
   if (rec.cap === 'phuc-tham') {
     const nhan = D('ngayNhanHoSo');
     push('phuc-tham', rules['phuc-tham'], nhan ? dueDate(nhan, rules['phuc-tham']) : null, { done: D('ngayXetXu'), ghiChu: nhan ? '' : 'Nhập ngày nhận hồ sơ vụ án phúc thẩm.' });
+  } else if (rec.cap === 'giam-doc-tham') {
+    // Thời hạn kháng nghị tính từ ngày bản án bị kháng nghị có hiệu lực; đã có kháng nghị thì coi là xong.
+    const hieuLuc = parseIso(rec.banAn?.ngayHieuLuc);
+    const kn = parseIso(rec.khangNghi?.ngay);
+    push('kn-gdt-bat-loi', rules['kn-gdt-bat-loi'], hieuLuc ? dueDate(hieuLuc, rules['kn-gdt-bat-loi']) : null, { done: kn, moc: !kn, ghiChu: hieuLuc ? '' : 'Nhập ngày bản án bị kháng nghị có hiệu lực pháp luật.' });
+    if (hieuLuc) push('kn-gdt-dan-su', rules['kn-gdt-dan-su'], dueDate(hieuLuc, rules['kn-gdt-dan-su']), { done: kn, moc: !kn });
+    const yeuCau = D('ngayYeuCauHoSo');
+    if (yeuCau) push('chuyen-ho-so-gdt', rules['chuyen-ho-so-gdt'], dueDate(yeuCau, rules['chuyen-ho-so-gdt']), { done: D('ngayChuyenHoSo') });
+    const nhan = D('ngayNhanKhangNghi');
+    push('phien-toa-gdt', rules['phien-toa-gdt'], nhan ? dueDate(nhan, rules['phien-toa-gdt']) : null, { done: D('ngayXetXu'), ghiChu: nhan ? '' : 'Nhập ngày nhận kháng nghị kèm hồ sơ vụ án.' });
+    if (tuyen) {
+      push('gui-qd-gdt', rules['gui-qd-gdt'], dueDate(tuyen, rules['gui-qd-gdt']), { done: D('ngayGuiQd') });
+      if (['huy-dieu-tra', 'huy-xet-xu'].includes(rec.gdt?.ketQua)) push('chuyen-ho-so-lai', rules['chuyen-ho-so-lai'], dueDate(tuyen, rules['chuyen-ho-so-lai']), { done: D('ngayChuyenHoSoLai') });
+    }
   } else {
     const thuLy = parseIso(rec.thuLy?.ngay);
     const loai = rec.loaiToi;
@@ -131,7 +153,7 @@ export function computeDeadlines(rec, { rules = mergeRules(), today = new Date()
     if (nc.loai !== 'tam-giam') continue;
     const den = parseIso(nc.den);
     const ten = `Hết hạn tạm giam — bị cáo ${d.hoTen || '(chưa ghi tên)'}`;
-    if (tuyen && rec.cap !== 'phuc-tham') {
+    if (tuyen && (rec.cap || 'so-tham') === 'so-tham') {
       push(`tam-giam-sau-${d.id}`, rules['tam-giam-sau-tuyen-an'], addDays(tuyen, rules['tam-giam-sau-tuyen-an'].n), { ten: `Tạm giam sau tuyên án — bị cáo ${d.hoTen || '(chưa ghi tên)'}`, ghiChu: 'Nếu bị cáo bị xử phạt tù và đang bị tạm giam.' });
     } else push(`tam-giam-${d.id}`, { ten, canCu: 'Lệnh tạm giam' }, den, { ten, canCu: 'Lệnh tạm giam', ghiChu: den ? '' : 'Nhập ngày hết hạn tạm giam theo lệnh.' });
   }

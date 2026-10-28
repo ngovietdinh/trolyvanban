@@ -1,6 +1,7 @@
 // Các tab thẩm tra của hồ sơ xét xử: "Thẩm tra (5 câu hỏi)" — kết luận từng câu hỏi nghiệp vụ, đề xuất phương án, xuất báo
 // cáo thẩm tra (Word), sổ Excel; "Chứng cứ, bút lục" — rà soát chứng cứ, bảng đối chiếu theo bút lục; "Bản án tương tự,
 // án lệ" — so sánh với kho bản án, án lệ của người dùng.
+import { anLeForDieu } from '../legal/an-le-catalog.js';
 import { icon, toast, escapeHtml, downloadBlob, warnMissing } from '../ui.js';
 import { thamTra, MUC, LOAI_THAM_TRA, loaiThamTra, buildThamTraReport, thamTraWorkbook } from '../legal/court-review.js';
 import { evidenceRows, typeLabel } from '../legal/court-evidence.js';
@@ -56,6 +57,15 @@ export function chungCuHtml(c) {
   </div>`;
 }
 
+/** Án lệ hình sự trong danh mục liên quan điều luật đang xét nhưng chưa có toàn văn trong kho. */
+function catalogHint(c) {
+  const dieus = [...new Set((c.rec.defendants || []).flatMap((d) => (d.toiDanh || []).map((t) => String(t.dieu)).filter(Boolean)))];
+  const inKho = new Set((c.docs || []).filter((d) => d.loai === 'an-le').map((d) => String(d.so || '').toUpperCase().replace(/\s+/g, '')));
+  const list = anLeForDieu(dieus).filter((a) => !inKho.has(a.so));
+  if (!list.length) return '';
+  return `<p class="hint">Danh mục án lệ có ${list.length} án lệ hình sự liên quan Điều ${dieus.join(', ')} chưa có toàn văn trong kho:</p><ul class="ct-els">${list.map((a) => `<li>${icon('layers', 'ic-sm')}<span><b>${escapeHtml(a.so)}</b> ${escapeHtml(a.tenNgan.replace(/^về /, 'Về '))} <small>(Điều ${a.dieu.join(', ')} BLHS · áp dụng từ ${escapeHtml(a.apDung || '—')})</small></span></li>`).join('')}</ul><p class="hint"><a href="#toa-an/an-le/hs">${icon('upload', 'ic-sm')}Nạp toàn văn ở trang Án lệ</a> để phần mềm trích khái quát nội dung, giải pháp pháp lý khi thẩm tra.</p>`;
+}
+
 /** Tab "Bản án tương tự, án lệ". */
 export function tuongTuHtml(c) {
   const R = thamTra(c.rec, c);
@@ -68,7 +78,8 @@ export function tuongTuHtml(c) {
         ${s.items.length ? `<div class="tt-table-wrap"><table class="cf-table tt-table"><thead><tr><th>Bản án</th><th>Bị cáo</th><th>Điều, khoản</th><th>Giá trị</th><th>Hình phạt</th><th>Tương tự</th></tr></thead><tbody>${s.items.map((x) => `<tr><td>${escapeHtml(x.doc.so || x.doc.ten)}<small>${escapeHtml(x.doc.toa || '')}</small></td><td>${escapeHtml(x.bc.hoTen)}</td><td>${x.bc.diem?.length ? `điểm ${escapeHtml(x.bc.diem.join(', '))} ` : ''}${x.bc.khoan ? `khoản ${x.bc.khoan} ` : ''}Điều ${escapeHtml(x.bc.dieu)}</td><td>${x.doc.soTien ? fmtVnd(x.doc.soTien) : '—'}</td><td>${escapeHtml(hinhPhatNgan(x.bc.hinhPhat))}</td><td><small>${escapeHtml(x.ly.join(', '))}</small></td></tr>`).join('')}</tbody></table></div>` : ''}
       </section>`)
       .join('')}
-    <section class="panel ct-sec"><h2>${icon('book', 'ic-sm')}Án lệ liên quan</h2>${R.anLe.length ? `<ul class="ct-els">${R.anLe.map((a) => `<li class="ok">${icon('book', 'ic-sm')}<span><b>Án lệ ${escapeHtml(a.so || '')}</b> ${escapeHtml(a.ten || '')}${a.khaiQuat ? `<blockquote class="ct-law">${escapeHtml(a.khaiQuat)}</blockquote>` : ''}${a.giaiPhap ? `<blockquote class="ct-fact">Giải pháp pháp lý: ${escapeHtml(a.giaiPhap)}</blockquote>` : ''}</span></li>`).join('')}</ul>` : '<p class="hint">Kho chưa có án lệ liên quan đến điều luật đang xét.</p>'}</section>
+    <section class="panel ct-sec"><h2>${icon('book', 'ic-sm')}Án lệ liên quan</h2>${R.anLe.length ? `<ul class="ct-els">${R.anLe.map((a) => `<li class="ok">${icon('book', 'ic-sm')}<span><b>Án lệ ${escapeHtml(a.so || '')}</b> ${escapeHtml(a.ten || '')}${a.khaiQuat ? `<blockquote class="ct-law">${escapeHtml(a.khaiQuat)}</blockquote>` : ''}${a.giaiPhap ? `<blockquote class="ct-fact">Giải pháp pháp lý: ${escapeHtml(a.giaiPhap)}</blockquote>` : ''}</span></li>`).join('')}</ul>` : '<p class="hint">Kho chưa có toàn văn án lệ liên quan đến điều luật đang xét.</p>'}
+      ${catalogHint(c)}</section>
   </div>`;
 }
 

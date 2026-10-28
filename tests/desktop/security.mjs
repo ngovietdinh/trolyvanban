@@ -108,6 +108,20 @@ test('chặn kết nối ra Internet ở cả trang và vỏ ứng dụng; máy 
   }
   // Không kiểm tra / tải bản cập nhật qua Internet.
   assert.equal((await page.evaluate(() => window.tlvbDesktop.update.check())).disabled, true);
+  // Tải bản án qua vỏ ứng dụng: ra Internet bị từ chối, máy này vẫn tải được.
+  const outside = await page.evaluate(() => window.tlvbDesktop.net.fetch('https://example.com/ban-an.pdf'));
+  assert.equal(outside.ok, false);
+  assert.match(outside.error, /Chế độ bảo mật/);
+  const srv2 = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end('Bản án số 12/2026/HS-ST'));
+  await new Promise((r) => srv2.listen(0, '127.0.0.1', r));
+  try {
+    const got = await page.evaluate((u) => window.tlvbDesktop.net.fetch(u), `http://127.0.0.1:${srv2.address().port}/ban-an.txt`);
+    assert.equal(got.ok, true);
+    assert.equal(got.name, 'ban-an.txt');
+    assert.equal(Buffer.from(got.data, 'base64').toString('utf8'), 'Bản án số 12/2026/HS-ST');
+  } finally {
+    srv2.close();
+  }
 });
 
 test('tự khóa / khóa ngay: phải nhập lại mật khẩu, dữ liệu trên máy là bản mã', async () => {

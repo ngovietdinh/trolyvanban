@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld(
       set: (p) => ipcRenderer.invoke('tlvb:security-set', p),
       status: () => ipcRenderer.invoke('tlvb:security-status'),
     }),
+    /** Tải tệp / trang từ mạng qua vỏ ứng dụng (bản án, án lệ) — xem desktop/main.cjs 'tlvb:fetch'. */
+    net: Object.freeze({ fetch: (url) => ipcRenderer.invoke('tlvb:fetch', String(url)) }),
     /** Cập nhật tại chỗ: chỉ tải các tệp mã web thay đổi. */
     update: Object.freeze({
       check: () => ipcRenderer.invoke('tlvb:update-check'),
