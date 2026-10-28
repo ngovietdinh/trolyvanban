@@ -197,6 +197,21 @@ Luật của lớp kính (giữ đúng giá trị của Scada5, không tự ch�
 - Chuyển động: thẻ hiện lần lượt 70ms, nội dung mờ → nét, cột mọc, thanh tiến độ chạy, số đếm lên 900ms; tất cả tắt khi `prefers-reduced-motion`. Nhấc thẻ khi rê chuột chỉ cho thẻ bấm được (`gc--link`) và chỉ trên con trỏ chuột.
 - Thanh trên của ứng dụng vẫn còn (tìm kiếm, trợ giúp, tài khoản) nhưng trong suốt, nổi trên nền kính; thanh bên giữ nguyên.
 
+## Rà soát theo Apple HIG (apple-design-skill)
+
+Repo `dickwu/apple-design-skill` là bộ rà soát theo Human Interface Guidelines (123 trang HIG) với 5 lăng kính. Trợ lý văn bản là ứng dụng web / Electron nên chỉ áp phần nguyên tắc và nền tảng (tiếp cận, màu, chữ, bố cục, chữ nghĩa), không áp quy ước riêng của iOS/macOS. Những điều đã áp:
+
+- **Số đo, không ước lượng** (`accessibility.md › Vision`): chữ ≤ 17pt cần tương phản ≥ 4.5:1, ≥ 18pt hoặc đậm cần ≥ 3:1. Đã đo và sửa: `--text-3` #6f7a90 → #5f6a80 (3,93 → 4,96:1 trên nền); chữ phụ trên kính 50% → 70% (3,15 → 5,7:1); thẻ ngọc đổi sang #0f7a57–#0b5f43 để chữ trắng 11,5px đạt 4,7–5,9:1.
+- **Cỡ chữ tối thiểu** (`typography.md › Ensuring legibility`): điện thoại 11pt, máy tính 10pt. Không còn chữ 9,5–10,5px trong lớp kính.
+- **Vùng bấm** (`accessibility.md › Mobility`): điện thoại mặc định 44, tối thiểu 28; máy tính mặc định 28, tối thiểu 20. Nút tròn trên điện thoại 40px.
+- **Kính chỉ ở lớp điều khiển** (`liquid-glass.md › The two layers`, checklist 1–2): thanh chào và dock là kính; thẻ số liệu, khung trang là vật liệu chuẩn đục (`--card`, `--panel`). Nền đốm màu là nền của lớp nội dung nên được phép.
+- **Trạng thái trợ năng** (`liquid-glass.md › Review checklist` 5): `prefers-reduced-transparency` → thanh và dock đục, bỏ mờ; `prefers-contrast: more` → viền và chữ phụ đậm hơn; `prefers-reduced-motion` → tắt toàn bộ chuyển động.
+- **Một màu một nghĩa** (`color.md › Best practices`): ngọc = đạt / xong, đỏ = quá hạn / cần xử lý, đen = hành động chính. Không dùng đỏ cho trang trí.
+- **Không truyền thông tin bằng màu đơn thuần**: chấm trạng thái luôn kèm chữ ("quá 23 ngày", "Xử lý ngay"); nút chỉ có biểu tượng đều có `aria-label`.
+- **Chuyển động ngắn, có mục đích** (`motion.md`): hiện thẻ ≤ 0,55s một lần khi mở trang, không lặp; số đếm 0,9s.
+
+Khi làm màn hình mới: chạy lại ba phép đo (tương phản, cỡ chữ, vùng bấm) trước khi chụp hình duyệt.
+
 ## Do's and Don'ts
 
 Áp dụng cho màn hình làm (phẳng). Màn hình nhìn kiểu kính theo mục riêng ở trên.

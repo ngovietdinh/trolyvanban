@@ -2,6 +2,7 @@
 
 - Trả lời người dùng bằng tiếng Việt.
 - **Giao diện** (áp dụng tự động mọi phiên, đến khi người dùng yêu cầu đổi): trước khi thêm hoặc sửa bất kỳ màn hình, tab, bảng, hộp thoại hay CSS nào, đọc `DESIGN.md` và làm theo (token ở `assets/css/base.css`). Không đổi kiểu toàn bộ ứng dụng khi không được yêu cầu; mục "Known debt" chỉ sửa khi đụng tới khu vực đó.
+- Giao diện mới phải qua ba phép đo của mục "Rà soát theo Apple HIG" trong `DESIGN.md` (tương phản ≥ 4.5:1 tính từ mã màu, chữ ≥ 11px, vùng bấm ≥ 28px máy tính / 44px điện thoại) trước khi chụp hình gửi duyệt.
 - Dữ liệu người dùng ở trên máy, riêng từng tài khoản. Không commit biểu mẫu riêng của người dùng hay nội dung sách Bình luận BLHS (có bản quyền).
 - Tên người, số tiền, số hiệu văn bản giữ nguyên văn.
 - Phát hành: `npm run release -- X.Y.Z "ghi chú 1" "ghi chú 2"`, rồi commit và đẩy lên nhánh làm việc và `main`.
