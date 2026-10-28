@@ -41,6 +41,20 @@ test.describe('v2.43 — Chọn cơ quan: Tòa án / Cảnh sát điều tra', (
     await page.reload();
     await expect(page.locator('[data-agency-switch]')).toContainText('Cảnh sát điều tra');
     await expect(page.locator('[data-agency-pick]')).toHaveCount(0);
+    // Đăng xuất rồi đăng nhập lại: chỉ hiện màn hình hai lựa chọn (không có thanh bên, thanh trên), đánh dấu lần trước.
+    await page.click('.avatar-btn');
+    await page.click('[data-logout]');
+    if (await page.locator('[data-gate-mode="login"]').isVisible().catch(() => false)) await page.click('[data-gate-mode="login"]');
+    await page.fill('#g-email', SUPER.email);
+    await page.fill('#g-pass', SUPER.password);
+    await page.click('[data-gate-form] button[type="submit"]');
+    await expect(page.locator('[data-agency-pick]')).toHaveCount(2);
+    await expect(page.locator('.sidebar')).toBeHidden();
+    await expect(page.locator('.topbar')).toBeHidden();
+    await expect(page.locator('[data-agency-pick="cqdt"]')).toContainText('Lần trước');
+    await page.click('[data-agency-pick="toa-an"]');
+    await expect(page.locator('.sidebar')).toBeVisible();
+    await expect(page.locator('[data-agency-switch]')).toContainText('Tòa án nhân dân');
     t.assertClean();
   });
 

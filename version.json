@@ -1,9 +1,9 @@
 {
-  "version": "2.43.0",
+  "version": "2.43.1",
   "date": "2026-10-28",
   "notes": [
-    "Chọn cơ quan làm việc sau khi đăng nhập: Tòa án nhân dân (logo cân công lý) hoặc Cơ quan Cảnh sát điều tra (logo công an); đổi ở đầu thanh bên hoặc menu tài khoản, dữ liệu giữ nguyên",
-    "Mỗi cơ quan chỉ hiện mục của mình: thanh bên, Tổng quan, thanh dưới điện thoại, Tra cứu, bảng lệnh, lộ trình hướng dẫn",
-    "Điều tra viên và cán bộ Tòa án tự vào đúng cơ quan theo vai trò; Sổ vụ án, Kho bản án, Biểu mẫu Tòa án thành mục riêng trên thanh bên"
+    "Đăng nhập xong chỉ hiện màn hình hai lựa chọn trọn trang: Tòa án nhân dân hoặc Cơ quan Cảnh sát điều tra; chọn xong mới vào khu vực riêng của cơ quan",
+    "Mỗi lần đăng nhập đều hỏi lại, đánh dấu lựa chọn lần trước; trên điện thoại hai lựa chọn hiện gọn trong một màn hình",
+    "Đổi cơ quan giữa chừng: mở lại màn hình hai lựa chọn, có nút quay lại khu vực đang dùng"
   ]
 }

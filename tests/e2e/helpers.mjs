@@ -66,11 +66,12 @@ export async function pickAgency(page, agency = 'cqdt') {
     return;
   }
   // Đang ở màn hình không cần chọn (Cài đặt, Bảo mật…): tài khoản có phân hệ tố tụng mà chưa chọn thì chọn luôn.
-  const need = await page.evaluate(async () => {
-    const [{ accounts }, { currentAgency }] = await Promise.all([import('/assets/js/lib/accounts.js'), import('/assets/js/lib/agency.js')]);
-    return !!accounts.current()?.permSet.has('legal') && !currentAgency();
-  });
-  if (need) await page.evaluate(async (id) => (await import('/assets/js/lib/agency.js')).setAgency(id), agency);
+  await page.evaluate(async (id) => {
+    const [{ accounts }, ag, { sessionStore }] = await Promise.all([import('/assets/js/lib/accounts.js'), import('/assets/js/lib/agency.js'), import('/assets/js/lib/store.js')]);
+    if (!accounts.current()?.permSet.has('legal')) return;
+    if (!ag.currentAgency()) ag.setAgency(id);
+    sessionStore.remove('agency-ask');
+  }, agency);
 }
 
 /** Xóa dữ liệu, tạo tài khoản quản trị tối cao (toàn quyền) rồi mở màn hình cần kiểm thử. */
@@ -94,7 +95,9 @@ export async function freshApp(page, hash = '', { login = true, agency = 'cqdt' 
 /** Đăng nhập bằng tài khoản có sẵn qua màn hình đăng nhập. */
 export async function loginAs(page, email, password, { agency = 'cqdt' } = {}) {
   await page.goto('/app.html');
-  if (await page.locator('.avatar-btn').isVisible().catch(() => false)) {
+  await page.waitForFunction(() => document.querySelector('.gate:not([hidden])') || document.querySelector('#view')?.childElementCount > 0);
+  if (await page.locator('[data-cq-logout]').isVisible().catch(() => false)) await page.click('[data-cq-logout]');
+  else if (await page.locator('.avatar-btn').isVisible().catch(() => false)) {
     await page.click('.avatar-btn');
     await page.click('[data-logout]');
   }

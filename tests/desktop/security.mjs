@@ -45,6 +45,9 @@ test('bản bảo mật: chế độ bảo mật luôn bật, mật khẩu mạn
   await page.check('[data-rec-ok]');
   await page.click('[data-rec-done]');
   await page.locator('.shell:not([hidden])').waitFor();
+  // Chọn cơ quan làm việc (màn hình hai lựa chọn sau khi đăng nhập).
+  await page.locator('[data-agency-pick="cqdt"]').click();
+  await page.locator('[data-agency-switch]:not([hidden])').waitFor();
   const st = await page.evaluate(async () => {
     const s = await import('/assets/js/lib/security.js');
     const { accounts } = await import('/assets/js/lib/accounts.js');

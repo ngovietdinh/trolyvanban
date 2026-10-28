@@ -1,6 +1,6 @@
 // Ứng dụng chính: khung giao diện, điều hướng theo hash, tài khoản, bảng lệnh.
 import { $, $$, icon, toast, bindThemeToggles, escapeHtml, need, needAttr } from './ui.js';
-import { store, docsRepo, getEnv } from './lib/store.js';
+import { store, docsRepo, getEnv, sessionStore } from './lib/store.js';
 import { isPhone, viewMode, PHONE_QUERY } from './lib/phone.js';
 import { PROVIDERS, setAIHooks, setLocalEndpoint, isPrivateEndpoint, isOffline, normalizeLocalBase } from './lib/ai.js';
 import { accounts, vault, systemConfig, audit } from './lib/accounts.js';
@@ -80,15 +80,19 @@ const ROUTES = {
 const NO_AGENCY_OK = new Set(['co-quan', 'settings', 'bao-mat', 'help', 'admin']);
 /** Điều tra viên, cán bộ Tòa án: cơ quan mặc định theo vai trò, không cần hỏi. */
 const ROLE_AGENCY = { investigator: 'cqdt', court: 'toa-an' };
-/** Tài khoản có phân hệ tố tụng mà chưa chọn cơ quan → cần hỏi trước (vai trò có sẵn cơ quan thì tự chọn). */
+/**
+ * Cần hiện màn hình chọn cơ quan: mỗi lần đăng nhập (cờ `agency-ask` của phiên) hoặc chưa từng chọn. Vai trò có sẵn
+ * cơ quan (điều tra viên, cán bộ Tòa án) chỉ có một khu vực nên vào thẳng.
+ */
 function agencyNeeded() {
   const u = accounts.current();
-  if (!u?.permSet.has('legal') || currentAgency()) return false;
+  if (!u?.permSet.has('legal')) return false;
   if (ROLE_AGENCY[u.role]) {
-    setAgency(ROLE_AGENCY[u.role]);
+    if (!currentAgency()) setAgency(ROLE_AGENCY[u.role]);
+    sessionStore.remove('agency-ask');
     return false;
   }
-  return true;
+  return !currentAgency() || !!sessionStore.get('agency-ask');
 }
 
 let view = $('#view');
@@ -208,8 +212,17 @@ export const ctx = {
   },
   handoff: null, // Dữ liệu chuyển giữa các màn hình (vd: bản nháp từ Trợ lý sang Soạn thảo).
   refreshChrome: () => refreshChrome(),
-  agencyChanged: () => refreshChrome(),
+  agencyChanged: () => {
+    sessionStore.remove('agency-ask');
+    refreshChrome();
+  },
   lock: (reason) => lockApp(reason),
+  logout() {
+    accounts.logout();
+    loadAiCache(null);
+    toast('Đã đăng xuất');
+    showGate();
+  },
   modal,
   confirm,
   openAuth,
@@ -256,9 +269,11 @@ function route() {
   let agencyNext = null;
   // Gọi trước để vai trò có sẵn cơ quan (điều tra viên, cán bộ Tòa án) được gán ngay cả khi đang ở Cài đặt, Quản trị…
   if (agencyNeeded() && !NO_AGENCY_OK.has(name)) {
-    agencyNext = [name, ...params].join('/');
+    agencyNext = name === 'dashboard' && !params.length ? '' : [name, ...params].join('/');
     r = ROUTES['co-quan'];
   }
+  // Màn hình chọn cơ quan chiếm trọn trang: ẩn thanh bên, thanh trên, thanh dưới.
+  document.body.classList.toggle('agency-picking', agencyNext != null || (name === 'co-quan' && accounts.can('legal')));
   const denied = r.perm && !accounts.can(r.perm);
   if (typeof cleanup === 'function') cleanup();
   cleanup = null;
@@ -284,7 +299,7 @@ function route() {
     return;
   }
   try {
-    cleanup = (agencyNext != null ? coQuan.render(ctx, [], { next: agencyNext }) : r.mod.render(ctx, params)) || null;
+    cleanup = (agencyNext != null ? coQuan.render(ctx, [], { next: agencyNext, forced: true }) : r.mod.render(ctx, params)) || null;
   } catch (err) {
     console.error(err);
     view.innerHTML = `<div class="page"><div class="empty"><div class="empty-icon">${icon('alert')}</div><h3>Đã xảy ra lỗi</h3><p>${escapeHtml(err.message)}</p></div></div>`;
@@ -759,6 +774,8 @@ function showGate(mode = 'login') {
       if (kind === 'unlock') res = await accounts.unlock(data.password);
       else if (kind === 'recover') await accounts.recover(data.code);
       else res = kind === 'login' ? await accounts.login(data) : await accounts.register(data);
+      // Mỗi lần đăng nhập: hỏi chọn cơ quan trước khi vào khu vực làm việc.
+      if (kind === 'login' || kind === 'register') sessionStore.set('agency-ask', true);
       if (res?.recoveryCode) await showRecoveryCode(res.recoveryCode);
       await enterApp();
       if (kind === 'login' || kind === 'register') toast(`Xin chào, ${res.name}!`);

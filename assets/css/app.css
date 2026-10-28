@@ -3765,18 +3765,66 @@ mark.err-mark.is-ai {
 body.sb-collapsed .sb-agency-text { display: none; }
 body.sb-collapsed .sb-agency { justify-content: center; padding: 6px; }
 
+/* Màn hình chọn cơ quan: chiếm trọn trang, chỉ có hai lựa chọn. */
+body.agency-picking .sidebar,
+body.agency-picking .sb-backdrop,
+body.agency-picking .sb-grip,
+body.agency-picking .topbar,
+body.agency-picking .bottom-nav {
+  display: none !important;
+}
+body.agency-picking .shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+body.agency-picking .view {
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+}
+.cq-screen {
+  width: min(100%, 1000px);
+  margin: 0 auto;
+  padding: 40px 20px;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.cq-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  color: var(--brand);
+  margin-bottom: 12px;
+}
+.cq-title {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: clamp(26px, 3vw, 34px);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.cq-sub {
+  color: var(--text-2);
+  max-width: 56ch;
+}
 .cq-grid {
+  width: 100%;
+  margin-top: 22px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 18px;
-  max-width: 980px;
+  text-align: left;
 }
 .cq-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: 1fr auto;
-  gap: 4px 18px;
-  padding: 22px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 26px 24px 22px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -3786,30 +3834,87 @@ body.sb-collapsed .sb-agency { justify-content: center; padding: 6px; }
   cursor: pointer;
   transition: border-color 0.15s;
 }
-.cq-card:hover { border-color: var(--line-strong); }
-.cq-card.is-current { border-color: var(--mark, var(--accent)); }
-.cq-card:has(.cq-mark-toa-an) { --mark: var(--mark-court); }
-.cq-card:has(.cq-mark-cqdt) { --mark: var(--mark-police); }
+.cq-card:hover,
+.cq-card:focus-visible {
+  border-color: var(--mark);
+}
 .cq-mark {
-  grid-row: span 2;
   display: grid;
   place-items: center;
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 6px;
   border-radius: 50%;
   border: 2px solid var(--mark);
   color: var(--mark);
 }
-.cq-mark .ic { width: 32px; height: 32px; stroke-width: 1.6; }
-.cq-body { display: grid; gap: 6px; }
-.cq-body strong { font-size: 18px; font-weight: 600; }
-.cq-body > span { color: var(--text-2); font-size: 14px; }
-.cq-body ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
-.cq-body li { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); }
-.cq-body li .ic { color: var(--text-3); }
-.cq-go { grid-column: 2; justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 14px; font-weight: 600; color: var(--mark); }
+.cq-mark .ic {
+  width: 36px;
+  height: 36px;
+  stroke-width: 1.6;
+}
+.cq-card strong {
+  font-size: 20px;
+  font-weight: 600;
+}
+.cq-desc {
+  color: var(--text-2);
+  font-size: 14px;
+}
+.cq-card ul {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.cq-card li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.cq-card li .ic {
+  color: var(--text-3);
+}
+.cq-go {
+  margin-top: auto;
+  padding-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mark);
+}
+.cq-last {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.cq-foot {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
 @media (max-width: 560px) {
-  .cq-card { grid-template-columns: minmax(0, 1fr); padding: 18px; }
-  .cq-mark { grid-row: auto; width: 52px; height: 52px; }
-  .cq-go { grid-column: 1; }
+  .cq-screen { padding: 24px 16px; }
+  .cq-sub { font-size: 14px; }
+  .cq-grid { margin-top: 14px; gap: 12px; }
+  .cq-card { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; row-gap: 2px; align-items: center; padding: 16px; }
+  .cq-mark { grid-row: span 2; width: 56px; height: 56px; margin: 0; }
+  .cq-mark .ic { width: 28px; height: 28px; }
+  .cq-card strong { font-size: 17px; }
+  .cq-desc, .cq-card ul { display: none; }
+  .cq-go { margin: 0; padding: 0; }
+  .cq-last { top: 10px; right: 10px; }
 }
