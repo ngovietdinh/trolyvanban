@@ -6,6 +6,7 @@ test.describe('v2.45 — Giám đốc thẩm, danh mục án lệ, tải bản �
     const t = trackErrors(page);
     await freshApp(page, '#toa-an', { agency: 'toa-an' });
     await page.click('[data-new="giam-doc-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await expect(page).toHaveURL(/#toa-an\/.+\/vu-an$/);
     await expect(page.locator('[data-v="cap"]')).toHaveValue('giam-doc-tham');
     await expect(page.locator('[data-v="thuLy.so"]')).toHaveAttribute('placeholder', /TLGĐT/);
@@ -78,6 +79,7 @@ test.describe('v2.45 — Giám đốc thẩm, danh mục án lệ, tải bản �
     // Vụ án Điều 123: án lệ trong kho hiện với khái quát nội dung.
     await page.goto('/app.html#toa-an');
     await page.click('[data-new="so-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await page.evaluate(async () => {
       const { courtRepo } = await import('/assets/js/legal/repo.js');
       const r = courtRepo.list()[0];
@@ -125,6 +127,7 @@ test.describe('v2.45 — Giám đốc thẩm, danh mục án lệ, tải bản �
     const t = trackErrors(page);
     await freshApp(page, '#toa-an', { agency: 'toa-an' });
     await page.click('[data-new="so-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await page.evaluate(async () => {
       const { courtRepo } = await import('/assets/js/legal/repo.js');
       const r = courtRepo.list()[0];
@@ -159,6 +162,7 @@ test.describe('v2.45 — Giám đốc thẩm, danh mục án lệ, tải bản �
     const t = trackErrors(page);
     await freshApp(page, '#toa-an', { agency: 'toa-an' });
     await page.click('[data-new="so-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await page.evaluate(async () => {
       const { courtRepo } = await import('/assets/js/legal/repo.js');
       const r = courtRepo.list()[0];

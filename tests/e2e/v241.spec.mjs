@@ -36,6 +36,7 @@ async function setup(page) {
   // Hồ sơ phúc thẩm: ngày hành vi, bản án sơ thẩm (BL 120), lời khai bị hại (BL 45).
   await page.goto('/app.html#toa-an');
   await page.click('[data-new="phuc-tham"]');
+  await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
   await page.fill('[data-v="moc.ngayHanhVi"]', '2025-05-10');
   await page.click('[data-ct-tab="tai-lieu"]');
   await page.fill('[data-ct-paste]', BAN_AN);

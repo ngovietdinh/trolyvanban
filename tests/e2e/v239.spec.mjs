@@ -88,6 +88,7 @@ test.describe('v2.39 — Tòa án: phân tích, kiểm tra bản án, xem xét �
     await freshApp(page, '#toa-an');
     await expect(page.locator('.empty')).toContainText('Chưa có hồ sơ xét xử');
     await page.click('[data-new="so-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await expect(page).toHaveURL(/#toa-an\/.+\/vu-an$/);
     await page.click('[data-ct-tab="tai-lieu"]');
     await expect(page.locator('[data-ct-book]')).toBeVisible();
@@ -103,6 +104,7 @@ test.describe('v2.39 — Tòa án: phân tích, kiểm tra bản án, xem xét �
     await expect(page.locator('.toast').last()).toContainText('Đã nạp');
     await page.goto('/app.html#toa-an');
     await page.click('[data-new="so-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await page.click('[data-ct-tab="tai-lieu"]');
     await expect(page.locator('[data-ct-book]')).toBeHidden();
     await page.fill('[data-ct-paste]', BAN_AN);

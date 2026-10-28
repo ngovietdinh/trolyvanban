@@ -37,6 +37,7 @@ test.describe('v2.40 — Tòa án: sổ vụ án, thời hạn, tính hình ph�
     await page.fill('[data-rule="canh-bao"]', '10');
     await page.goto('/app.html#toa-an');
     await page.click('[data-new="so-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await expect(page).toHaveURL(/#toa-an\/.+\/vu-an$/);
     await expect(page.locator('[data-v="toa.ten"]')).toHaveValue('Tòa án nhân dân khu vực 3 - Ninh Bình');
     await page.fill('[data-v="thuLy.so"]', '120/2026/TLST-HS');
@@ -85,6 +86,7 @@ test.describe('v2.40 — Tòa án: sổ vụ án, thời hạn, tính hình ph�
     await importBook(page);
     await page.goto('/app.html#toa-an');
     await page.click('[data-new="so-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await page.click('[data-ct-tab="tai-lieu"]');
     const def = page.locator('[data-def="0"]');
     await def.locator('[data-f="hoTen"]').fill('Nguyễn Văn An');
@@ -124,6 +126,7 @@ test.describe('v2.40 — Tòa án: sổ vụ án, thời hạn, tính hình ph�
     await freshApp(page, '#dashboard');
     await page.goto('/app.html#toa-an');
     await page.click('[data-new="so-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await page.fill('[data-v="toa.ten"]', 'Tòa án nhân dân khu vực 3 - Ninh Bình');
     await page.fill('[data-v="thuLy.so"]', '120/2026/TLST-HS');
     await page.fill('[data-v="hdxx.chuToa"]', 'Phạm Văn Hùng');
@@ -170,6 +173,7 @@ test.describe('v2.40 — Tòa án: sổ vụ án, thời hạn, tính hình ph�
     // Vụ án phúc thẩm: bản án sơ thẩm, kháng cáo, hạn xét xử phúc thẩm, biểu mẫu phúc thẩm.
     await page.goto('/app.html#toa-an');
     await page.click('[data-new="phuc-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await expect(page.locator('[data-ct-cap]')).toHaveText('Phúc thẩm');
     await page.fill('[data-v="banAn.so"]', '25/2026/HS-ST');
     await page.fill('[data-v="moc.ngayNhanHoSo"]', isoIn(-10));

@@ -76,17 +76,26 @@ const TABS = [
 const CAP = { 'so-tham': 'Sơ thẩm', 'phuc-tham': 'Phúc thẩm', 'giam-doc-tham': 'Giám đốc thẩm' };
 const TEN_MOI = { 'so-tham': 'Vụ án sơ thẩm mới', 'phuc-tham': 'Vụ án phúc thẩm mới', 'giam-doc-tham': 'Vụ án giám đốc thẩm mới' };
 const ST_CLASS = { 'qua-han': 'badge-danger', sap: 'badge-warning', con: '', moc: '' };
+// Hồ sơ mới là BẢN NHÁP trong bộ nhớ: chỉ vào sổ vụ án khi người dùng bấm "Lưu hồ sơ". Rời trang khi nháp đã có nội dung
+// → giữ tạm (khóa court-draft, riêng tài khoản) để tiếp tục từ Sổ vụ án; "Hủy" bỏ hẳn.
+export const DRAFT_KEY = 'court-draft';
 function newCourtCase(ctx, cap) {
   const org = ctx.settings?.().courtOrg || {};
-  return courtRepo.save({ ten: TEN_MOI[cap] || TEN_MOI['so-tham'], cap, thuLy: {}, toa: { ten: org.toaAn || '', capTren: org.toaAnCapTren || '', diaDanh: org.diaDanh || '' }, hdxx: {}, moc: {}, caoTrang: {}, sources: [], defendants: [newDefendant()], nguoiThamGia: [], banAn: {}, dons: [] });
+  return { id: null, draft: true, ten: TEN_MOI[cap] || TEN_MOI['so-tham'], cap: CAP[cap] ? cap : 'so-tham', thuLy: {}, toa: { ten: org.toaAn || '', capTren: org.toaAnCapTren || '', diaDanh: org.diaDanh || '' }, hdxx: {}, moc: {}, caoTrang: {}, sources: [], defendants: [newDefendant()], nguoiThamGia: [], banAn: {}, dons: [] };
 }
 function renderList(ctx) {
   const list = courtRepo.list().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   const todo = upcoming(list, { rules: courtRules() }).filter((x) => x.trangThai !== 'moc').slice(0, 12);
+  const draft = store.get(DRAFT_KEY, null);
   ctx.view.innerHTML = `<div class="page ct-page">
     <div class="page-head"><div><h1 class="page-title">Tòa án — <em>hồ sơ xét xử hình sự</em></h1><p class="page-sub">Sổ vụ án sơ thẩm, phúc thẩm, giám đốc thẩm; thời hạn tố tụng và cảnh báo; phân tích hành vi, kiểm tra bản án, tính hình phạt; xem xét đơn khiếu nại, kháng cáo; biểu mẫu Tòa án tự điền. Dữ liệu lưu trên máy, riêng tài khoản của bạn.</p></div>
       <div class="inline"><button class="btn btn-primary" type="button" data-new="so-tham">${icon('plus', 'ic-sm')}Vụ án sơ thẩm</button><button class="btn" type="button" data-new="phuc-tham">${icon('plus', 'ic-sm')}Vụ án phúc thẩm</button><button class="btn" type="button" data-new="giam-doc-tham">${icon('plus', 'ic-sm')}Vụ án giám đốc thẩm</button></div></div>
     <div class="inline ct-links"><a class="btn btn-sm btn-ghost" href="#toa-an/bieu-mau">${icon('file', 'ic-sm')}Biểu mẫu Tòa án</a><a class="btn btn-sm btn-ghost" href="#toa-an/kho-ban-an">${icon('book', 'ic-sm')}Kho bản án, án lệ</a><a class="btn btn-sm btn-ghost" href="#toa-an/an-le">${icon('layers', 'ic-sm')}Án lệ</a><a class="btn btn-sm btn-ghost" href="#toa-an/cai-dat">${icon('settings', 'ic-sm')}Cài đặt Tòa án, thời hạn, văn bản</a><input class="input input-sm ct-list-q" type="search" placeholder="Tìm hồ sơ: tên, bị cáo, số thụ lý…" data-list-q aria-label="Tìm hồ sơ xét xử" /></div>
+    ${
+      draft
+        ? `<section class="panel ct-sec ct-draft" data-ct-draft><div class="inline"><span class="badge badge-warning">Bản nháp chưa lưu</span><strong>${escapeHtml(draft.ten || 'Hồ sơ xét xử')}</strong><small>${CAP[draft.cap] || ''}${draft.stashedAt ? ` · ghi tạm ${new Date(draft.stashedAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}` : ''}</small><a class="btn btn-sm btn-primary" href="#toa-an/nhap/vu-an">${icon('file', 'ic-sm')}Tiếp tục soạn</a><button class="btn btn-sm btn-ghost" type="button" data-draft-drop>${icon('x', 'ic-sm')}Bỏ bản nháp</button></div></section>`
+        : ''
+    }
     ${
       todo.length
         ? `<section class="panel ct-sec ct-todo"><h2>${icon('clock', 'ic-sm')}Việc cần làm theo thời hạn</h2><ul class="ct-dl">${todo
@@ -111,12 +120,13 @@ function renderList(ctx) {
     const k = q.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
     ctx.view.querySelectorAll('.ct-list tbody tr').forEach((li) => (li.hidden = !!k && !li.textContent.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').includes(k)));
   });
-  ctx.view.querySelectorAll('[data-new]').forEach((b) =>
-    b.addEventListener('click', () => {
-      const rec = newCourtCase(ctx, b.dataset.new);
-      ctx.navigate(`#toa-an/${rec.id}/vu-an`);
-    }),
-  );
+  ctx.view.querySelectorAll('[data-new]').forEach((b) => b.addEventListener('click', () => ctx.navigate(`#toa-an/moi/${b.dataset.new}/vu-an`)));
+  ctx.view.querySelector('[data-draft-drop]')?.addEventListener('click', async () => {
+    if (!(await ctx.confirm(`Bỏ bản nháp “${draft.ten || 'Hồ sơ xét xử'}”? Nội dung đã nhập sẽ mất.`, { title: 'Bỏ bản nháp', okText: 'Bỏ bản nháp', danger: true }))) return;
+    store.remove(DRAFT_KEY);
+    toast('Đã bỏ bản nháp');
+    renderList(ctx);
+  });
 }
 
 /* ---------------- Hồ sơ xét xử ---------------- */
@@ -126,14 +136,30 @@ export function render(ctx, params = []) {
   if (params[0] === 'cai-dat') return renderCourtSettings(ctx);
   if (params[0] === 'kho-ban-an') return renderKho(ctx);
   if (params[0] === 'an-le') return renderAnLe(ctx, params.slice(1));
-  let rec = courtRepo.get(params[0]);
+  let rec;
+  let draft = false; // Hồ sơ mới chưa lưu vào sổ.
+  let tabParam = params[1];
+  if (params[0] === 'moi') {
+    rec = newCourtCase(ctx, params[1]);
+    draft = true;
+    tabParam = params[2];
+  } else if (params[0] === 'nhap') {
+    rec = store.get(DRAFT_KEY, null);
+    if (!rec) {
+      toast('Không còn bản nháp nào — tạo vụ án mới', { type: 'info' });
+      return renderList(ctx);
+    }
+    rec.draft = true;
+    draft = true;
+  } else rec = courtRepo.get(params[0]);
   if (!rec) {
     toast('Không tìm thấy hồ sơ xét xử', { type: 'error' });
     return renderList(ctx);
   }
   let book = null;
   rec.cap ||= 'so-tham';
-  let tab = TABS.some(([t]) => t === params[1]) ? params[1] : (rec.sources || []).length || rec.thuLy?.so ? 'tai-lieu' : 'vu-an';
+  let tab = TABS.some(([t]) => t === tabParam) ? tabParam : !draft && ((rec.sources || []).length || rec.thuLy?.so) ? 'tai-lieu' : 'vu-an';
+  const base = () => (draft ? '#toa-an/nhap' : `#toa-an/${rec.id}`);
   const panes = {};
   let khoDocs = [];
   let anLeData = null;
@@ -148,24 +174,51 @@ export function render(ctx, params = []) {
   let donSel = rec.dons[rec.dons.length - 1]?.id || null;
   // Giữ nguyên đối tượng hồ sơ (các tab Vụ án, Tính hình phạt, Biểu mẫu cùng tham chiếu) — chỉ cập nhật thời gian lưu.
   let dirty = false;
+  let changed = false; // Bản nháp đã có nội dung (để giữ tạm khi rời trang).
+  const stash = () => store.set(DRAFT_KEY, { ...rec, draft: true, stashedAt: Date.now() });
+  const setStatus = () => {
+    const el = $('[data-ct-status]', root);
+    if (el) el.textContent = `Đã lưu ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+  };
   const saveNow = () => {
     dirty = false;
+    if (draft) {
+      // Bản nháp: không ghi vào sổ; đổi địa chỉ sang #toa-an/nhap để tải lại trang vẫn giữ được (giữ tạm khi rời trang).
+      changed = true;
+      if (location.hash.startsWith('#toa-an/moi/')) history.replaceState(null, '', `#toa-an/nhap/${tab}`);
+      return;
+    }
     Object.assign(rec, courtRepo.save(rec));
+    setStatus();
   };
   const saveLater = debounce(() => dirty && saveNow(), 300);
   const save = () => {
     dirty = true;
+    if (draft) changed = true;
     saveLater();
   };
-  // Rời trang / tải lại trong lúc chờ lưu → lưu ngay.
-  const flush = () => dirty && saveNow();
+  // Rời trang / tải lại: hồ sơ đã lưu thì ghi nốt; bản nháp có nội dung thì giữ tạm.
+  const flush = () => {
+    if (draft) {
+      if (changed) stash();
+      return;
+    }
+    if (dirty) saveNow();
+  };
   window.addEventListener('pagehide', flush);
   const root = ctx.view;
+  // Bản nháp: ghi nhận "đã có nội dung" ngay khi gõ (các ô lưu trễ 200–300 ms) để Hủy / rời trang hỏi lại đúng lúc.
+  root.addEventListener('input', () => draft && (changed = true), true);
 
   const shell = () => {
     root.innerHTML = `<div class="page ct-page">
       <a class="rd-back" href="#toa-an">${icon('chevron-left', 'ic-sm')}Hồ sơ xét xử</a>
-      <div class="ct-title"><span class="badge" data-ct-cap>${CAP[rec.cap]}</span><input class="input ct-name" value="${escapeHtml(rec.ten || '')}" data-ct-name aria-label="Tên hồ sơ xét xử" /></div>
+      <div class="ct-title"><span class="badge" data-ct-cap>${CAP[rec.cap]}</span><input class="input ct-name" value="${escapeHtml(rec.ten || '')}" data-ct-name aria-label="Tên hồ sơ xét xử" />
+        <div class="ct-title-act">${
+          draft
+            ? `<span class="badge badge-warning" data-ct-draft-badge>Bản nháp — chưa lưu</span><button class="btn btn-primary btn-sm" type="button" data-ct-save>${icon('check', 'ic-sm')}Lưu hồ sơ</button><button class="btn btn-ghost btn-sm" type="button" data-ct-cancel>Hủy</button>`
+            : `<small class="hint" data-ct-status>Đã lưu</small><button class="btn btn-sm" type="button" data-ct-save>${icon('check', 'ic-sm')}Lưu</button><button class="btn btn-ghost btn-sm" type="button" data-ct-del>${icon('x', 'ic-sm')}Xóa hồ sơ</button>`
+        }</div></div>
       <div class="seg ct-tabs ct-maintabs" role="tablist">${TABS.map(([id, ic, l]) => `<button role="tab" data-ct-tab="${id}">${icon(ic, 'ic-sm')}${l}</button>`).join('')}</div>
       <p class="note warn ct-book" data-ct-book hidden>${icon('book', 'ic-sm')}<span>Chưa nạp sách Bình luận BLHS — chưa kiểm tra được khung, mức hình phạt (cần nguyên văn điều luật). <a href="#binh-luan">Nạp sách</a></span></p>
       <div data-pane="vu-an" hidden></div>
@@ -414,6 +467,35 @@ export function render(ctx, params = []) {
       rec.ten = e.target.value;
       save();
     });
+    $('[data-ct-save]', root).addEventListener('click', () => {
+      if (!draft) {
+        saveNow();
+        toast('Đã lưu hồ sơ');
+        return;
+      }
+      if (!String(rec.ten || '').trim()) rec.ten = TEN_MOI[rec.cap] || 'Hồ sơ xét xử';
+      draft = false;
+      changed = false;
+      delete rec.draft;
+      delete rec.stashedAt;
+      Object.assign(rec, courtRepo.save(rec));
+      store.remove(DRAFT_KEY);
+      toast(`Đã lưu hồ sơ “${rec.ten}” vào sổ vụ án`, { timeout: 4000 });
+      ctx.navigate(`#toa-an/${rec.id}/${tab}`);
+    });
+    $('[data-ct-cancel]', root)?.addEventListener('click', async () => {
+      if (changed && !(await ctx.confirm('Bỏ bản nháp này? Nội dung đã nhập sẽ mất.', { title: 'Bỏ bản nháp', okText: 'Bỏ bản nháp', danger: true }))) return;
+      changed = false;
+      store.remove(DRAFT_KEY);
+      ctx.navigate('#toa-an');
+    });
+    $('[data-ct-del]', root)?.addEventListener('click', async () => {
+      if (!(await ctx.confirm(`Xóa hồ sơ “${rec.ten || 'Hồ sơ xét xử'}” cùng tài liệu, bị cáo, đơn và kết quả thẩm tra đã nạp? Không hoàn tác được.`, { title: 'Xóa hồ sơ xét xử', okText: 'Xóa vĩnh viễn', danger: true }))) return;
+      dirty = false;
+      courtRepo.remove(rec.id);
+      toast('Đã xóa hồ sơ xét xử');
+      ctx.navigate('#toa-an');
+    });
     $('[data-ct-case]', root).addEventListener('change', (e) => {
       const c = casesRepo.get(e.target.value);
       rec.caseId = c?.id || null;
@@ -593,7 +675,7 @@ export function render(ctx, params = []) {
     $$('[data-ct-tab]', root).forEach((b) =>
       b.addEventListener('click', () => {
         tab = b.dataset.ctTab;
-        history.replaceState(null, '', `#toa-an/${rec.id}/${tab}`);
+        history.replaceState(null, '', `${base()}/${tab}`);
         update();
       }),
     );

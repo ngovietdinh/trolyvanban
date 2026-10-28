@@ -5421,3 +5421,13 @@ body.dg-lock { overflow: hidden; }
   .ct-ex-table th:nth-child(3) { width: 190px; }
   .ct-ex-table th:nth-child(4) { width: 120px; }
 }
+
+/* ---------- Tòa án: bản nháp, lưu / hủy / xóa hồ sơ (v2.49) ---------- */
+.ct-title { flex-wrap: wrap; }
+.ct-title-act { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.ct-title-act .hint { font-size: 12px; white-space: nowrap; }
+.ct-draft .inline { align-items: center; gap: 10px; }
+.ct-draft small { color: var(--text-3); }
+@media (max-width: 640px) {
+  .ct-title-act { margin-left: 0; width: 100%; }
+}

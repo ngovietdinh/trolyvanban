@@ -36,6 +36,7 @@ test.describe('v2.48 — Tòa án: nhập từ tệp, tự điền hồ sơ', ()
     const t = trackErrors(page);
     await freshApp(page, '#toa-an', { agency: 'toa-an' });
     await page.click('[data-new="so-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await expect(page).toHaveURL(/\/vu-an$/);
     // Ô đã có giá trị khác: không ghi đè.
     await page.fill('[data-v="hdxx.chuToa"]', 'Thẩm phán Khác');
@@ -115,6 +116,7 @@ test.describe('v2.48 — Tòa án: nhập từ tệp, tự điền hồ sơ', ()
     const t = trackErrors(page);
     await freshApp(page, '#toa-an', { agency: 'toa-an' });
     await page.click('[data-new="phuc-tham"]');
+    await page.click('[data-ct-save]'); // hồ sơ mới là bản nháp — lưu vào sổ
     await page.click('[data-ex-read]');
     await expect(page.locator('.toast').last()).toContainText('Chưa có tài liệu');
     await page.fill('[data-ex-paste]', 'Hôm nay trời đẹp, chúng tôi họp tổ dân phố về việc thu gom rác và trồng cây xanh.');
