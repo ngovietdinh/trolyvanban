@@ -42,7 +42,7 @@
     background: transparent;
     font: inherit;
     font-weight: 600;
-    font-size: 13.5px;
+    font-size: 14px;
     color: var(--text-3);
     white-space: nowrap;
     transition: background 0.2s, color 0.2s;
@@ -55,7 +55,7 @@
   .mobile-tabs button[aria-selected='true'] {
     background: var(--surface);
     color: var(--text);
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 0 0 1px var(--line);
   }
   .pane-tabs button[aria-selected='true'] .ic {
     color: var(--accent);
@@ -69,7 +69,7 @@
     background: var(--accent);
     color: var(--accent-ink);
     font-style: normal;
-    font-size: 10px;
+    font-size: 12px;
     line-height: 16px;
     text-align: center;
   }
@@ -189,9 +189,7 @@
     grid-template-columns: repeat(5, minmax(0, 1fr));
     padding: 4px max(4px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left));
     border-top: 1px solid var(--line);
-    background: color-mix(in srgb, var(--bg-elev) 92%, transparent);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: var(--bg-elev);
     position: relative;
     z-index: 30;
   }
@@ -210,7 +208,7 @@
     background: transparent;
     color: var(--text-3);
     font: inherit;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     line-height: 1.15;
     text-align: center;
@@ -486,7 +484,7 @@
     grid-column: 1 / -1;
   }
   .users-table td:nth-child(4) {
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--text-3);
     align-self: center;
   }
@@ -517,7 +515,7 @@
     flex: 1 1 0;
   }
   .doc-item > .badge {
-    font-size: 11px;
+    font-size: 12px;
     padding: 2px 8px;
   }
   .doc-item[data-rid] > .badge {
@@ -548,10 +546,10 @@
 @media (max-width: 380px) {
   .bottom-nav a,
   .bottom-nav button {
-    font-size: 10.5px;
+    font-size: 12px;
   }
   .pane-tabs button {
-    font-size: 12.5px;
+    font-size: 13px;
     gap: 4px;
   }
   .pane-tabs button .ic {

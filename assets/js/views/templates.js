@@ -25,7 +25,7 @@ export function render(ctx) {
             <h3>${icon(t.icon, 'ic-sm')}${escapeHtml(t.name)}${t.abbr ? ` <span class="badge">${t.abbr}</span>` : ''}</h3>
             <p>${escapeHtml(t.tagline)}</p>
             <div class="inline">
-              <button class="btn btn-primary btn-sm" type="button" data-use="${t.id}">${icon('wand', 'ic-sm')}Dùng mẫu này</button>
+              <button class="btn btn-sm" type="button" data-use="${t.id}">${icon('wand', 'ic-sm')}Dùng mẫu này</button>
               <a class="btn btn-sm" href="#compose/${t.id}">Bản trống</a>
             </div>
           </div>

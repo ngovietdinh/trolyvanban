@@ -242,17 +242,15 @@ p {
   position: relative;
   width: 34px;
   height: 34px;
-  border-radius: 9px;
-  background: linear-gradient(145deg, var(--seal-500), var(--seal-700));
-  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.22), inset 0 0 0 4px var(--seal-600), inset 0 0 0 5px rgba(255, 255, 255, 0.35), 0 4px 12px -4px rgba(165, 34, 42, 0.6);
+  border-radius: 50%;
+  border: 2px solid var(--accent);
   display: grid;
   place-items: center;
-  color: #fff;
+  color: var(--accent);
   font-family: var(--font-serif);
   font-weight: 600;
-  font-size: 15px;
+  font-size: 14px;
   letter-spacing: 0;
-  transform: rotate(-4deg);
 }
 .logo-text {
   display: flex;
@@ -261,11 +259,9 @@ p {
   font-size: 16px;
 }
 .logo-text small {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   margin-top: 3px;
 }
 
@@ -316,7 +312,6 @@ p {
   --btn-bg: var(--accent);
   --btn-fg: var(--accent-ink);
   --btn-bd: transparent;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 6px 16px -6px color-mix(in srgb, var(--accent) 70%, transparent);
 }
 .btn-primary:hover {
   --btn-bg: var(--accent-hover);
@@ -346,7 +341,7 @@ p {
   height: 50px;
   padding: 0 24px;
   border-radius: 13px;
-  font-size: 15.5px;
+  font-size: 15px;
 }
 .btn-sm {
   height: 32px;
@@ -399,7 +394,7 @@ p {
   border-radius: 10px;
   background: var(--surface);
   color: var(--text);
-  font-size: 14.5px;
+  font-size: 14px;
   line-height: 1.5;
   transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background 0.15s;
 }
@@ -454,7 +449,7 @@ p {
   height: 20px;
   padding: 0 6px;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-3);
   background: var(--surface-2);
@@ -500,7 +495,6 @@ p {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
 }
 .divider {
   height: 1px;

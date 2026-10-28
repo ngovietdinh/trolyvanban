@@ -1,9 +1,9 @@
 {
-  "version": "2.41.0",
+  "version": "2.42.0",
   "date": "2026-10-28",
   "notes": [
-    "Thẩm tra hồ sơ: 5 câu hỏi nghiệp vụ, đề xuất giữ nguyên / sửa / hủy án, kháng nghị giám đốc thẩm, tái thẩm",
-    "Bút lục cho mọi trích dẫn; rà soát chứng cứ (thiếu, mâu thuẫn, chỉ có lời nhận tội); pháp luật theo thời điểm",
-    "Báo cáo thẩm tra 8 mục (Word), bảng đối chiếu (Excel), dự thảo trả lời kiến nghị; kho bản án, án lệ"
+    "Giao diện mới, bỏ các kiểu thiết kế AI: không còn khối chào nền tối, ô biểu tượng màu, nhãn chữ in hoa, chữ nghiêng tô đỏ, gradient, bóng đổ thừa; logo con dấu tròn",
+    "Trang Tổng quan: ô soạn nhanh, thời hạn Tòa án sắp tới, lối tắt; Sổ vụ án dạng bảng",
+    "Điện thoại: thanh dưới nền đặc, Tra cứu dạng danh sách; trang giới thiệu hiện đầy đủ ngay khi mở, bỏ số liệu tự đếm"
   ]
 }

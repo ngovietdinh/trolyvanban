@@ -23,11 +23,11 @@
   display: inline-flex;
   align-items: center;
   flex: none;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 12.5px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 13px;
   animation: hint-in 0.4s var(--ease);
 }
 .help-hint[hidden] {
@@ -114,10 +114,8 @@
 .help-group small {
   display: block;
   padding: 6px 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 .help-link {
@@ -135,8 +133,8 @@
   color: var(--text);
 }
 .help-link.active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--surface-3);
+  color: var(--text);
   font-weight: 600;
 }
 .help-link span:not(.help-done) {
@@ -168,8 +166,9 @@
 }
 .help-hero .quick-icon {
   flex: none;
-  width: 48px;
-  height: 48px;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
 }
 .help-next {
   display: flex;
@@ -189,14 +188,12 @@
   font-size: 12px;
   font-weight: 700;
   color: var(--accent);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 .help-next strong {
   font-size: 16px;
 }
 .help-next span {
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--text-2);
 }
 .help-path {
@@ -255,8 +252,6 @@
   transition: transform 0.25s var(--ease), box-shadow 0.25s, border-color 0.25s;
 }
 .help-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
   border-color: var(--line-strong);
 }
 .help-card strong {
@@ -293,8 +288,9 @@
 }
 .gd-head .quick-icon {
   flex: none;
-  width: 48px;
-  height: 48px;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
 }
 .gd-head-body {
   flex: 1;
@@ -316,7 +312,7 @@
   flex-wrap: wrap;
   gap: 14px;
   margin-top: 10px;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-3);
 }
 .gd-meta span {
@@ -360,7 +356,7 @@
   border-radius: 999px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--text-2);
 }
 .gd-steps {
@@ -391,10 +387,11 @@
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-weight: 600;
+  font-size: 13px;
 }
 .gd-steps h3 {
   font-size: 15px;
@@ -402,7 +399,7 @@
 }
 .gd-steps p {
   margin: 0;
-  font-size: 14.5px;
+  font-size: 14px;
   line-height: 1.65;
   color: var(--text-2);
 }
@@ -413,7 +410,7 @@
   padding: 9px 12px;
   border-radius: 10px;
   background: var(--warning-soft);
-  font-size: 13.5px !important;
+  font-size: 14px !important;
 }
 .gd-tip .ic {
   flex: none;
@@ -446,7 +443,7 @@
   border-radius: 0 8px 8px 0;
   background: var(--surface-2);
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
@@ -477,7 +474,7 @@
 .gd-mk p {
   margin: 0;
   padding: 12px 14px;
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.6;
 }
 .gd-mk p > span {
@@ -485,10 +482,8 @@
   align-items: center;
   gap: 5px;
   margin-bottom: 4px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 .gd-bad {
   background: var(--danger-soft);
@@ -566,7 +561,6 @@
 }
 .gd-rel:hover {
   border-color: var(--line-strong);
-  box-shadow: var(--shadow-sm);
 }
 .gd-rel .ic {
   flex: none;
@@ -579,7 +573,7 @@
   gap: 2px;
 }
 .gd-rel small {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-3);
 }
 .gd-pager {
@@ -613,7 +607,7 @@
   flex-direction: column;
 }
 .gd-pager small {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-3);
 }

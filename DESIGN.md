@@ -120,7 +120,7 @@ Nguồn học: các repo người dùng gắn sao trên GitHub — `google-labs-
 Người dùng là cán bộ — văn phòng, pháp chế, tòa án — làm việc nhiều giờ với văn bản hành chính, hồ sơ, bản án. Ứng dụng phải giống **bàn làm việc ngăn nắp với tờ giấy trắng và con dấu đỏ**, không giống trang quảng cáo phần mềm. Tham chiếu cụ thể: mật độ và sự kiệm màu của Linear, cách trình bày bảng của một sổ thụ lý giấy được kẻ cẩn thận, và chính tờ văn bản theo Nghị định 30/2020/NĐ-CP (quốc hiệu, tiêu ngữ, số ký hiệu, nơi nhận).
 
 Ba điều làm nên "khuôn mặt" của sản phẩm, không bỏ:
-1. **Đỏ con dấu** là màu nhấn duy nhất — trên hành động chính, mục đang chọn, và chữ nhấn trong tiêu đề trang.
+1. **Đỏ con dấu** là màu nhấn duy nhất — trên hành động chính và mục đang chọn. Logo là con dấu tròn viền đỏ, không nền, không đổ bóng.
 2. **Tờ văn bản** (`--shadow-paper`, font Tinos) — bản xem trước luôn là tờ A4 thật, đúng thể thức; đây là vật thể đặc trưng của ứng dụng.
 3. **Ngôn ngữ nghề**: "bút lục", "khung hình phạt", "nơi nhận", "thụ lý", "căn cứ" — không dùng chữ chung chung kiểu "Bắt đầu", "Liền mạch", "Mạnh mẽ".
 
@@ -197,7 +197,7 @@ Chuyển động chỉ để báo trạng thái, không trang trí. Theo chuẩn
 - Gradient tím–xanh, glow, kính mờ, nền nhiễu, màu cầu vồng trên biểu đồ.
 - Hero lớn trên màn hình ứng dụng; thẻ KPI có ô biểu tượng màu; sparkline trang trí.
 - Thẻ lồng thẻ; bento grid; bóng + viền + nền tông cùng lúc.
-- Nhãn "eyebrow" chữ in hoa giãn cách phía trên tiêu đề; nhãn mono nhỏ; đánh số trang trí 01/02/03.
+- Nhãn "eyebrow" chữ in hoa giãn cách phía trên tiêu đề; nhãn mono nhỏ; đánh số trang trí 01/02/03; tô màu hoặc in nghiêng một từ trong tiêu đề.
 - Dòng meta nối bằng dấu chấm giữa "·" kiểu trang trí; chấm trạng thái trang trí.
 - Emoji làm biểu tượng; số liệu bịa, lorem ipsum, "99% hài lòng".
 - `transition: all`; animate kích thước/vị trí; fade-up cho mọi thứ khi cuộn; nảy (bounce) trên giao diện làm việc.
@@ -206,9 +206,6 @@ Chuyển động chỉ để báo trạng thái, không trang trí. Theo chuẩn
 
 ## Known debt
 
-Những chỗ CSS hiện tại chưa khớp tệp này. Không sửa hàng loạt; sửa khi đụng tới khu vực đó:
-- Nhiều nhãn chữ in hoa giãn cách (`text-transform: uppercase; letter-spacing: 0.12em`) trong `app.css`, `help.css`, `landing.css`.
-- Cỡ chữ lẻ (12.5, 13.5, 14.5, 11.5px) rải rác trong `app.css`.
-- `.suggest:hover` và vài thẻ khác nhấc lên (`translateY(-1px)` + bóng) không qua `@media (hover: hover)`.
-- `.type-tab[aria-selected]` có bóng màu accent dưới tab.
-- `.page-title em` tô đỏ một chữ in nghiêng trong tiêu đề — là dấu ấn hiện có của thương hiệu nên giữ, nhưng không nhân rộng sang tiêu đề khối hay nơi khác.
+Đợt nâng cấp giao diện v2.42.0 đã dọn: nhãn chữ in hoa giãn cách, cỡ chữ lẻ, thẻ nhấc lên khi rê chuột, gradient và kính mờ, ô biểu tượng màu, chữ nghiêng tô đỏ trong tiêu đề, bóng đổ trên phần tử không nổi, hiệu ứng hiện dần và số tự đếm ở trang giới thiệu. Còn lại, sửa khi đụng tới:
+- Một số dòng phụ trong JS còn nối bằng dấu chấm giữa "·" (danh sách tài liệu, sổ vụ án, kho bản án); nhiều chỗ có kiểm thử bám theo nên đổi kèm kiểm thử.
+- Nền chấm lưới ở khung sơ đồ (`.pt-viewport`, `.cm-graph`, `.dg-canvas`) giữ vì có tác dụng căn chỉnh khi vẽ.

@@ -93,19 +93,20 @@ function renderList(ctx) {
     }
     ${
       list.length
-        ? `<ul class="ct-list">${list
+        ? `<section class="panel"><div class="tt-table-wrap"><table class="cf-table ct-list"><thead><tr><th>Hồ sơ</th><th>Bị cáo</th><th>Thời hạn gần nhất</th><th class="num-r">Tài liệu</th><th class="num-r">Cập nhật</th></tr></thead><tbody>${list
             .map((c) => {
               const nd = nextDeadline(c);
-              return `<li><a href="#toa-an/${c.id}"><span class="ct-list-h"><span class="badge">${CAP[c.cap] || 'Hồ sơ xét xử'}</span><strong>${escapeHtml(c.ten || 'Hồ sơ xét xử')}</strong></span><small>${c.thuLy?.so ? `Thụ lý số ${escapeHtml(c.thuLy.so)} · ` : ''}${(c.defendants || []).map((d) => escapeHtml(d.hoTen || 'Chưa ghi tên')).join(', ') || 'Chưa có bị cáo'} · ${(c.sources || []).length} tài liệu · ${(c.dons || []).length} đơn · ${new Date(c.updatedAt).toLocaleDateString('vi-VN')}</small>${nd ? `<span class="badge ${nd.cls}">${escapeHtml(nd.text)}</span>` : ''}</a></li>`;
+              const names = (c.defendants || []).map((d) => escapeHtml(d.hoTen || 'Chưa ghi tên')).join(', ');
+              return `<tr><td><a href="#toa-an/${c.id}"><strong>${escapeHtml(c.ten || 'Hồ sơ xét xử')}</strong></a><small>${CAP[c.cap] || 'Hồ sơ xét xử'}</small>${c.thuLy?.so ? `<small>Thụ lý số ${escapeHtml(c.thuLy.so)}</small>` : ''}</td><td>${names || '<span class="ct-dash">Chưa có bị cáo</span>'}</td><td>${nd ? `<span class="badge ${nd.cls}">${escapeHtml(nd.text)}</span>` : '<span class="ct-dash">—</span>'}</td><td class="num-r">${(c.sources || []).length} tài liệu<small>${(c.dons || []).length} đơn</small></td><td class="num-r">${new Date(c.updatedAt).toLocaleDateString('vi-VN')}</td></tr>`;
             })
-            .join('')}</ul>`
+            .join('')}</tbody></table></div></section>`
         : `<section class="panel"><div class="empty"><div class="empty-icon">${icon('gavel', 'ic-lg')}</div><h3>Chưa có hồ sơ xét xử</h3><p>Tạo vụ án sơ thẩm (thụ lý từ cáo trạng) hoặc phúc thẩm (có kháng cáo, kháng nghị). Tải cáo trạng / bản án để phần mềm tự điền bị cáo, tội danh, nhân thân; nhập ngày thụ lý để theo dõi thời hạn.</p></div></section>`
     }
   </div>`;
   const q = ctx.view.querySelector('[data-list-q]');
   q?.addEventListener('input', () => {
     const k = q.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
-    ctx.view.querySelectorAll('.ct-list > li').forEach((li) => (li.hidden = !!k && !li.textContent.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').includes(k)));
+    ctx.view.querySelectorAll('.ct-list tbody tr').forEach((li) => (li.hidden = !!k && !li.textContent.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').includes(k)));
   });
   ctx.view.querySelectorAll('[data-new]').forEach((b) =>
     b.addEventListener('click', () => {

@@ -46,7 +46,7 @@ if ('IntersectionObserver' in window) {
 /* ---------- Mẫu văn bản ---------- */
 $('[data-templates]').innerHTML = DOC_TYPES.map(
   (t) => `
-  <a class="tpl reveal" href="app.html#compose/${t.id}">
+  <a class="tpl" href="app.html#compose/${t.id}">
     <span class="tpl-icon">${icon(t.icon)}</span>
     ${t.abbr ? `<span class="tpl-abbr">${t.abbr}</span>` : ''}
     <h3>${t.name}</h3>
@@ -54,55 +54,6 @@ $('[data-templates]').innerHTML = DOC_TYPES.map(
     <span class="tpl-go">Soạn ngay ${icon('arrow-right', 'ic-sm')}</span>
   </a>`,
 ).join('');
-
-/* ---------- Reveal & counters ---------- */
-function animateCount(el) {
-  const target = Number(el.dataset.count);
-  const suffix = el.dataset.suffix || '';
-  const start = performance.now();
-  const dur = 1200;
-  const step = (now) => {
-    const p = Math.min(1, (now - start) / dur);
-    const eased = 1 - Math.pow(1 - p, 3);
-    el.textContent = Math.round(target * eased) + suffix;
-    if (p < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-}
-if ('IntersectionObserver' in window) {
-  const obs = new IntersectionObserver(
-    (entries) =>
-      entries.forEach((e) => {
-        if (!e.isIntersecting) return;
-        e.target.classList.add('in');
-        $$('[data-count]', e.target).forEach(animateCount);
-        if (e.target.matches('[data-count]')) animateCount(e.target);
-        obs.unobserve(e.target);
-      }),
-    { threshold: 0.12, rootMargin: '0px 0px -40px 0px' },
-  );
-  $$('.reveal').forEach((el, i) => {
-    el.style.transitionDelay = `${(i % 4) * 70}ms`;
-    obs.observe(el);
-  });
-} else {
-  $$('.reveal').forEach((el) => el.classList.add('in'));
-  $$('[data-count]').forEach((el) => (el.textContent = el.dataset.count + (el.dataset.suffix || '')));
-}
-
-/* ---------- Gợi ý xoay vòng ---------- */
-const rot = $('[data-rotate]');
-if (rot) {
-  const items = JSON.parse(rot.dataset.rotate);
-  let i = 0;
-  setInterval(() => {
-    i = (i + 1) % items.length;
-    rot.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200 }).onfinish = () => {
-      rot.textContent = items[i];
-      rot.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 260 });
-    };
-  }, 3200);
-}
 
 /* ---------- Tabs dùng thử ---------- */
 const tabs = $$('.demo-panel [role="tab"]');

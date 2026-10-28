@@ -3,6 +3,10 @@ import { docsRepo, usage } from '../lib/store.js';
 import { getDocType } from '../lib/doc-types.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { deleteWithUndo, repoOps } from '../lib/undo-delete.js';
+import { courtRepo } from '../legal/repo.js';
+import { upcoming } from '../legal/court-deadlines.js';
+import { fmtDate } from '../legal/court-penalty.js';
+import { courtRules } from './toa-an-case.js';
 
 function greeting() {
   const h = new Date().getHours();
@@ -24,6 +28,28 @@ export function docRow(d) {
   </li>`;
 }
 
+const THU = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+const todayLong = (d = new Date()) => `${THU[d.getDay()]}, ngày ${d.getDate()} tháng ${d.getMonth() + 1} năm ${d.getFullYear()}`;
+const shortcut = (href, ic, title, sub) => `<a class="sc-row" href="${href}">${icon(ic, 'ic-sm')}<span><strong>${title}</strong><small>${sub}</small></span></a>`;
+const conHan = (n) => (n < 0 ? `quá ${-n} ngày` : n === 0 ? 'hôm nay' : `còn ${n} ngày`);
+
+/** Thời hạn Tòa án gần nhất (chỉ khi tài khoản có hồ sơ xét xử). */
+function courtSoon() {
+  const list = courtRepo.list();
+  if (!list.length) return '';
+  const todo = upcoming(list, { rules: courtRules() }).filter((x) => x.trangThai !== 'moc').slice(0, 5);
+  return `<section class="panel dash-court">
+    <div class="panel-head"><h2>Thời hạn Tòa án sắp tới</h2><a class="btn btn-ghost btn-sm" href="#toa-an">Sổ vụ án</a></div>
+    ${
+      todo.length
+        ? `<ul class="dash-dl">${todo
+            .map((it) => `<li><b class="num">${fmtDate(it.han).slice(0, 5)}</b><a href="#toa-an/${it.rec.id}/vu-an">${escapeHtml(it.ten)}<small>${escapeHtml(it.rec.ten || '')}${it.rec.thuLy?.so ? `, thụ lý số ${escapeHtml(it.rec.thuLy.so)}` : ''}</small></a><span class="badge ${it.trangThai === 'qua-han' ? 'badge-danger' : it.trangThai === 'sap' ? 'badge-warning' : ''}">${conHan(it.con)}</span></li>`)
+            .join('')}</ul>`
+        : '<p class="dash-none">Không có thời hạn nào đang chạy. Nhập ngày thụ lý trong hồ sơ để theo dõi.</p>'
+    }
+  </section>`;
+}
+
 export function render(ctx) {
   const user = ctx.user();
   const docs = docsRepo.list();
@@ -31,47 +57,50 @@ export function render(ctx) {
   const name = user ? user.name.split(/\s+/).pop() : '';
 
   ctx.view.innerHTML = `
-  <div class="page">
+  <div class="page dash">
     <section class="hello">
-      <h1>${greeting()}${name ? `, <em>${escapeHtml(name)}</em>` : ''}.</h1>
-      <p>Hôm nay bạn cần soạn văn bản gì? Mô tả ngắn gọn, trợ lý sẽ chuẩn bị bản nháp đúng thể thức cho bạn.</p>
-      <form class="hello-prompt" data-hello>
-        <input name="q" placeholder="VD: Soạn giấy mời họp tổng kết năm vào sáng thứ Sáu…" aria-label="Mô tả văn bản cần soạn" autocomplete="off" />
-        <button class="btn btn-primary" type="submit">${icon('sparkles')}Soạn ngay</button>
-      </form>
+      <div><h1>${greeting()}${name ? `, ${escapeHtml(name)}` : ''}</h1><p class="page-sub">${todayLong()}</p></div>
+      ${
+        ctx.can('docs')
+          ? `<form class="hello-prompt" data-hello>
+        <label for="hello-q">Cần soạn văn bản gì? Mô tả ngắn, trợ lý chuẩn bị bản nháp đúng thể thức.</label>
+        <div class="hello-row"><input class="input" id="hello-q" name="q" placeholder="VD: Soạn giấy mời họp tổng kết năm vào sáng thứ Sáu" autocomplete="off" /><button class="btn btn-primary" type="submit">${icon('sparkles', 'ic-sm')}Soạn ngay</button></div>
+      </form>`
+          : ''
+      }
     </section>
 
-    ${ctx.can('legal') ? `<div class="legal-promo">
-      <a href="#legal"><span class="quick-icon">${icon('layers')}</span><span><strong>Cây hỏi đáp pháp luật</strong><span>Chọn lĩnh vực → tội danh → hành vi để sinh bộ vấn đề cần làm rõ và câu hỏi theo BLHS.</span></span></a>
-      <a href="#interview"><span class="quick-icon">${icon('message')}</span><span><strong>Ghi lời khai thông minh</strong><span>Ghi hỏi – đáp theo kế hoạch, gợi ý câu hỏi truy tiếp và phát hiện mâu thuẫn.</span></span></a>
-    </div>` : ''}
-
-    <div class="quick-grid">
-      ${ctx.can('docs') ? `<a class="quick" href="#compose/cong-van"><span class="quick-icon">${icon('mail')}</span><strong>Công văn</strong><span>Trao đổi, đề nghị</span></a>
-      <a class="quick" href="#compose/quyet-dinh"><span class="quick-icon">${icon('gavel')}</span><strong>Quyết định</strong><span>Bổ nhiệm, thành lập</span></a>` : ''}
-      ${ctx.can('tools') ? `
-      <a class="quick" href="#spell"><span class="quick-icon">${icon('spell')}</span><strong>Kiểm tra chính tả</strong><span>Soát lỗi trong 1 giây</span></a>
-      <a class="quick" href="#number"><span class="quick-icon">${icon('hash')}</span><strong>Số thành chữ</strong><span>Chuẩn chứng từ</span></a>` : ''}
-    </div>
-
     <div class="dash-grid">
-      <section class="panel">
-        <div class="panel-head"><h2>${icon('clock', 'ic-sm')}Tài liệu gần đây</h2><a class="btn btn-ghost btn-sm" href="#docs">Xem tất cả</a></div>
-        ${
-          docs.length
-            ? `<ul class="doc-list">${docs.slice(0, 6).map(docRow).join('')}</ul>`
-            : `<div class="empty"><div class="empty-icon">${icon('folder', 'ic-lg')}</div><h3>Chưa có tài liệu</h3><p>Văn bản bạn lưu sẽ xuất hiện tại đây.</p><a class="btn btn-primary" href="#compose">${icon('plus')}Soạn văn bản đầu tiên</a></div>`
-        }
-      </section>
-      <section class="panel">
-        <div class="panel-head"><h2>${icon('chart', 'ic-sm')}Hoạt động của bạn</h2></div>
-        <div class="metric-grid">
-          <div class="metric"><strong>${docs.length}</strong><span>Tài liệu đã lưu</span></div>
-          <div class="metric"><strong>${u.export || 0}</strong><span>Lượt xuất Word</span></div>
-          <div class="metric"><strong>${u.spell || 0}</strong><span>Lượt kiểm tra chính tả</span></div>
-          <div class="metric"><strong>${(u.ai || 0) + (u.chat || 0)}</strong><span>Lượt dùng trợ lý</span></div>
-        </div>
-      </section>
+      <div class="dash-main">
+        ${ctx.can('legal') ? courtSoon() : ''}
+        <section class="panel">
+          <div class="panel-head"><h2>Tài liệu gần đây</h2><a class="btn btn-ghost btn-sm" href="#docs">Xem tất cả</a></div>
+          ${
+            docs.length
+              ? `<ul class="doc-list">${docs.slice(0, 6).map(docRow).join('')}</ul>`
+              : `<div class="empty"><div class="empty-icon">${icon('folder', 'ic-lg')}</div><h3>Chưa có tài liệu</h3><p>Văn bản bạn lưu sẽ xuất hiện tại đây.</p>${ctx.can('docs') ? `<a class="btn btn-primary" href="#compose">${icon('plus')}Soạn văn bản đầu tiên</a>` : ''}</div>`
+          }
+        </section>
+      </div>
+      <div class="dash-side">
+        <section class="panel">
+          <div class="panel-head"><h2>Lối tắt</h2></div>
+          <div class="sc-list">
+            ${ctx.can('docs') ? `${shortcut('#compose/cong-van', 'mail', 'Công văn', 'Trao đổi, đề nghị, hướng dẫn')}${shortcut('#compose/quyet-dinh', 'gavel', 'Quyết định', 'Bổ nhiệm, thành lập, ban hành')}${shortcut('#templates', 'file', 'Thư viện mẫu', 'Mẫu theo Phụ lục I, Nghị định 30/2020')}` : ''}
+            ${ctx.can('legal') ? `<div class="legal-promo">${shortcut('#toa-an', 'gavel', 'Tòa án', 'Sổ vụ án, thẩm tra, biểu mẫu')}${shortcut('#legal', 'layers', 'Cây hỏi đáp pháp luật', 'Lĩnh vực, tội danh, vấn đề cần làm rõ')}${shortcut('#interview', 'message', 'Ghi lời khai', 'Hỏi theo kế hoạch, phát hiện mâu thuẫn')}</div>` : ''}
+            ${ctx.can('tools') ? `${shortcut('#spell', 'spell', 'Kiểm tra chính tả', 'Soát lỗi tiếng Việt, từ điển riêng')}${shortcut('#number', 'hash', 'Số thành chữ', 'Đọc số tiền cho chứng từ')}` : ''}
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Hoạt động của bạn</h2></div>
+          <div class="metric-grid">
+            <div class="metric"><strong>${docs.length}</strong><span>Tài liệu đã lưu</span></div>
+            <div class="metric"><strong>${u.export || 0}</strong><span>Lượt xuất Word</span></div>
+            <div class="metric"><strong>${u.spell || 0}</strong><span>Lượt kiểm tra chính tả</span></div>
+            <div class="metric"><strong>${(u.ai || 0) + (u.chat || 0)}</strong><span>Lượt dùng trợ lý</span></div>
+          </div>
+        </section>
+      </div>
     </div>
   </div>`;
 
@@ -90,7 +119,7 @@ export function render(ctx) {
     });
   });
 
-  ctx.view.querySelector('[data-hello]').addEventListener('submit', (e) => {
+  ctx.view.querySelector('[data-hello]')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const q = e.target.q.value.trim();
     if (!q) return e.target.q.focus();
