@@ -1,9 +1,10 @@
 {
-  "version": "2.45.0",
+  "version": "2.46.0",
   "date": "2026-10-28",
   "notes": [
-    "Tòa án: thêm vụ án giám đốc thẩm — bản án bị kháng nghị, kháng nghị (Điều 371, 373), Hội đồng giám đốc thẩm (Điều 382), quyết định (Điều 388); thời hạn tự tính (Điều 376, 379, 385, 395, 396); 5 biểu mẫu giám đốc thẩm",
-    "Trang Án lệ: danh mục đủ 90 án lệ (01/2016/AL → 90/2026/AL) với lĩnh vực, đợt công bố, ngày áp dụng, điều luật liên quan; lọc, tìm không dấu; nạp toàn văn từng án lệ vào kho; gợi ý án lệ liên quan khi thẩm tra",
-    "Kho bản án: tìm bản án, án lệ trên mạng (sao chép từ khóa, mở Cổng công bố bản án / Cổng án lệ TANDTC); tải thẳng từ đường dẫn vào kho — bản máy tính tải qua vỏ ứng dụng, tuân theo chế độ bảo mật"
+    "Án lệ: toàn văn đủ 90 án lệ (01/2016/AL → 90/2026/AL) lấy từ Cổng án lệ của Tòa án nhân dân tối cao kèm theo phần mềm, dùng ngoại tuyến — xem tình huống, giải pháp pháp lý, quy định liên quan, từ khóa, toàn văn; nạp từng án lệ hoặc tất cả vào kho một lần",
+    "Danh mục án lệ (tên, lĩnh vực, ngày thông qua, quyết định công bố, ngày áp dụng) sinh lại theo đúng dữ liệu cổng; tìm theo cả nội dung tình huống",
+    "Tab Bản án tương tự: án lệ chưa nạp vào kho vẫn hiện tình huống, giải pháp pháp lý từ gói kèm phần mềm",
+    "8 án lệ năm 2026 cổng đăng bản quét: chữ nhận dạng tự động, có ghi chú đối chiếu bản gốc"
   ]
 }
