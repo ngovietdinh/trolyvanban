@@ -3,7 +3,8 @@
  * lưới 12 cột thẻ kính, dock viên thuốc dưới đáy. Dùng cho Tổng quan; các màn hình nhập liệu vẫn kiểu phẳng (DESIGN.md).
  * Chủ đề "Giấy" (nền cát ấm, màu 1 ngọc = đạt / xong, màu 2 đỏ con dấu = quá hạn / cần xử lý); giao diện tối → chủ đề "Đêm".
  */
-.gx {
+/* Token nền kính đặt ở .shell để thanh bên, thanh trên, thanh dưới và Tổng quan cùng một chất liệu. */
+.shell {
   --ink-rgb: 24, 24, 26;
   --hi: 255, 255, 255;
   --gk: 1;
@@ -11,12 +12,12 @@
   --dock: 246, 238, 228;
   --chip: #fff;
   --chip-ink: #18181a;
-  --gx-accent: #1b1b1d;
+  --gx-accent: var(--force-red);
   --gx-accent-ink: #fff;
-  --c1: #19a37e;
-  --c1-hi: #0f7a57;
-  --c1-lo: #0b5f43;
-  --c1-soft: #8fe0c7;
+  --force-card-a: var(--force-red);
+  --force-card-b: var(--force-red-deep);
+  --c1: var(--force-gold);
+  --c1-soft: var(--force-gold-soft);
   --c2: #c0302f;
   --c2-soft: #e8958f;
   --b0: #b49c82;
@@ -43,30 +44,31 @@
   --bad-fg: #b02a30;
   --amber-bg: #fff0d4;
   --amber-fg: #b07208;
+}
+.gx {
   position: absolute;
   inset: 0;
   overflow: hidden;
   isolation: isolate;
   color: var(--ink);
-  background: var(--b0);
   font-size: 13px;
   line-height: 1.45;
 }
 /* Chủ đề "Đêm": nền gần đen, kính tối, chữ trắng — theo giao diện tối của ứng dụng. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .gx {
+  :root:not([data-theme='light']) .shell {
     --ink-rgb: 238, 240, 245;
     --gk: 0.34;
     --sh: 0, 0, 0;
     --dock: 30, 32, 38;
     --chip: #f2f3f5;
     --chip-ink: #111215;
-    --gx-accent: #f2f3f5;
-    --gx-accent-ink: #111215;
-    --c1: #3ddc97;
-    --c1-hi: #2fbf83;
-    --c1-lo: #12875a;
-    --c1-soft: #1d6b4c;
+    --gx-accent: var(--force-red);
+    --gx-accent-ink: #1a0b0c;
+    --force-card-a: #a8343a;
+    --force-card-b: #76201f;
+    --c1: var(--force-gold);
+    --c1-soft: var(--force-gold-soft);
     --c2: #ff7a45;
     --c2-soft: #a8492a;
     --b0: #0b0c0f;
@@ -91,19 +93,19 @@
     --amber-fg: #ffd982;
   }
 }
-:root[data-theme='dark'] .gx {
+:root[data-theme='dark'] .shell {
   --ink-rgb: 238, 240, 245;
   --gk: 0.34;
   --sh: 0, 0, 0;
   --dock: 30, 32, 38;
   --chip: #f2f3f5;
   --chip-ink: #111215;
-  --gx-accent: #f2f3f5;
-  --gx-accent-ink: #111215;
-  --c1: #3ddc97;
-  --c1-hi: #2fbf83;
-  --c1-lo: #12875a;
-  --c1-soft: #1d6b4c;
+  --gx-accent: var(--force-red);
+  --gx-accent-ink: #1a0b0c;
+  --force-card-a: #a8343a;
+  --force-card-b: #76201f;
+  --c1: var(--force-gold);
+  --c1-soft: var(--force-gold-soft);
   --c2: #ff7a45;
   --c2-soft: #a8492a;
   --b0: #0b0c0f;
@@ -159,24 +161,6 @@ body.glass-dash .view {
 .gx h1,
 .gx h3 {
   color: inherit;
-}
-
-/* ---- nền */
-.gx-bg {
-  position: absolute;
-  inset: -70px;
-  z-index: -1;
-  filter: blur(20px);
-  background:
-    radial-gradient(38% 46% at 22% 18%, var(--b1) 0%, transparent 70%), radial-gradient(30% 40% at 78% 14%, var(--b2) 0%, transparent 72%),
-    radial-gradient(46% 38% at 60% 62%, var(--b3) 0%, transparent 70%), radial-gradient(42% 40% at 12% 82%, var(--b4) 0%, transparent 70%),
-    radial-gradient(50% 40% at 90% 92%, var(--b5) 0%, transparent 70%), var(--b0);
-}
-.gx-bg::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, var(--veil-a) 0%, var(--veil-b) 45%, var(--veil-c) 100%), radial-gradient(70% 55% at 50% 40%, var(--veil-d), transparent 70%);
 }
 
 /* ---- thanh chào */
@@ -286,8 +270,8 @@ body.glass-dash .view {
   height: 24px;
   flex: none;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #fff 0 8%, transparent 30%), conic-gradient(from 0deg, var(--c1), var(--c2), #e2a23a, var(--c1));
-  box-shadow: 0 0 14px rgba(25, 163, 126, 0.55);
+  background: radial-gradient(circle at 35% 30%, #fff 0 8%, transparent 30%), conic-gradient(from 0deg, var(--force-red), var(--force-gold), #fff6d6, var(--force-red));
+  box-shadow: 0 0 14px rgba(201, 162, 39, 0.5);
   animation: gx-orb 6s linear infinite;
 }
 .gx-top__r {
@@ -315,8 +299,10 @@ body.glass-dash .view {
   background: rgba(var(--hi), calc(0.4 * var(--gk)));
 }
 .gx-round--white {
+  --i-star: var(--force-gold);
+  --i-gold: var(--force-gold);
   background: var(--chip);
-  color: var(--chip-ink);
+  color: var(--force-red);
 }
 .gx-round em {
   position: absolute;
@@ -559,16 +545,26 @@ body.glass-dash .view {
   border-radius: 14px;
   background: var(--card-2);
 }
-.gc--emerald,
-.gx-quad .gc--emerald {
-  background: linear-gradient(150deg, var(--c1-hi) 0%, var(--c1-lo) 100%);
-  border-color: rgba(190, 255, 230, 0.6);
+/* Thẻ nhấn màu lực lượng: nền đỏ, biểu tượng trên nền vàng, chữ trắng. */
+.gc--force,
+.gx-quad .gc--force {
+  background: linear-gradient(150deg, var(--force-card-a) 0%, var(--force-card-b) 100%);
+  border-color: rgba(255, 220, 214, 0.55);
   color: #fff;
 }
-.gc--emerald .gx-note,
-.gc--emerald small,
-.gc--emerald .gc__head h3 {
-  color: rgba(255, 255, 255, 0.86);
+.gc--force .gx-note,
+.gc--force small,
+.gc--force .gc__head h3 {
+  color: rgba(255, 255, 255, 0.88);
+}
+.gc--force .gx-bubble {
+  background: var(--force-gold);
+  color: var(--force-card-b);
+}
+.gc--force .gx-delta--good,
+.gc--force .gx-delta--bad {
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--force-card-b);
 }
 .gc--red,
 .gx-quad .gc--red {
@@ -1020,12 +1016,9 @@ body.glass-dash .view {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
-  .gx-bg {
-    filter: none;
-  }
 }
 @media (prefers-contrast: more) {
-  .gx {
+  .shell {
     --edge: rgba(var(--ink-rgb), 0.35);
     --ink-2: rgba(var(--ink-rgb), 0.9);
     --ink-3: rgba(var(--ink-rgb), 0.85);

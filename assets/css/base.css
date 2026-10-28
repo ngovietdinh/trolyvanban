@@ -43,9 +43,15 @@
   --text: #121c2e;
   --text-2: #43506a;
   --text-3: #5f6a80;
-  --accent: var(--seal-600);
-  --accent-hover: var(--seal-700);
-  --accent-soft: var(--seal-50);
+  /* Màu lực lượng: đỏ + vàng. Mặc định Tòa án (đỏ con dấu, vàng kim); Cảnh sát điều tra đặt lại ở dưới (đỏ cờ, vàng sao). */
+  --force-red: #a5222a;
+  --force-red-deep: #7f151b;
+  --force-red-soft: #fcf2f0;
+  --force-gold: #c9a227;
+  --force-gold-soft: #f6ecc9;
+  --accent: var(--force-red);
+  --accent-hover: var(--force-red-deep);
+  --accent-soft: var(--force-red-soft);
   --accent-ink: #ffffff;
   --brand: var(--ink-900);
   --focus: #2f6fed;
@@ -87,9 +93,14 @@
     --text: #edf0f6;
     --text-2: #b4bdd0;
     --text-3: #8591aa;
-    --accent: #e0574f;
-    --accent-hover: #ea6c64;
-    --accent-soft: rgba(224, 87, 79, 0.12);
+    --force-red: #e0574f;
+    --force-red-deep: #ea6c64;
+    --force-red-soft: rgba(224, 87, 79, 0.14);
+    --force-gold: #f2c94c;
+    --force-gold-soft: rgba(242, 201, 76, 0.16);
+    --accent: var(--force-red);
+    --accent-hover: var(--force-red-deep);
+    --accent-soft: var(--force-red-soft);
     --brand: #edf0f6;
     --success: #4cc79a;
     --success-soft: rgba(76, 199, 154, 0.12);
@@ -117,9 +128,14 @@
   --text: #edf0f6;
   --text-2: #b4bdd0;
   --text-3: #8591aa;
-  --accent: #e0574f;
-  --accent-hover: #ea6c64;
-  --accent-soft: rgba(224, 87, 79, 0.12);
+  --force-red: #e0574f;
+  --force-red-deep: #ea6c64;
+  --force-red-soft: rgba(224, 87, 79, 0.14);
+  --force-gold: #f2c94c;
+  --force-gold-soft: rgba(242, 201, 76, 0.16);
+  --accent: var(--force-red);
+  --accent-hover: var(--force-red-deep);
+  --accent-soft: var(--force-red-soft);
   --brand: #edf0f6;
   --success: #4cc79a;
   --success-soft: rgba(76, 199, 154, 0.12);
@@ -134,6 +150,27 @@
   --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.25), 0 12px 28px -8px rgba(0, 0, 0, 0.55);
   --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.3), 0 28px 60px -16px rgba(0, 0, 0, 0.7);
   color-scheme: dark;
+}
+
+/* Cảnh sát điều tra: đỏ cờ, vàng sao (giao diện sáng); giao diện tối giữ bộ đỏ vàng sáng ở trên. */
+:root[data-agency='cqdt'] {
+  --force-red: #c8102e;
+  --force-red-deep: #8f0a20;
+  --force-red-soft: #fdeeee;
+  --force-gold: #e6b400;
+  --force-gold-soft: #fdf4cc;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-agency='cqdt']:not([data-theme='light']) {
+    --force-red: #ef5a62;
+    --force-red-deep: #f27d83;
+    --force-gold: #f5cd3d;
+  }
+}
+:root[data-agency='cqdt'][data-theme='dark'] {
+  --force-red: #ef5a62;
+  --force-red-deep: #f27d83;
+  --force-gold: #f5cd3d;
 }
 
 /* ---------- Reset ---------- */
@@ -249,10 +286,11 @@ p {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--force-red);
+  background: var(--force-red);
   display: grid;
   place-items: center;
-  color: var(--accent);
+  color: var(--force-gold);
   font-family: var(--font-serif);
   font-weight: 600;
   font-size: 14px;
@@ -267,7 +305,7 @@ p {
 .logo-text small {
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-3);
+  color: var(--text-2);
   margin-top: 3px;
 }
 

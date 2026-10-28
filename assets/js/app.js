@@ -403,6 +403,7 @@ function refreshChrome() {
     sw.title = `${AGENCIES[ag].ten} — bấm để đổi cơ quan`;
   }
   document.body.dataset.currentAgency = ag || '';
+  document.documentElement.dataset.agency = ag || '';
   $$('[data-need-perm]').forEach((el) => (el.hidden = !user.permSet.has(el.dataset.needPerm)));
   const st = $('[data-ai-status]');
   const ai = ctx.ai();

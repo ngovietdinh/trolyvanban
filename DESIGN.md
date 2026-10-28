@@ -127,7 +127,9 @@ Ba điều làm nên "khuôn mặt" của sản phẩm, không bỏ:
 ## Colors
 
 - Nền giấy ngà `bg`, mặt làm việc trắng `surface`, bậc tông `surface-2/3` để phân lớp. Phân lớp bằng **bậc tông hoặc đường kẻ**, không chồng bóng + viền + tông cùng lúc.
-- `accent` (đỏ con dấu) chỉ cho: nút chính của màn hình (một nút), mục đang chọn (tab, chip, dòng), con số cần chú ý. Khoảng 3% điểm ảnh có màu là vừa.
+- **Bộ màu lực lượng** (`base.css`): `--force-red` / `--force-red-deep` / `--force-red-soft` và `--force-gold` / `--force-gold-soft`. Tòa án: đỏ con dấu `#a5222a` + vàng kim `#c9a227`; Cảnh sát điều tra (`:root[data-agency='cqdt']`, đặt từ `app.js`): đỏ cờ `#c8102e` + vàng sao `#e6b400`. `accent` trỏ vào `--force-red` nên nút chính, mục đang chọn, dòng cần chú ý tự đổi theo cơ quan.
+- Đỏ chỉ cho: nút chính của màn hình (một nút), mục đang chọn (tab, chip, dòng thanh bên), con số cần chú ý, thẻ nhấn `gc--force` (một thẻ mỗi trang). Khoảng 3% điểm ảnh có màu là vừa.
+- Vàng chỉ làm **vật trang trí nhỏ và mặt tô**: chữ trên huy hiệu đỏ (logo, huy hiệu cơ quan: đĩa đỏ, biểu tượng vàng; sao vàng tô kín qua `--i-star`, đĩa cân qua `--i-gold` trong `icons.svg`), viền ô đổi cơ quan, cột gạch chéo và thanh tiến độ trên Tổng quan, nền tròn biểu tượng trên thẻ đỏ. **Không** dùng vàng cho chữ nhỏ trên nền đỏ hay trắng (tương phản chỉ ~3:1).
 - Màu trạng thái (`success`, `warning`, `danger`) luôn đi cặp với `*-soft` làm nền: nhãn là **nền nhạt + chữ đậm**, không phải nền đậm chữ trắng. `danger` trùng `accent` có chủ ý — lỗi và con dấu cùng một đỏ — nên lỗi phải có chữ/biểu tượng đi kèm, không dựa vào màu.
 - `focus` xanh dương tách biệt hẳn khỏi đỏ để vòng focus luôn nhìn thấy.
 - Dark mode: định nghĩa ở cả `@media (prefers-color-scheme: dark)` (với `:root:not([data-theme='light'])`) và `:root[data-theme='dark']`. Thêm token mới phải thêm ở cả ba chỗ.
@@ -143,7 +145,8 @@ Ba điều làm nên "khuôn mặt" của sản phẩm, không bỏ:
 
 ## Layout
 
-- Khung ứng dụng: thanh bên (`.sidebar`, nền `bg-elev`, viền phải) + vùng trang tối đa `--container` 1200px. Thanh bên trung tính; mục đang chọn mới có màu.
+- Khung ứng dụng là **một tấm kính chung**: nền đốm màu đặt ở `.shell::before/::after` (token `--b0…--b5`, `--veil-*` khai báo trên `.shell` trong `glass.css`, đổi theo `data-theme`); thanh bên là tấm kính bo 20px cách mép 12px (`rgba(--hi, 0.5·--gk)`, không backdrop-filter vì phía sau là nền tĩnh); thanh trên trong suốt; thanh dưới điện thoại kính mờ 16px. Vùng trang tối đa `--container` 1200px. Thanh bên trung tính; mục đang chọn: nền `--force-red-soft`, chữ `--force-red-deep` (giao diện tối: chữ `--text`), biểu tượng và vạch trái đỏ.
+- Màn hình làm (mọi trang trừ Tổng quan và màn chọn cơ quan): `.view` là khung đục `--bg` bo 20px, cách mép 12px, đặt trên nền kính; trên điện thoại chỉ bo hai góc trên, không cách mép. Bên trong khung vẫn phẳng theo các mục trên.
 - Đầu trang: một tiêu đề danh từ + một dòng mô tả (`.page-sub`), **không có hero**. Hành động chính của trang nằm cùng hàng tiêu đề, bên phải.
 - Nội dung chia bằng `.panel` / `section` có tiêu đề `h2` cỡ 16. Không lồng thẻ trong thẻ.
 - **Bảng trước thẻ** cho mọi dữ liệu có cột (sổ vụ án, kho bản án, bút lục, thời hạn): kẻ ngang mảnh, tiêu đề cột 12px xám kiểu câu, không sọc ngựa vằn, hàng hành động căn phải (`.cf-row-act`).
@@ -190,12 +193,12 @@ Học theo dashboard của Scada5 (repo riêng của người dùng, `apps/web/s
 Hiện dùng kính: Tổng quan (`views/dashboard.js`). Có thể mở rộng: trang thẩm tra tổng hợp, màn hình treo tường. Không dùng kính cho Hồ sơ xét xử, Soạn văn bản, Ghi lời khai, bảng dài.
 
 Luật của lớp kính (giữ đúng giá trị của Scada5, không tự chế):
-- Nền: đốm màu `--b0…--b5` làm mờ 20px + màn phủ `--veil-*`. Chủ đề "Giấy" (cát ấm) khi giao diện sáng, "Đêm" khi giao diện tối — token đặt trên `.gx`, đổi theo `data-theme`.
-- Màu: `--c1` ngọc cho đạt / xong, `--c2` đỏ con dấu cho quá hạn / cần xử lý, `--gx-accent` đen cho nút chính và chú giải. Thẻ ngọc (`gc--emerald`) chỉ một thẻ mỗi trang; thẻ đỏ (`gc--red`) chỉ khi có cảnh báo thật.
+- Nền: đốm màu `--b0…--b5` + màn phủ `--veil-*`, vẽ một lần ở `.shell::before/::after` cho cả khung (không `filter: blur` — vệt radial đã mềm, blur toàn màn hình làm chậm máy yếu). Chủ đề "Giấy" (cát ấm) khi giao diện sáng, "Đêm" khi giao diện tối — token đặt trên `.shell`, `.gx` kế thừa.
+- Màu: `--gx-accent` = `--force-red` cho nút chính, cột "sơ thẩm / hồ sơ", nút gửi câu hỏi; `--c1` = `--force-gold` cho cột gạch chéo, thanh tiến độ bình thường; `--c2` đỏ con dấu cho quá hạn / cần xử lý. Thẻ nhấn `gc--force` (đỏ → đỏ sẫm, chữ trắng, biểu tượng trên đĩa vàng, chip ▲ nền trắng chữ đỏ sẫm) chỉ một thẻ mỗi trang; thẻ đỏ cảnh báo (`gc--red`) chỉ khi có cảnh báo thật.
 - Khung: thanh chào kính bo 20px (lời chào, ô hỏi trợ lý có quả cầu, việc quá hạn, nút cơ quan); khung trang bo 30px; lưới 12 cột, thẻ `.gc` bo 18px có viền sáng trên và bóng mềm; khối lồng `.gx-inner` bo 14px; ô nhỏ `.gx-tile`; dock viên thuốc dưới đáy (ẩn trên điện thoại, thanh dưới thay thế).
 - Chữ số: `.gx-big` 26–36px, `.gx-mid` 22–28px, `tabular-nums`; chip `.gx-delta` ▲▼ xanh/đỏ chỉ khi có tháng trước để so, không bịa phần trăm; thiếu dữ liệu ghi "—" và câu hướng dẫn.
 - Chuyển động: thẻ hiện lần lượt 70ms, nội dung mờ → nét, cột mọc, thanh tiến độ chạy, số đếm lên 900ms; tất cả tắt khi `prefers-reduced-motion`. Nhấc thẻ khi rê chuột chỉ cho thẻ bấm được (`gc--link`) và chỉ trên con trỏ chuột.
-- Thanh trên của ứng dụng vẫn còn (tìm kiếm, trợ giúp, tài khoản) nhưng trong suốt, nổi trên nền kính; thanh bên giữ nguyên.
+- Thanh trên của ứng dụng vẫn còn (tìm kiếm, trợ giúp, tài khoản) nhưng trong suốt, nổi trên nền kính; thanh bên là tấm kính cùng chất liệu (xem Layout) nên không còn đường viền phải cắt ngang màn hình.
 
 ## Rà soát theo Apple HIG (apple-design-skill)
 

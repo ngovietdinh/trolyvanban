@@ -131,7 +131,7 @@ function courtBlocks(docs) {
          </div></div>`,
     ),
     quad: [
-      card(2, 'gc--emerald', `${head('Văn bản đã soạn tháng này', '', bubble('file', 'dark'))}<div class="gx-mid">${count(docsM, 'văn bản')}</div>${delta(docsM, docsL, 'văn bản tháng này')}`),
+      card(2, 'gc--force', `${head('Văn bản đã soạn tháng này', '', bubble('file', 'dark'))}<div class="gx-mid">${count(docsM, 'văn bản')}</div>${delta(docsM, docsL, 'văn bản tháng này')}`),
       card(3, '', `${head('Đơn đã nhận', '', bubble('mail', dons ? 'amber' : ''))}<div class="gx-mid">${count(dons, 'đơn')}</div><span class="gx-note">${dons ? 'kháng cáo, khiếu nại trong các vụ án' : 'chưa có đơn nào được nạp'}</span>`),
       card(4, '', `${head('Kho bản án, án lệ', '', bubble('book'))}<div class="gx-mid" data-kho-count>—</div><span class="gx-note" data-kho-note>đang đếm…</span>`),
       card(5, '', `${head('Mẫu Word của đơn vị', '', bubble('clipboard'))}<div class="gx-mid" data-tpl-count>—</div><span class="gx-note" data-tpl-note>đang đếm…</span>`),
@@ -205,7 +205,7 @@ function policeBlocks(docs) {
          </div></div>`,
     ),
     quad: [
-      card(2, 'gc--emerald', `${head('Biên bản lời khai', '', bubble('message', 'dark'))}<div class="gx-mid">${count(recs.length, 'biên bản')}</div>${delta(rm[THIS] || 0, rm[LAST] || 0, 'biên bản tháng này')}`),
+      card(2, 'gc--force', `${head('Biên bản lời khai', '', bubble('message', 'dark'))}<div class="gx-mid">${count(recs.length, 'biên bản')}</div>${delta(rm[THIS] || 0, rm[LAST] || 0, 'biên bản tháng này')}`),
       card(3, '', `${head('Văn bản đã soạn tháng này', '', bubble('file'))}<div class="gx-mid">${count(docsM, 'văn bản')}</div>${delta(docsM, docsL, 'văn bản tháng này')}`),
       card(4, '', `${head('Kho hồ sơ', '', bubble('sparkles'))}<div class="gx-mid" data-kho-count>—</div><span class="gx-note" data-kho-note>đang đếm…</span>`),
       card(5, '', `${head('Kế hoạch hỏi', '', bubble('layers'))}<div class="gx-mid">${count(plans.length, 'kế hoạch')}</div><span class="gx-note">${plans.length ? 'gắn với hồ sơ, biên bản' : 'lập từ Cây hỏi đáp pháp luật'}</span>`),
@@ -257,7 +257,7 @@ function docsBlocks(docs, u, ctx) {
          </div></div>`,
     ),
     quad: [
-      card(2, 'gc--emerald', `${head('Tháng này', '', bubble('file', 'dark'))}<div class="gx-mid">${count(dm[THIS] || 0, 'văn bản')}</div>${delta(dm[THIS] || 0, dm[LAST] || 0, 'văn bản tháng này')}`),
+      card(2, 'gc--force', `${head('Tháng này', '', bubble('file', 'dark'))}<div class="gx-mid">${count(dm[THIS] || 0, 'văn bản')}</div>${delta(dm[THIS] || 0, dm[LAST] || 0, 'văn bản tháng này')}`),
       card(3, '', `${head('Công văn', '', bubble('mail'))}<div class="gx-mid">${count(docs.filter((d) => d.typeId === 'cong-van').length)}</div><a class="gx-note" href="#compose/cong-van">Soạn công văn mới</a>`),
       card(4, '', `${head('Quyết định', '', bubble('gavel'))}<div class="gx-mid">${count(docs.filter((d) => d.typeId === 'quyet-dinh').length)}</div><a class="gx-note" href="#compose/quyet-dinh">Soạn quyết định mới</a>`),
       card(5, '', `${head('Mẫu riêng từ Word', '', bubble('upload'))}<div class="gx-mid" data-tpl-count>—</div><span class="gx-note" data-tpl-note>đang đếm…</span>`),
@@ -342,7 +342,6 @@ export function render(ctx) {
 
   ctx.view.innerHTML = `
   <div class="gx" data-dash>
-    <div class="gx-bg" aria-hidden="true"></div>
     <header class="gx-top hello">
       <div class="gx-me"><span class="gx-avatar">${escapeHtml(initials)}</span><span><h1>${greeting()}${name ? `, ${escapeHtml(name)}` : ''}</h1><small>${todayLong()}${ag ? ` · ${escapeHtml(ag.ten)}` : ''}</small></span></div>
       ${ctx.can('docs') ? `<form class="gx-ask hello-prompt" data-hello><span class="gx-orb" aria-hidden="true"></span><input name="q" placeholder="Hỏi trợ lý: soạn giấy mời họp, quyết định, tính thời hạn…" aria-label="Hỏi trợ lý" autocomplete="off" /><button type="submit" aria-label="Gửi cho trợ lý">${icon('arrow-right', 'ic-sm')}</button></form>` : '<span></span>'}
