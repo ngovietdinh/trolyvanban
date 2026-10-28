@@ -1,8 +1,7 @@
 {
-  "version": "2.44.2",
+  "version": "2.44.3",
   "date": "2026-10-28",
   "notes": [
-    "Bình luận BLHS: tìm trong sách xếp theo mức khớp (tên điều trước, rồi điều luật, rồi bình luận) thay vì theo thứ tự sách nên điều đúng không còn bị đẩy xuống hay rớt khỏi danh sách",
-    "Tìm đủ mọi từ trong cùng một câu, thứ tự tùy ý, không cần dấu; hiện số chỗ khớp của từng điều; tô sáng từ khóa trong trích đoạn và trong bài"
+    "Bình luận BLHS: ô lọc mục lục gõ số thì khớp đúng số điều; chương, phần, mục không có điều khớp được ẩn đi nên điều tìm được nằm ngay trên đầu; báo rõ khi sách không có điều đó; Enter mở điều đầu tiên"
   ]
 }

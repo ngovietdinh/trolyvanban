@@ -186,25 +186,42 @@ export function render(ctx, params = []) {
     }, 350);
     qInput.addEventListener('input', runSearch);
     qInput.addEventListener('keydown', (e) => e.key === 'Enter' && runSearch());
-    // Lọc mục lục.
+    // Lọc mục lục: gõ số → khớp số điều (đúng số hoặc bắt đầu bằng số đó); gõ chữ → khớp tên điều không dấu.
+    // Chương / phần / mục không còn điều nào khớp thì ẩn luôn, để điều tìm được nằm ngay trên đầu.
     const filter = $('[data-bl-filter]', root);
-    filter.addEventListener('input', () => {
-      const f = filter.value
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .replace(/đ/gi, 'd')
-        .toLowerCase()
-        .trim();
+    const applyFilter = () => {
+      const f = foldKeep(filter.value).replace(/\s+/g, ' ').trim();
+      const num = /^(?:dieu\s*)?(\d{1,3}[a-z]?)$/.exec(f);
+      const toks = num ? [] : tokens(filter.value);
+      let shown = 0;
       $$('.bl-toc li', root).forEach((li) => {
-        const t = li.textContent
-          .normalize('NFD')
-          .replace(/[̀-ͯ]/g, '')
-          .replace(/đ/gi, 'd')
-          .toLowerCase();
-        li.hidden = !!f && !t.includes(f);
+        const so = (li.querySelector('[data-so]')?.dataset.so || '').toLowerCase();
+        const t = foldKeep(li.textContent);
+        const ok = !f || (num ? so === num[1] || so.startsWith(num[1]) : toks.every((x) => matchAt(t, x).length));
+        li.hidden = !ok;
+        if (ok) shown++;
       });
-      $$('.bl-toc details', root).forEach((d) => (d.open = !!f || d.contains($('[aria-current]', d))));
+      $$('.bl-toc ul', root).forEach((ul) => {
+        const any = !!ul.querySelector('li:not([hidden])');
+        ul.hidden = !any;
+        const m = ul.previousElementSibling;
+        if (m?.classList.contains('bl-toc-m')) m.hidden = !any;
+      });
+      $$('.bl-toc details', root).forEach((d) => {
+        const any = !!d.querySelector('li:not([hidden])');
+        d.hidden = !!f && !any;
+        d.open = !!f || d.contains($('[aria-current]', d));
+      });
       if (!f) $$('.bl-toc-p', root).forEach((d) => (d.open = d.contains($('[aria-current]', d)) || !$('[aria-current]', root)));
+      const say = $('[data-bl-say]', root);
+      if (say) say.textContent = f && !shown ? (num ? `Sách không có Điều ${num[1]}` : `Không có điều nào có “${filter.value.trim()}” trong tên — thử ô “Tìm trong sách” để tìm cả nội dung`) : '';
+    };
+    filter.addEventListener('input', applyFilter);
+    // Enter: mở điều đầu tiên đang hiện.
+    filter.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const first = $('.bl-toc li:not([hidden]) a[data-so]', root);
+      if (first && filter.value.trim()) ctx.navigate(first.getAttribute('href'));
     });
     // Giữ vị trí cuộn mục lục, đưa điều đang đọc vào tầm nhìn.
     const toc = $('.bl-toc', root);
