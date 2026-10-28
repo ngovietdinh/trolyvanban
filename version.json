@@ -1,9 +1,7 @@
 {
-  "version": "2.47.0",
+  "version": "2.47.1",
   "date": "2026-10-28",
   "notes": [
-    "Án lệ: xuất Word đúng cấu trúc công bố của Hội đồng Thẩm phán TANDTC (một án lệ, danh sách đang lọc, từ hộp xem; tuyển tập ngắt trang từng án lệ; bản quét có ghi chú đối chiếu)",
-    "Thẩm tra: gợi ý án lệ theo nội dung tài liệu vụ án (từ khóa, tình huống), nêu lý do khớp, nạp vào kho tại chỗ; đưa vào báo cáo thẩm tra và lời nhắc AI",
-    "Bộ tách mục án lệ nhận cả bố cục 2016 và việc dân sự; dọn số trang, chú thích, đoạn ngắt trang của bản PDF"
+    "Cập nhật hướng dẫn Tòa án: vụ án giám đốc thẩm, trang Án lệ (90 án lệ, xuất Word đúng cấu trúc), gợi ý án lệ theo nội dung vụ án, kho bản án tải từ đường dẫn, 30 biểu mẫu; thêm ví dụ, lỗi thường gặp, hỏi đáp"
   ]
 }
