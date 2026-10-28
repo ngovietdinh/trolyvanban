@@ -1,9 +1,12 @@
 // Tab "Vụ án" của hồ sơ xét xử: thụ lý, Tòa án, Hội đồng xét xử, cáo trạng / bản án sơ thẩm, mốc tố tụng, người tham gia
 // tố tụng, bảng thời hạn. Trang "Cài đặt Tòa án": thông tin Tòa án (tự điền vào hồ sơ, biểu mẫu) và thời hạn tố tụng.
-import { $, icon, toast, escapeHtml, debounce } from '../ui.js';
+import { $, icon, toast, escapeHtml, debounce, warnMissing } from '../ui.js';
 import { store } from '../lib/store.js';
+import { extractText } from '../lib/extract.js';
+import { dropzoneHtml, bindDropzone } from './acts-review.js';
+import { extractCase, applyExtract, currentValue, sourceTypeOf, detectKind } from '../legal/court-extract.js';
+import { fmtDate, parseIso } from '../legal/court-penalty.js';
 import { LOAI_TOI, DEFAULT_RULES, mergeRules, computeDeadlines, suggestLoaiToi, TRANG_THAI } from '../legal/court-deadlines.js';
-import { fmtDate } from '../legal/court-penalty.js';
 import { DEFAULT_LAWS, LAWS_KEY, mergeLaws } from '../legal/court-law-time.js';
 import { NGUOI_KN, HOI_DONG_GDT, KET_QUA_GDT } from '../legal/court-forms.js';
 
@@ -53,7 +56,22 @@ export function nextDeadline(rec) {
 }
 
 /** Gắn tab "Vụ án" vào host. onChange(): báo cho trang cập nhật phần khác (tên, danh sách bị cáo…). */
-export function mountCasePane(host, { ctx, rec, save, getBook, onChange = () => {} }) {
+const VT_LABEL = Object.fromEntries(VAI_TRO_TG);
+const CAP_LABEL = { 'so-tham': 'Sơ thẩm', 'phuc-tham': 'Phúc thẩm', 'giam-doc-tham': 'Giám đốc thẩm' };
+const fmtVal = (f) => {
+  if (f.type === 'date') return fmtDate(parseIso(f.value)) || f.value;
+  if (f.type === 'check') return f.value ? 'Có' : 'Không';
+  if (f.path === 'cap') return CAP_LABEL[f.value] || f.value;
+  if (f.path === 'khangNghi.nguoi') return NGUOI_KN[f.value] || f.value;
+  return String(f.value ?? '');
+};
+const fmtCur = (f, v) => (v == null || v === '' || v === false ? '' : fmtVal({ ...f, value: v }));
+const defSummary = (d) => [d.namSinh && `sinh năm ${d.namSinh}`, d.noiCuTru && `nơi cư trú: ${d.noiCuTru}`, d.nganChan?.loai === 'tam-giam' ? `tạm giam từ ${fmtDate(parseIso(d.nganChan.tu)) || d.nganChan.tu}` : d.nganChan?.loai && `biện pháp: ${d.nganChan.loai}`, d.tenToi && `tội “${d.tenToi}”`, ...(d.toiDanh || []).filter((t) => t.dieu).map((t) => `${t.diem?.length ? `điểm ${t.diem.join(', ')} ` : ''}${t.khoan ? `khoản ${t.khoan} ` : ''}Điều ${t.dieu}`), d.hinhPhat?.loai === 'tu' && d.hinhPhat.thang && `${d.hinhPhat.thang} tháng tù${d.hinhPhat.anTreo ? ' (án treo)' : ''}`].filter(Boolean).join('; ');
+
+export function mountCasePane(host, { ctx, rec, rec: _r, save, getBook, onChange = () => {}, addSource = null, newDefendant = (x) => ({ hoTen: '', toiDanh: [{ dieu: '', khoan: null, diem: [] }], hinhPhat: {}, ...x }) }) {
+  void _r;
+  // Kết quả bắt thông tin từ tệp (giữ qua các lần vẽ lại), trạng thái tiến độ.
+  const ex = { R: null, say: '', done: '' };
   const org = () => ctx.settings?.().courtOrg || {};
   rec.toa ||= {};
   rec.hdxx ||= {};
@@ -78,6 +96,7 @@ export function mountCasePane(host, { ctx, rec, save, getBook, onChange = () => 
     const sug = suggestLoaiToi(rec.defendants, getBook());
     host.innerHTML = `<div class="ct-case">
       <div class="ct-case-main">
+        ${exHtml()}
         <section class="panel ct-sec"><h2>${icon('folder', 'ic-sm')}Thụ lý</h2>
           <div class="grid-3">
             <div class="field"><label>Cấp xét xử</label><select class="select" data-v="cap"><option value="so-tham" ${st ? 'selected' : ''}>Sơ thẩm</option><option value="phuc-tham" ${pt ? 'selected' : ''}>Phúc thẩm</option><option value="giam-doc-tham" ${gdt ? 'selected' : ''}>Giám đốc thẩm</option></select></div>
@@ -174,6 +193,162 @@ export function mountCasePane(host, { ctx, rec, save, getBook, onChange = () => 
     const box = $('[data-dl-box]', host);
     if (box) box.innerHTML = deadlinesHtml(rec);
   };
+  /* ----- Nhập từ tệp: tự điền hồ sơ ----- */
+  const nSrc = () => (rec.sources || []).filter((s) => s.text).length;
+  function exHtml() {
+    return `<section class="panel ct-sec ct-ex" data-ex><h2>${icon('wand', 'ic-sm')}Nhập từ tệp — tự điền hồ sơ</h2>
+      <p class="hint">Tải cáo trạng, quyết định đưa vụ án ra xét xử, thông báo thụ lý, bản án, kháng cáo, kháng nghị, lệnh tạm giam… Phần mềm đọc và điền số thụ lý, Tòa án, Hội đồng xét xử, cáo trạng, mốc tố tụng, người tham gia tố tụng, bị cáo. Mỗi giá trị kèm câu trích để đối chiếu; chỉ điền ô đang trống, ô đã có giá trị khác thì bỏ chọn sẵn.</p>
+      <div class="grid-2">
+        <div class="field" data-ex-drop>${dropzoneHtml('Word .doc/.docx, PDF (kể cả bản quét), ảnh chụp, .txt — chọn nhiều tệp một lần')}</div>
+        <div class="field"><label for="ct-ex-paste">Hoặc dán nội dung</label><textarea class="textarea" id="ct-ex-paste" rows="3" data-ex-paste placeholder="Dán nội dung quyết định, thông báo, cáo trạng…"></textarea></div>
+      </div>
+      <div class="inline"><button class="btn btn-primary" type="button" data-ex-read>${icon('search', 'ic-sm')}Đọc tệp và bắt thông tin</button><button class="btn" type="button" data-ex-sources ${nSrc() ? '' : 'disabled'}>${icon('layers', 'ic-sm')}Bắt từ ${nSrc()} tài liệu đã nạp</button><span class="hint" data-ex-say aria-live="polite">${escapeHtml(ex.say || ex.done || '')}</span></div>
+      <div data-ex-out>${exTable()}</div>
+    </section>`;
+  }
+  function exTable() {
+    const R = ex.R;
+    if (!R) return '';
+    const n = R.fields.length + R.people.length + R.defendants.length;
+    const docs = R.docs.map((d) => `${d.label} (${d.name})`).join(', ');
+    if (!n) return `<p class="note warn">${icon('info', 'ic-sm')}<span>Đã đọc ${R.docs.length} tài liệu (${escapeHtml(docs)}) nhưng không bắt được thông tin nào. Tài liệu cần có các câu dạng “thụ lý số …/TLST-HS ngày …”, “Số: …/QĐXXST-HS”, “Thẩm phán - Chủ tọa phiên tòa: …”, “Bị cáo: …, sinh năm …”, “Truy tố bị can … theo … Điều …”. Bản quét mờ: đối chiếu chữ đã nhận dạng ở tab Tài liệu &amp; bị cáo.</span></p>`;
+    const groups = [...new Set(R.fields.map((f) => f.group))];
+    const row = (f, i) => {
+      const cur = currentValue(rec, f.path);
+      const curTxt = fmtCur(f, cur);
+      const conflict = curTxt && String(cur) !== String(f.value);
+      const same = curTxt && String(cur) === String(f.value);
+      const ctl =
+        f.type === 'date'
+          ? `<input class="input input-sm" type="date" data-ex-val="${i}" value="${escapeHtml(f.value)}" aria-label="${escapeHtml(f.label)}" />`
+          : f.type === 'area'
+          ? `<textarea class="textarea" rows="2" data-ex-val="${i}" aria-label="${escapeHtml(f.label)}">${escapeHtml(f.value)}</textarea>`
+          : f.type === 'check' || f.type === 'select'
+          ? `<span>${escapeHtml(fmtVal(f))}</span>`
+          : `<input class="input input-sm" data-ex-val="${i}" value="${escapeHtml(f.value)}" aria-label="${escapeHtml(f.label)}" />`;
+      const alts = (f.alts || []).filter((a) => String(a.value) !== String(f.value)).slice(0, 3);
+      return `<tr data-ex-row="${i}" class="${conflict ? 'ct-ex-conflict' : ''}"><td><input type="checkbox" data-ex-pick="${i}" ${conflict || same ? '' : 'checked'} aria-label="Chọn ${escapeHtml(f.label)}" /></td><td>${escapeHtml(f.label)}${f.conf === 'vua' ? '<small>cần kiểm tra</small>' : ''}</td><td>${ctl}${alts.length ? `<small>Hoặc: ${alts.map((a, j) => `<button class="btn-link" type="button" data-ex-alt="${i}:${j}" title="Từ ${escapeHtml(a.src)}">${escapeHtml(fmtVal({ ...f, value: a.value }))}</button>`).join(' · ')}</small>` : ''}</td><td>${curTxt ? `${escapeHtml(curTxt)}${same ? '<small>trùng</small>' : '<small>khác — chọn để thay</small>'}` : '<span class="ct-ex-empty">— trống</span>'}</td><td><small>${escapeHtml(f.src)}</small>${f.quote ? `<small class="ct-ex-q">“${escapeHtml(f.quote)}”</small>` : ''}</td></tr>`;
+    };
+    const pRows = R.people.map((p, i) => {
+      const old = (rec.nguoiThamGia || []).find((x) => x.hoTen && x.hoTen.toLowerCase() === p.hoTen.toLowerCase());
+      return `<tr data-ex-p="${i}"><td><input type="checkbox" data-ex-pick-p="${i}" ${old ? '' : 'checked'} aria-label="Chọn ${escapeHtml(p.hoTen)}" /></td><td>${escapeHtml(VT_LABEL[p.vaiTro] || p.vaiTro)}</td><td>${escapeHtml(p.hoTen)}${p.diaChi ? `<small>${escapeHtml(p.diaChi)}</small>` : ''}</td><td>${old ? `${escapeHtml(old.hoTen)}<small>đã có</small>` : '<span class="ct-ex-empty">— chưa có</span>'}</td><td><small>${escapeHtml(p.src)}</small>${p.quote ? `<small class="ct-ex-q">“${escapeHtml(p.quote)}”</small>` : ''}</td></tr>`;
+    });
+    const dRows = R.defendants.map((d, i) => {
+      const old = (rec.defendants || []).find((x) => x.hoTen && x.hoTen.toLowerCase() === d.hoTen.toLowerCase());
+      return `<tr data-ex-d="${i}"><td><input type="checkbox" data-ex-pick-d="${i}" checked aria-label="Chọn bị cáo ${escapeHtml(d.hoTen)}" /></td><td>Bị cáo</td><td>${escapeHtml(d.hoTen)}<small>${escapeHtml(defSummary(d))}</small></td><td>${old ? `${escapeHtml(old.hoTen)}<small>đã có — bổ sung ô trống</small>` : '<span class="ct-ex-empty">— chưa có</span>'}</td><td><small>${escapeHtml(d.src)}</small>${d.quote ? `<small class="ct-ex-q">“${escapeHtml(d.quote)}”</small>` : ''}</td></tr>`;
+    });
+    return `<p class="ct-ex-sum">Đã đọc ${R.docs.length} tài liệu: ${escapeHtml(docs)} — bắt được <b>${R.fields.length}</b> thông tin${R.defendants.length ? `, <b>${R.defendants.length}</b> bị cáo` : ''}${R.people.length ? `, <b>${R.people.length}</b> người tham gia tố tụng` : ''}. Bỏ chọn mục không đúng, sửa giá trị nếu cần rồi bấm Điền.</p>
+      <div class="ct-ex-wrap"><table class="cf-table ct-ex-table"><thead><tr><th><input type="checkbox" data-ex-all checked aria-label="Chọn tất cả" /></th><th>Thông tin</th><th>Giá trị bắt được</th><th>Hiện có trong hồ sơ</th><th>Trích từ</th></tr></thead><tbody>
+      ${groups.map((g) => `<tr class="cf-cap"><th colspan="5">${escapeHtml(g)}</th></tr>${R.fields.map((f, i) => (f.group === g ? row(f, i) : '')).join('')}`).join('')}
+      ${dRows.length ? `<tr class="cf-cap"><th colspan="5">Bị cáo</th></tr>${dRows.join('')}` : ''}
+      ${pRows.length ? `<tr class="cf-cap"><th colspan="5">Người tham gia tố tụng</th></tr>${pRows.join('')}` : ''}
+      </tbody></table></div>
+      <div class="inline"><button class="btn btn-primary" type="button" data-ex-apply>${icon('check', 'ic-sm')}Điền vào hồ sơ</button><label class="check"><input type="checkbox" data-ex-over />Ghi đè ô đã có giá trị khác</label><button class="btn btn-ghost" type="button" data-ex-clear>Bỏ kết quả</button></div>`;
+  }
+  const exSay = (t) => {
+    ex.say = t;
+    const el = $('[data-ex-say]', host);
+    if (el) el.textContent = t || ex.done || '';
+  };
+  const exRun = (docs) => {
+    ex.R = extractCase(docs);
+    ex.done = '';
+    const out = $('[data-ex-out]', host);
+    if (out) out.innerHTML = exTable();
+  };
+  let exFiles = [];
+  function bindEx() {
+    const box = $('[data-ex-drop]', host);
+    if (box) bindDropzone(box, (files) => (exFiles = files));
+  }
+  host.addEventListener('click', async (e) => {
+    const b = e.target.closest('button');
+    if (!b || !b.closest('[data-ex]')) return;
+    if (b.matches('[data-ex-read]')) {
+      const ta = $('[data-ex-paste]', host);
+      const docs = [];
+      if (!exFiles.length && !ta.value.trim()) return warnMissing('Chưa có tài liệu: chọn tệp hoặc dán nội dung vào ô bên cạnh', ta);
+      b.disabled = true;
+      try {
+        for (const f of [...exFiles]) {
+          try {
+            exSay(`Đang đọc “${f.name}”…`);
+            const r = await extractText(f, { onProgress: (p) => exSay(`Nhận dạng chữ “${f.name}” — trang ${p.page}/${p.total}`) });
+            docs.push({ name: f.name, text: r.text });
+            // Lưu vào danh sách tài liệu của hồ sơ (dùng cho thẩm tra, chứng cứ) với đúng loại.
+            if (addSource) addSource(f.name, r.text, { loai: sourceTypeOf(detectKind(f.name, r.text)), ...(r.pageTexts?.length > 1 && { pages: r.pageTexts }), ...(r.ocr && r.confidence != null && { ocrConf: r.confidence > 1 ? r.confidence / 100 : r.confidence }) });
+          } catch (err) {
+            toast(err.message, { type: 'error', timeout: 6000 });
+          }
+        }
+        if (ta.value.trim()) {
+          const name = `Nội dung dán ${(rec.sources || []).filter((s) => /^Nội dung dán/.test(s.name)).length + 1}`;
+          docs.push({ name, text: ta.value });
+          if (addSource) addSource(name, ta.value);
+          ta.value = '';
+        }
+        exFiles.splice(0);
+        const fl = $('[data-ex-drop] [data-files]', host);
+        if (fl) fl.innerHTML = '';
+        exSay('');
+        if (docs.length) exRun(docs);
+      } finally {
+        b.disabled = false;
+      }
+      return;
+    }
+    if (b.matches('[data-ex-sources]')) {
+      const docs = (rec.sources || []).filter((s) => s.text).map((s) => ({ name: s.name, text: s.text }));
+      if (!docs.length) return warnMissing('Chưa có tài liệu đã nạp: tải ở tab Tài liệu & bị cáo hoặc chọn tệp ở trên');
+      exRun(docs);
+      return;
+    }
+    if (b.dataset.exAlt) {
+      const [i, j] = b.dataset.exAlt.split(':').map(Number);
+      const f = ex.R.fields[i];
+      const alt = (f.alts || []).filter((a) => String(a.value) !== String(f.value))[j];
+      if (!alt) return;
+      ex.R.fields[i] = { ...alt, alts: [...f.alts.filter((a) => a !== alt), { ...f, alts: [] }] };
+      $('[data-ex-out]', host).innerHTML = exTable();
+      return;
+    }
+    if (b.matches('[data-ex-clear]')) {
+      ex.R = null;
+      ex.done = '';
+      $('[data-ex-out]', host).innerHTML = '';
+      exSay('');
+      return;
+    }
+    if (b.matches('[data-ex-apply]')) {
+      const R = ex.R;
+      const picked = {
+        fields: R.fields.filter((f, i) => $(`[data-ex-pick="${i}"]`, host)?.checked),
+        people: R.people.filter((p, i) => $(`[data-ex-pick-p="${i}"]`, host)?.checked),
+        defendants: R.defendants.filter((d, i) => $(`[data-ex-pick-d="${i}"]`, host)?.checked),
+      };
+      const total = picked.fields.length + picked.people.length + picked.defendants.length;
+      if (!total) return warnMissing('Chưa chọn mục nào để điền');
+      const overwrite = !!$('[data-ex-over]', host)?.checked;
+      const res = applyExtract(rec, picked, { overwrite, newDefendant });
+      // Ô lệch giá trị mà người dùng không chọn cũng tính là bỏ qua, để biết còn gì chưa điền.
+      const skipped = res.skipped + R.fields.filter((f, i) => !$(`[data-ex-pick="${i}"]`, host)?.checked && $(`[data-ex-row="${i}"]`, host)?.classList.contains('ct-ex-conflict')).length;
+      ex.R = null;
+      ex.done = `Đã điền ${res.filled} mục từ tài liệu${skipped ? ` — bỏ qua ${skipped} ô đã có giá trị khác (chọn dòng đó hoặc đánh dấu “Ghi đè” để thay)` : ''}.`;
+      save();
+      draw();
+      bindEx();
+      onChange();
+      toast(ex.done, { timeout: 6000 });
+    }
+  });
+  host.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.dataset.exVal != null && ex.R) ex.R.fields[+t.dataset.exVal].value = t.value;
+  });
+  host.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.matches('[data-ex-all]')) for (const c of host.querySelectorAll('[data-ex-pick], [data-ex-pick-p], [data-ex-pick-d]')) c.checked = t.checked;
+  });
   const commit = debounce(() => {
     save();
     refreshDl();
@@ -192,6 +367,7 @@ export function mountCasePane(host, { ctx, rec, save, getBook, onChange = () => 
       set(rec, t.dataset.v, t.type === 'checkbox' ? t.checked : t.value);
       save();
       draw();
+      bindEx();
       onChange();
     }
   });
@@ -204,10 +380,15 @@ export function mountCasePane(host, { ctx, rec, save, getBook, onChange = () => 
     else return;
     save();
     draw();
+    bindEx();
     onChange();
   });
-  draw();
-  return { refresh: draw, refreshDl };
+  const drawAll = () => {
+    draw();
+    bindEx();
+  };
+  drawAll();
+  return { refresh: drawAll, refreshDl };
 }
 
 /** Trang "Cài đặt Tòa án": thông tin Tòa án của tài khoản, thời hạn tố tụng (sửa được). */

@@ -382,7 +382,7 @@ export function render(ctx, params = []) {
     const inOut = ['phan-tich', 'kiem-tra', 'khieu-nai', 'tham-tra', 'chung-cu', 'tuong-tu'].includes(tab);
     out.hidden = !inOut;
     $('[data-ct-book]', root).hidden = !!book || !['kiem-tra', 'hinh-phat', 'tai-lieu'].includes(tab);
-    if (tab === 'vu-an') panes['vu-an'] ? panes['vu-an'].refresh() : (panes['vu-an'] = mountCasePane($('[data-pane="vu-an"]', root), { ctx, rec, save, getBook: () => book, onChange: onCaseChange }));
+    if (tab === 'vu-an') panes['vu-an'] ? panes['vu-an'].refresh() : (panes['vu-an'] = mountCasePane($('[data-pane="vu-an"]', root), { ctx, rec, save, getBook: () => book, onChange: onCaseChange, addSource, newDefendant }));
     else if (tab === 'hinh-phat') panes['hinh-phat'] ? panes['hinh-phat'].refresh() : (panes['hinh-phat'] = mountPenaltyPane($('[data-pane="hinh-phat"]', root), { rec, save, getBook: () => book }));
     else if (tab === 'bieu-mau') panes['bieu-mau'] ? panes['bieu-mau'].refresh() : (panes['bieu-mau'] = mountFormsPane($('[data-pane="bieu-mau"]', root), { ctx, rec, save }));
     if (!inOut) return;
@@ -394,6 +394,11 @@ export function render(ctx, params = []) {
   let lastCap = rec.cap;
   function onCaseChange() {
     $('[data-ct-cap]', root).textContent = CAP[rec.cap] || '';
+    // Bộ nhập từ tệp có thể đổi tên hồ sơ, bị cáo, người tham gia → cập nhật phần ngoài tab Vụ án.
+    const nameEl = $('[data-ct-name]', root);
+    if (nameEl && nameEl.value !== (rec.ten || '')) nameEl.value = rec.ten || '';
+    drawDefs();
+    // Không gọi update() ở đây: update() vẽ lại cả tab Vụ án (mất ô đang gõ); các tab khác tự vẽ khi mở.
     if (rec.cap === lastCap || !panes['bieu-mau']) return (lastCap = rec.cap);
     lastCap = rec.cap;
     const fresh = document.createElement('div');
