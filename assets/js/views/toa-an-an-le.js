@@ -2,9 +2,11 @@
 // lệ anle.toaan.gov.vn): lọc theo lĩnh vực / từ khóa / điều luật, xem tình huống – giải pháp pháp lý – quy định liên quan –
 // toàn văn, nạp từng án lệ hoặc tất cả vào kho của tài khoản (để thẩm tra đối chiếu, xuất báo cáo). Vẫn nạp được tệp /
 // văn bản dán của người dùng cho án lệ mới chưa có trong gói.
-import { $, $$, icon, toast, escapeHtml, warnMissing, copyText } from '../ui.js';
+import { $, $$, icon, toast, escapeHtml, warnMissing, copyText, downloadBlob } from '../ui.js';
 import { AN_LE, LINH_VUC, AN_LE_PORTAL, withKho, findAnLe } from '../legal/an-le-catalog.js';
-import { loadAnLeData, khoDocFromData } from '../legal/an-le-data.js';
+import { loadAnLeData, khoDocFromData, anLeDoc, anLeDocMany } from '../legal/an-le-data.js';
+import { buildDocx, safeFileName } from '../lib/docx.js';
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 import { courtBaDb } from '../legal/court-ba-db.js';
 import { parseKhoDoc } from '../legal/court-similar.js';
 import { readAll } from './acts-review.js';
@@ -17,7 +19,7 @@ const hasAll = (text, toks) => {
 const cap1 = (s) => (s ? s[0].toUpperCase() + s.slice(1) : '');
 const para = (s) =>
   String(s || '')
-    .split(/\n{2,}|\n(?=\s*[-–•])/)
+    .split(/\n+/)
     .map((x) => x.trim())
     .filter(Boolean)
     .map((x) => `<p>${escapeHtml(x).replace(/\n/g, ' ')}</p>`)
@@ -34,7 +36,7 @@ export async function renderAnLe(ctx, params = []) {
   root.innerHTML = `<div class="page ct-page" data-al>
     <a class="rd-back" href="#toa-an">${icon('chevron-left', 'ic-sm')}Tòa án</a>
     <div class="page-head"><div><h1 class="page-title">Án lệ</h1><p class="page-sub">${AN_LE.length} án lệ do Hội đồng Thẩm phán Tòa án nhân dân tối cao thông qua (01/2016/AL → ${AN_LE.at(-1).so}), ${coToanVan} án lệ có toàn văn kèm phần mềm lấy từ Cổng án lệ của Tòa án; ${AN_LE.filter((a) => a.linhVuc === 'hs').length} án lệ hình sự ghi điều luật liên quan. Nạp vào kho để tab Bản án tương tự đối chiếu theo điều luật và đưa vào báo cáo thẩm tra.</p></div>
-      <div class="inline"><button class="btn btn-primary" type="button" data-al-add-all>${icon('download', 'ic-sm')}Nạp tất cả vào kho</button><a class="btn btn-ghost" href="${AN_LE_PORTAL}" target="_blank" rel="noopener">${icon('link', 'ic-sm')}Cổng án lệ TANDTC</a><a class="btn btn-ghost" href="#toa-an/kho-ban-an">${icon('book', 'ic-sm')}Kho bản án, án lệ</a></div></div>
+      <div class="inline"><button class="btn btn-primary" type="button" data-al-add-all>${icon('download', 'ic-sm')}Nạp tất cả vào kho</button><button class="btn" type="button" data-al-word-all title="Xuất các án lệ đang hiện trong danh sách thành một tệp Word, mỗi án lệ một phần">${icon('file', 'ic-sm')}Xuất Word danh sách</button><a class="btn btn-ghost" href="${AN_LE_PORTAL}" target="_blank" rel="noopener">${icon('link', 'ic-sm')}Cổng án lệ TANDTC</a><a class="btn btn-ghost" href="#toa-an/kho-ban-an">${icon('book', 'ic-sm')}Kho bản án, án lệ</a></div></div>
     <section class="panel ct-sec">
       <div class="inline al-filters">
         <select class="select input-sm" data-al-lv aria-label="Lĩnh vực"><option value="">Tất cả lĩnh vực</option>${Object.entries(LINH_VUC).map(([k, v]) => `<option value="${k}" ${k === filter.linhVuc ? 'selected' : ''}>${v}</option>`).join('')}</select>
@@ -58,6 +60,7 @@ export async function renderAnLe(ctx, params = []) {
       const d = data.get(a.so);
       return a.num === num || a.dieu.includes(q) || hasAll(`${a.so} ${a.ten} ${LINH_VUC[a.linhVuc]} ${a.dieu.map((x) => `dieu ${x}`).join(' ')} ${d?.tuKhoa || ''} ${d?.tinhHuong || ''} ${d?.giaiPhap || ''} ${d?.khaiQuat || ''}`, toks);
     });
+    shown = list;
     const co = all.filter((a) => a.doc).length;
     $('[data-al-count]', page()).textContent = `${list.length}/${all.length} án lệ · ${co} đã nạp vào kho`;
     $('[data-al-list]', page()).innerHTML = list.length
@@ -66,7 +69,7 @@ export async function renderAnLe(ctx, params = []) {
             const d = data.get(a.so);
             return `<tr data-al-row="${a.so}"><td class="al-so"><b>${escapeHtml(a.so)}</b></td><td>${escapeHtml(cap1(a.tenNgan))}${a.dieu.length ? `<small>Điều luật liên quan: ${a.dieu.map((x) => `<a href="#binh-luan/${x}" class="law-link">Điều ${x}</a>`).join(', ')} BLHS</small>` : ''}<small>Thông qua ${escapeHtml(a.thongQua || '—')} · Quyết định ${escapeHtml(a.qdCongBo || '—')} ngày ${escapeHtml(a.ngayCongBo || '—')}</small></td><td><span class="badge">${LINH_VUC[a.linhVuc]}</span></td><td class="num-r">${escapeHtml(a.apDung || '—')}</td><td>${
               a.doc ? `<span class="badge badge-success">Trong kho</span>` : d?.text ? `<span class="badge">Kèm phần mềm</span>` : `<span class="badge">Chưa có</span>`
-            }</td><td class="cf-row-act">${d?.text || a.doc ? `<button class="btn btn-sm btn-ghost btn-icon" type="button" data-al-view="${a.so}" aria-label="Xem án lệ ${escapeHtml(a.so)}" title="Xem">${icon('eye', 'ic-sm')}</button>` : ''}${
+            }</td><td class="cf-row-act">${d?.text || a.doc ? `<button class="btn btn-sm btn-ghost btn-icon" type="button" data-al-view="${a.so}" aria-label="Xem án lệ ${escapeHtml(a.so)}" title="Xem">${icon('eye', 'ic-sm')}</button>` : ''}${d?.text ? `<button class="btn btn-sm btn-ghost btn-icon" type="button" data-al-word="${a.so}" aria-label="Xuất Word án lệ ${escapeHtml(a.so)}" title="Xuất Word">${icon('file', 'ic-sm')}</button>` : ''}${
               a.doc ? '' : d?.text ? `<button class="btn btn-sm" type="button" data-al-add="${a.so}">${icon('download', 'ic-sm')}Nạp vào kho</button>` : `<button class="btn btn-sm" type="button" data-al-upload="${a.so}">${icon('upload', 'ic-sm')}Nạp toàn văn</button>`
             }</td></tr>`;
           })
@@ -99,7 +102,7 @@ export async function renderAnLe(ctx, params = []) {
         ${sec('Quy định của pháp luật liên quan', d?.quyDinh)}${sec('Từ khóa', d?.tuKhoa)}
         ${text ? `<details class="al-full"><summary>Toàn văn án lệ</summary><pre class="kho-text">${escapeHtml(text)}</pre></details>` : ''}
       </div>
-      <div class="modal-actions">${d?.url ? `<a class="btn btn-ghost" href="${escapeHtml(d.url)}" target="_blank" rel="noopener">${icon('link', 'ic-sm')}Trên Cổng án lệ</a>` : ''}${!doc && d?.text ? `<button class="btn" type="button" data-al-add="${a.so}" data-close>${icon('download', 'ic-sm')}Nạp vào kho</button>` : ''}<button class="btn btn-primary" type="button" data-close>Đóng</button></div>`,
+      <div class="modal-actions">${d?.url ? `<a class="btn btn-ghost" href="${escapeHtml(d.url)}" target="_blank" rel="noopener">${icon('link', 'ic-sm')}Trên Cổng án lệ</a>` : ''}${d?.text ? `<button class="btn" type="button" data-al-word="${a.so}">${icon('file', 'ic-sm')}Xuất Word</button>` : ''}${!doc && d?.text ? `<button class="btn" type="button" data-al-add="${a.so}" data-close>${icon('download', 'ic-sm')}Nạp vào kho</button>` : ''}<button class="btn btn-primary" type="button" data-close>Đóng</button></div>`,
       { className: 'modal-wide', label: `Án lệ ${a.so}` },
     );
   }
@@ -166,7 +169,19 @@ export async function renderAnLe(ctx, params = []) {
       drawList();
     } else if (e.target.matches('[data-al-thieu]')) (filter.thieu = e.target.checked), drawList();
   });
+  const exportWord = (list) => {
+    const items = list.map((a) => ({ ...data.get(a.so), ten: a.tenNgan ? cap1(a.tenNgan) : data.get(a.so)?.ten })).filter((x) => x?.text);
+    if (!items.length) return toast('Chưa có toàn văn để xuất', { type: 'error' });
+    const doc = items.length === 1 ? anLeDoc(items[0]) : anLeDocMany(items);
+    downloadBlob(buildDocx(doc, doc.title.name), safeFileName(items.length === 1 ? `An-le-${items[0].so.replace(/\//g, '-')}` : `Tuyen-tap-${items.length}-an-le`), DOCX_MIME);
+    toast(items.length === 1 ? `Đã xuất Án lệ ${items[0].so} (.docx) đúng cấu trúc: nguồn, vị trí, tình huống, giải pháp, quy định, từ khóa, nội dung vụ án, nhận định, quyết định, nội dung án lệ` : `Đã xuất ${items.length} án lệ vào một tệp Word`, { timeout: 6000 });
+  };
+  let shown = [];
   pg.addEventListener('click', async (e) => {
+    const word = e.target.closest('[data-al-word]');
+    const wordAll = e.target.closest('[data-al-word-all]');
+    if (word) return exportWord([findAnLe(word.dataset.alWord)]);
+    if (wordAll) return exportWord(shown);
     const add = e.target.closest('[data-al-add]');
     const up = e.target.closest('[data-al-upload]');
     const view = e.target.closest('[data-al-view]');
@@ -193,6 +208,8 @@ export async function renderAnLe(ctx, params = []) {
     if (!root.isConnected) return document.removeEventListener('click', onDoc);
     const b = e.target.closest('.modal [data-al-add]');
     if (b) await addFromData([findAnLe(b.dataset.alAdd)]);
+    const w = e.target.closest('.modal [data-al-word]');
+    if (w) exportWord([findAnLe(w.dataset.alWord)]);
   });
   $$('[data-al-q]', pg).forEach((i) => i.focus());
   drawList();

@@ -4,6 +4,7 @@
 // Kiểm soát kết luận: phần mềm KHÔNG xác định một người có tội hay ban hành quyết định tư pháp — chỉ tổng hợp căn cứ (trích
 // tài liệu kèm bút lục, nguyên văn điều luật) để Thẩm tra viên kiểm chứng; quyết định thuộc người có thẩm quyền.
 // Chống suy diễn: thiếu hồ sơ thì kết luận "Thiếu hồ sơ"; không tạo lời khai, chứng cứ, bút lục, bản án, điều luật.
+import { suggestAnLe } from './an-le-data.js';
 import { findCrime } from './engine.js';
 import { checkDefendant, assessComplaint, KET_LUAN, LOAI_DON, fmtMonths, fmtVnd } from './court.js';
 import { reviewEvidence, elementMatrix, evidenceRows, typeLabel, srcRange } from './court-evidence.js';
@@ -20,7 +21,7 @@ const worst = (list) => (list.includes('do') ? 'do' : list.includes('xam') ? 'xa
 const fromF = (f, muc) => ({ muc, text: [f.title, f.detail].filter(Boolean).join('. '), law: f.law || [], facts: f.facts || [] });
 
 /** Toàn bộ kết quả thẩm tra của hồ sơ. ctx: { book, laws, docs (kho bản án / án lệ) }. */
-export function thamTra(rec = {}, { book = null, laws = DEFAULT_LAWS, docs = [] } = {}) {
+export function thamTra(rec = {}, { book = null, laws = DEFAULT_LAWS, docs = [], anLe = null } = {}) {
   const sources = rec.sources || [];
   const defs = (rec.defendants || []).filter((d) => d.hoTen || d.toiDanh?.[0]?.dieu);
   const ev = reviewEvidence(rec, { book });
@@ -75,7 +76,10 @@ export function thamTra(rec = {}, { book = null, laws = DEFAULT_LAWS, docs = [] 
   qs.push({ id: 'q5', hoi: 'Có căn cứ đề xuất kháng nghị giám đốc thẩm, tái thẩm, hủy án, sửa án hoặc giữ nguyên bản án không?', items: [{ muc: deXuat.muc, text: `${deXuat.ten}.` }, ...deXuat.lyDo], muc: deXuat.muc });
   const dieus = [...new Set(defs.map((d) => d.toiDanh?.[0]?.dieu).filter(Boolean))];
   const similar = defs.map((d) => ({ d, ...findSimilar(d, docs) }));
-  return { qs, deXuat, ev, checks, ages, notes, dons, similar, anLe: relatedPrecedents(dieus, docs) };
+  // Án lệ gợi ý theo NỘI DUNG vụ án (từ khóa, tình huống án lệ khớp với tài liệu đã nạp) — dữ liệu kèm phần mềm.
+  const caseText = [...(rec.sources || []).map((s) => s.text || ''), ...defs.flatMap((d) => (d.toiDanh || []).map((t) => t.ten || ''))].join('\n');
+  const anLeGoiY = anLe ? suggestAnLe(caseText, anLe, { limit: 5 }) : [];
+  return { qs, deXuat, ev, checks, ages, notes, dons, similar, anLe: relatedPrecedents(dieus, docs), anLeGoiY };
 }
 
 /** Đề xuất phương án theo loại thẩm tra. */
@@ -153,8 +157,8 @@ const itemParas = (it) => [
 const hpText = (hp = {}) => hinhPhatNgan(hp);
 
 /** Báo cáo thẩm tra tổng hợp 8 mục (doc model). */
-export function buildThamTraReport(rec, { book = null, laws = DEFAULT_LAWS, docs = [], org = {}, nguoi = '' } = {}) {
-  const R = thamTra(rec, { book, laws, docs });
+export function buildThamTraReport(rec, { book = null, laws = DEFAULT_LAWS, docs = [], org = {}, nguoi = '', anLe = null } = {}) {
+  const R = thamTra(rec, { book, laws, docs, anLe });
   const defs = (rec.defendants || []).filter((d) => d.hoTen);
   const body = [];
   body.push(P([run('Kết quả dưới đây do Thẩm tra viên kiểm chứng; phần mềm chỉ tổng hợp căn cứ từ tài liệu đã nạp (trích dẫn kèm bút lục) và nguyên văn điều luật — không thay thế kết luận của người có thẩm quyền.', { italic: true })], { indent: false }));
@@ -200,6 +204,7 @@ export function buildThamTraReport(rec, { book = null, laws = DEFAULT_LAWS, docs
   for (const n of R.notes) body.push(P(`- ${n.text}`));
   if (R.anLe.length) for (const a of R.anLe) body.push(P(`- Án lệ ${a.so || ''} ${a.ten ? `(${a.ten})` : ''}: ${a.khaiQuat || a.giaiPhap || 'xem nguyên văn án lệ'}`));
   else body.push(P('- Kho án lệ của người dùng chưa có án lệ liên quan đến điều luật đang xét.'));
+  for (const g of R.anLeGoiY || []) body.push(P(`- Án lệ ${g.a.so} (${g.a.ten}) — gợi ý theo nội dung vụ án${g.why.length ? `, khớp từ khóa: ${g.why.map((w) => `“${w}”`).join(', ')}` : ''}: ${g.a.giaiPhap || g.a.khaiQuat || g.a.tinhHuong || 'xem toàn văn'}`));
   for (const s of R.similar) {
     if (!s.stats) {
       body.push(P(`- ${s.d.hoTen || 'Bị cáo'}: kho bản án chưa có bản án tương tự (cùng điều luật).`));

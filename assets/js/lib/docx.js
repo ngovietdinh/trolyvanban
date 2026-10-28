@@ -245,6 +245,7 @@ const HEADER_PAGE = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w
 
 export function buildDocumentXml(doc) {
   if (doc.layout === 'form') return buildFormXml(doc);
+  if (doc.layout === 'plain') return buildPlainXml(doc);
   const h = doc.header;
   const out = [];
 
@@ -308,6 +309,26 @@ export function buildDocumentXml(doc) {
     }
   }
 
+  const sect = `<w:sectPr><w:pgSz w:w="${PAGE.w}" w:h="${PAGE.h}"/><w:pgMar w:top="${PAGE.top}" w:right="${PAGE.right}" w:bottom="${PAGE.bottom}" w:left="${PAGE.left}" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${out.join('')}${sect}</w:body></w:document>`;
+}
+
+/** Văn bản không có phần đầu công văn (án lệ, tài liệu tham khảo): tiêu đề giữa trang rồi các đoạn / tiêu đề mục. */
+function buildPlainXml(doc) {
+  const out = [];
+  for (const [i, t] of (doc.titles || [doc.title?.name, doc.title?.subject]).filter(Boolean).entries()) out.push(p(r(t, { bold: true, size: i ? 28 : 30 }), { align: 'center', before: i ? 0 : 240, after: i ? 240 : 60, line: 276 }));
+  for (const para of doc.body) {
+    if (para.table) {
+      out.push(dataTable(para.table));
+      continue;
+    }
+    if (para.pageBreak) {
+      out.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+      continue;
+    }
+    const align = { justify: 'both', center: 'center', left: 'left', right: 'right' }[para.align || 'justify'];
+    out.push(p(para.runs.map((x) => r(x.text, { bold: x.bold, italic: x.italic, size: para.size || 28 })), { align, indent: para.indent ? 567 : 0, before: para.spaceBefore ? 160 : 0, after: 100, line: 300 }));
+  }
   const sect = `<w:sectPr><w:pgSz w:w="${PAGE.w}" w:h="${PAGE.h}"/><w:pgMar w:top="${PAGE.top}" w:right="${PAGE.right}" w:bottom="${PAGE.bottom}" w:left="${PAGE.left}" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr>`;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${out.join('')}${sect}</w:body></w:document>`;
 }

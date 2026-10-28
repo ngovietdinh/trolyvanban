@@ -33,7 +33,7 @@ test('gói án lệ: 90 bản ghi, số duy nhất và trùng danh mục, toàn 
   assert.match(a47.tinhHuong, /hung khí nguy hiểm/);
   assert.match(a47.giaiPhap, /Giết người/);
   assert.match(a47.tuKhoa, /Dùng dao đâm/);
-  assert.deepEqual(a47.dieu, ['123', '134']);
+  assert.deepEqual(a47.dieu, ['123', '134', '15'], 'Điều 123, 134 (biên tập) + Điều 15 BLHS 2015 (phạm tội chưa đạt) đọc từ mục quy định pháp luật');
 });
 
 test('danh mục sinh từ cổng: tên, ngày, quyết định công bố; điều luật liên quan; dựng bản ghi kho từ gói', () => {

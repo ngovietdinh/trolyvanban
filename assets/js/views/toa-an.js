@@ -593,7 +593,7 @@ export function render(ctx, params = []) {
       }),
     );
     const out = $('[data-ct-out]', root);
-    bindThamTra(out, { ctx, getRec: () => rec, getCtx: () => ({ book, laws: laws(), docs: khoDocs }), save, update });
+    bindThamTra(out, { ctx, getRec: () => rec, getCtx: () => ({ book, laws: laws(), docs: khoDocs, anLe: anLeData }), save, update });
     out.addEventListener('click', (e) => {
       if (e.target.closest('[data-don-export]')) {
         const doc = reviewDoc();
@@ -631,7 +631,7 @@ export function render(ctx, params = []) {
     let system;
     let content;
     if (kind === 'tham-tra') {
-      ({ system, content } = thamTraAiPrompt({ rec, book, laws: laws(), docs: khoDocs }));
+      ({ system, content } = thamTraAiPrompt({ rec, book, laws: laws(), docs: khoDocs, anLe: anLeData }));
     } else if (don) {
       const r = assess(don);
       const sum = r.items.map((it) => `- ${it.label}: ${KET_LUAN[it.kl]}`).join('\n');
@@ -673,10 +673,16 @@ export function render(ctx, params = []) {
   drawDefs();
   bind();
   update();
-  courtBaDb.list().then((d) => {
-    khoDocs = d;
-    if (root.isConnected && ['tuong-tu', 'tham-tra'].includes(tab)) update();
-  }).catch(() => {});
+  const loadKho = () =>
+    courtBaDb.list().then((d) => {
+      khoDocs = d;
+      if (root.isConnected && ['tuong-tu', 'tham-tra'].includes(tab)) update();
+    });
+  document.addEventListener('kho-changed', function onKho() {
+    if (!root.isConnected) return document.removeEventListener('kho-changed', onKho);
+    loadKho();
+  });
+  loadKho().catch(() => {});
   loadBook().then((b) => {
     book = b;
     if (!root.isConnected) return;

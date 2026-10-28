@@ -1,15 +1,27 @@
 import json,re,os,unicodedata
 M=json.loads(unicodedata.normalize('NFC',open('meta.json',encoding='utf-8').read())); meta=M['meta']; idfor=M['idfor']
 LV={'Hình sự':'hs','Dân sự':'ds','Hôn nhân và gia đình':'hngd','Hôn nhân gia đình':'hngd','Kinh doanh thương mại':'kdtm','Kinh doanh, thương mại':'kdtm','Lao động':'ld','Hành chính':'hc'}
-def norm(t):
-    t=unicodedata.normalize('NFC',t)
-    t=t.replace('﻿','').replace('\r','')
-    t=re.sub(r'[ \t ]+',' ',t)
-    t=re.sub(r' *\n *','\n',t)
-    t=re.sub(r'\n{3,}','\n\n',t)
-    # bỏ số chú thích dính sau số án lệ: "75/2025/AL1"
+def norm(t,word=False):
+    """Chuẩn hóa thành từng ĐOẠN trên một dòng: pdftotext -layout thụt đầu dòng ở đoạn mới, dòng nối tiếp sát lề;
+    Word/OCR mỗi dòng đã là một đoạn hoặc dòng gãy (nối khi dòng trước chưa kết câu và dòng sau viết thường)."""
+    t=unicodedata.normalize('NFC',t).replace('\ufeff','').replace('\r','').replace('\u00a0',' ')
     t=re.sub(r'(\d{1,3}/\d{4}/AL)1\b',r'\1',t,count=1)
-    return t.strip()
+    t=re.sub(r'\f','\n',t)
+    lines=t.split('\n')
+    if word:
+        return '\n'.join(re.sub(r'[ \t]+',' ',l.strip()) for l in lines if l.strip()).strip()
+    paras=[]
+    for ln in lines:
+        s=ln.rstrip()
+        if not s.strip():
+            paras.append(None); continue
+        indent=len(s)-len(s.lstrip(' '))
+        body=re.sub(r'[ \t]+',' ',s.strip())
+        start = indent>=3 or not paras or paras[-1] is None or re.match(r'^(-|–|•|\d+\.|[a-zđ]\))\s',body) or (paras[-1] and re.search(r'[.:;!?”)]$',paras[-1]) and re.match(r'^[A-ZĐÀ-Ỹ“(\d]',body)) or re.match(r'^(NỘI DUNG|NHẬN ĐỊNH|QUYẾT ĐỊNH|Nguồn án lệ|Vị trí nội dung|Khái quát nội dung|Quy định của pháp luật|Từ kh)',body)
+        if start or paras[-1] is None: paras.append(body)
+        else: paras[-1]=paras[-1]+' '+body
+    out=[p for p in paras if p]
+    return '\n'.join(out).strip()
 HEADS=[('nguon',r'Nguồn án lệ'),('viTri',r'Vị trí nội dung (?:của )?án lệ'),('khaiQuat',r'Khái quát nội dung (?:của )?án lệ'),('tinhHuong',r'-?\s*Tình huống án lệ'),('giaiPhap',r'-?\s*Giải pháp pháp lý'),('quyDinh',r'Quy định của pháp luật liên quan đến án lệ'),('tuKhoa',r'Từ kh(?:óa|oá) của án lệ'),('noiDung',r'NỘI DUNG VỤ ÁN'),('nhanDinh',r'NHẬN ĐỊNH CỦA (?:TÒA ÁN|HỘI ĐỒNG[^\n:]*)'),('quyetDinh',r'QUYẾT ĐỊNH')]
 def sections(t):
     # vị trí từng tiêu đề (lần đầu, theo thứ tự xuất hiện sau tiêu đề trước)
@@ -42,7 +54,8 @@ def dieu_blhs(q):
 OCR=set(json.load(open('ocr-list.json'))) if os.path.exists('ocr-list.json') else set()
 data=[]
 for so,d in sorted(idfor.items(), key=lambda x:int(x[0].split('/')[0])):
-    m=meta[d]; t=norm(open(f'txt/{d}.txt',encoding='utf-8',errors='ignore').read())
+    m=meta[d]; word=os.path.exists(f'raw/office/{d}.docx') or os.path.exists(f'raw/office/{d}.doc') or os.path.exists(f'raw/docx/{d}.docx')
+    t=norm(open(f'txt/{d}.txt',encoding='utf-8',errors='ignore').read(),word=word)
     s=sections(t)
     ten=re.sub(r'^\s*Án lệ số\s*\d{1,3}/\d{4}/AL\s*','',m['Tên án lệ'] or '').strip()
     ten=ten[:1].upper()+ten[1:]

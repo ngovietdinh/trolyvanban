@@ -2,6 +2,8 @@
 // cáo thẩm tra (Word), sổ Excel; "Chứng cứ, bút lục" — rà soát chứng cứ, bảng đối chiếu theo bút lục; "Bản án tương tự,
 // án lệ" — so sánh với kho bản án, án lệ của người dùng.
 import { anLeForDieu } from '../legal/an-le-catalog.js';
+import { khoDocFromData } from '../legal/an-le-data.js';
+import { courtBaDb } from '../legal/court-ba-db.js';
 import { icon, toast, escapeHtml, downloadBlob, warnMissing } from '../ui.js';
 import { thamTra, MUC, LOAI_THAM_TRA, loaiThamTra, buildThamTraReport, thamTraWorkbook } from '../legal/court-review.js';
 import { evidenceRows, typeLabel } from '../legal/court-evidence.js';
@@ -72,6 +74,22 @@ function catalogHint(c) {
     .join('')}</ul><p class="hint"><a href="#toa-an/an-le/hs">${icon('download', 'ic-sm')}Nạp vào kho ở trang Án lệ</a> để đưa án lệ vào báo cáo thẩm tra và sổ Excel.</p>`;
 }
 
+/** Khối án lệ cho lời nhắc AI: án lệ trong kho theo điều luật + án lệ gợi ý theo nội dung (chỉ được dẫn những án lệ này). */
+function anLeBlock(R, c) {
+  const seen = new Set();
+  const rows = [];
+  for (const a of R.anLe || []) {
+    seen.add(String(a.so || '').toUpperCase());
+    rows.push(`- Án lệ ${a.so}${a.ten ? ` (${a.ten})` : ''}: ${a.khaiQuat || ''} ${a.giaiPhap ? `Giải pháp pháp lý: ${a.giaiPhap}` : ''}`.trim());
+  }
+  for (const g of R.anLeGoiY || []) {
+    if (seen.has(g.a.so)) continue;
+    rows.push(`- Án lệ ${g.a.so} (${g.a.ten}) — gợi ý theo nội dung${g.why.length ? `, khớp từ khóa ${g.why.map((w) => `“${w}”`).join(', ')}` : ''}: ${g.a.tinhHuong ? `Tình huống: ${g.a.tinhHuong} ` : g.a.khaiQuat ? `${g.a.khaiQuat} ` : ''}${g.a.giaiPhap ? `Giải pháp pháp lý: ${g.a.giaiPhap}` : ''}`.trim());
+  }
+  if (!rows.length) return '';
+  return `ÁN LỆ CÓ THỂ LIÊN QUAN (của Hội đồng Thẩm phán TANDTC; chỉ được dẫn các án lệ dưới đây, ghi rõ số án lệ; nêu tình huống vụ án có tương tự tình huống án lệ không):\n${rows.join('\n').slice(0, 6000)}\n\n`;
+}
+
 /** Tab "Bản án tương tự, án lệ". */
 export function tuongTuHtml(c) {
   const R = thamTra(c.rec, c);
@@ -86,8 +104,25 @@ export function tuongTuHtml(c) {
       .join('')}
     <section class="panel ct-sec"><h2>${icon('book', 'ic-sm')}Án lệ liên quan</h2>${R.anLe.length ? `<ul class="ct-els">${R.anLe.map((a) => `<li class="ok">${icon('book', 'ic-sm')}<span><b>Án lệ ${escapeHtml(a.so || '')}</b> ${escapeHtml(a.ten || '')}${a.khaiQuat ? `<blockquote class="ct-law">${escapeHtml(a.khaiQuat)}</blockquote>` : ''}${a.giaiPhap ? `<blockquote class="ct-fact">Giải pháp pháp lý: ${escapeHtml(a.giaiPhap)}</blockquote>` : ''}</span></li>`).join('')}</ul>` : '<p class="hint">Kho chưa có toàn văn án lệ liên quan đến điều luật đang xét.</p>'}
       ${catalogHint(c)}</section>
+    ${goiYHtml(R, c)}
   </div>`;
 }
+
+/** Án lệ gợi ý theo nội dung vụ án: từ khóa / tình huống án lệ khớp với tài liệu đã nạp (không chỉ theo số điều). */
+function goiYHtml(R, c) {
+  const list = R.anLeGoiY || [];
+  const hasSrc = (c.rec.sources || []).some((s) => (s.text || '').length > 40);
+  const inKho = new Set((c.docs || []).filter((d) => d.loai === 'an-le').map((d) => String(d.so || '').toUpperCase()));
+  return `<section class="panel ct-sec"><h2>${icon('sparkles', 'ic-sm')}Án lệ gợi ý theo nội dung vụ án</h2>
+    ${!hasSrc ? '<p class="hint">Tải tài liệu (cáo trạng, bản án, lời khai) ở tab Tài liệu để phần mềm so nội dung vụ án với tình huống, từ khóa của 90 án lệ.</p>' : !c.anLe ? '<p class="hint">Đang tải dữ liệu án lệ…</p>' : !list.length ? '<p class="hint">Không có án lệ nào có từ khóa hoặc tình huống khớp với tài liệu đã nạp.</p>' : `<ul class="ct-els">${list
+      .map((g) => `<li class="${g.score >= 8 ? 'ok' : ''}"><span><b>Án lệ ${escapeHtml(g.a.so)}</b> ${escapeHtml(g.a.ten)} <small>(${LV[g.a.linhVuc] || ''}${g.a.dieu?.length ? ` · Điều ${g.a.dieu.join(', ')} BLHS` : ''} · áp dụng từ ${escapeHtml(g.a.apDung || '—')})</small>
+        ${g.why.length ? `<small class="ct-dl-note">Khớp từ khóa: ${g.why.map((w) => `“${escapeHtml(w)}”`).join(', ')}</small>` : `<small class="ct-dl-note">Tình huống án lệ có ${g.hit} cụm từ trùng với tài liệu</small>`}
+        ${g.a.tinhHuong ? `<blockquote class="ct-law">Tình huống: ${escapeHtml(g.a.tinhHuong)}</blockquote>` : g.a.khaiQuat ? `<blockquote class="ct-law">${escapeHtml(g.a.khaiQuat)}</blockquote>` : ''}${g.a.giaiPhap ? `<blockquote class="ct-fact">Giải pháp pháp lý: ${escapeHtml(g.a.giaiPhap)}</blockquote>` : ''}
+        <span class="inline">${inKho.has(g.a.so) ? '<span class="badge badge-success">Trong kho</span>' : `<button class="btn btn-sm" type="button" data-al-kho="${escapeHtml(g.a.so)}">${icon('download', 'ic-sm')}Nạp vào kho</button>`}<a class="btn btn-sm btn-ghost" href="#toa-an/an-le">${icon('eye', 'ic-sm')}Xem ở trang Án lệ</a></span></span></li>`)
+      .join('')}</ul>`}
+  </section>`;
+}
+const LV = { hs: 'Hình sự', ds: 'Dân sự', hngd: 'Hôn nhân và gia đình', kdtm: 'Kinh doanh, thương mại', ld: 'Lao động', hc: 'Hành chính' };
 
 /** Sự kiện của các tab thẩm tra (gắn một lần trên vùng kết quả). */
 export function bindThamTra(out, { ctx, getRec, getCtx, save, update }) {
@@ -101,8 +136,18 @@ export function bindThamTra(out, { ctx, getRec, getCtx, save, update }) {
     save();
     if (t.dataset.tt !== 'nguoi') update();
   });
-  out.addEventListener('click', (e) => {
+  out.addEventListener('click', async (e) => {
     const rec = getRec();
+    const kho = e.target.closest('[data-al-kho]');
+    if (kho) {
+      const a = getCtx().anLe?.get(kho.dataset.alKho);
+      if (!a) return;
+      kho.disabled = true;
+      await courtBaDb.put(khoDocFromData(a));
+      toast(`Đã nạp án lệ ${a.so} vào kho`);
+      document.dispatchEvent(new CustomEvent('kho-changed'));
+      return;
+    }
     if (e.target.closest('[data-tt-report]')) {
       const doc = report();
       downloadBlob(buildDocx(doc, doc.title.name), safeFileName(`Bao-cao-tham-tra-${rec.ten || ''}`), DOCX_MIME);
@@ -137,6 +182,6 @@ ${aiRules('nguon', 'nguyenVan', 'luat', 'gon')}
 - Không tự tạo lời khai, chứng cứ, bản án, án lệ hay điều luật không có trong tài liệu; điều gì không có trong tài liệu ghi rõ "Thiếu hồ sơ".
 - Không kết luận một người có tội hay vô tội; chỉ nêu căn cứ và đề xuất để người có thẩm quyền quyết định.
 - Lưu ý pháp luật theo thời điểm (ngày thực hiện hành vi, văn bản sửa đổi có lợi).`,
-    content: `KẾT QUẢ ĐỐI CHIẾU TRÊN MÁY (tham khảo, cần kiểm chứng):\n${machine}\n\nTÀI LIỆU (có nhãn bút lục):\n${docs}`,
+    content: `KẾT QUẢ ĐỐI CHIẾU TRÊN MÁY (tham khảo, cần kiểm chứng):\n${machine}\n\n${anLeBlock(R, c)}TÀI LIỆU (có nhãn bút lục):\n${docs}`,
   };
 }

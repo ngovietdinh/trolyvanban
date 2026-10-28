@@ -93,6 +93,68 @@ test.describe('v2.45 — Giám đốc thẩm, danh mục án lệ, tải bản �
     t.assertClean();
   });
 
+  test('án lệ → Word đúng cấu trúc (một án lệ, danh sách đang lọc)', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#toa-an/an-le/hs', { agency: 'toa-an' });
+    await expect(page.locator('.al-table tbody tr')).toHaveCount(21);
+    const dl1 = page.waitForEvent('download');
+    await page.locator('[data-al-word="47/2021/AL"]').click();
+    const d1 = await dl1;
+    expect(d1.suggestedFilename()).toBe('an-le-47-2021-al.docx');
+    await expect(page.locator('.toast').last()).toContainText('đúng cấu trúc');
+    await page.fill('[data-al-q]', 'giet nguoi');
+    // Tìm cả trong từ khóa / tình huống nên số dòng phụ thuộc gói dữ liệu: chỉ cần ít hơn 21 và tên tệp khớp số dòng.
+    await expect.poll(() => page.locator('.al-table tbody tr').count()).toBeLessThan(21);
+    const n = await page.locator('.al-table tbody tr').count();
+    expect(n).toBeGreaterThan(1);
+    const dl2 = page.waitForEvent('download');
+    await page.locator('[data-al-word-all]').click();
+    const d2 = await dl2;
+    expect(d2.suggestedFilename()).toBe(`tuyen-tap-${n}-an-le.docx`);
+    // Từ hộp xem (xóa bộ lọc để thấy lại 75/2025/AL).
+    await page.fill('[data-al-q]', '');
+    await expect(page.locator('.al-table tbody tr')).toHaveCount(21);
+    await page.locator('[data-al-view="75/2025/AL"]').click();
+    const dl3 = page.waitForEvent('download');
+    await page.locator('.modal [data-al-word="75/2025/AL"]').click();
+    expect((await dl3).suggestedFilename()).toBe('an-le-75-2025-al.docx');
+    t.assertClean();
+  });
+
+  test('gợi ý án lệ theo nội dung tài liệu vụ án (từ khóa, tình huống), nạp vào kho ngay tại tab, AI nhận khối án lệ', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#toa-an', { agency: 'toa-an' });
+    await page.click('[data-new="so-tham"]');
+    await page.evaluate(async () => {
+      const { courtRepo } = await import('/assets/js/legal/repo.js');
+      const r = courtRepo.list()[0];
+      r.defendants[0].hoTen = 'Nguyễn Văn A';
+      r.defendants[0].toiDanh = [{ dieu: '134', khoan: 1 }];
+      r.sources = [{ id: 's1', name: 'Cáo trạng số 12', loai: 'cao-trang', text: 'Khoảng 20 giờ, bị cáo dùng dao là hung khí nguy hiểm đâm vào vùng bụng của bị hại là vùng trọng yếu của cơ thể con người. Bị hại không chết là ngoài ý muốn chủ quan của bị cáo.', butLuc: 1 }];
+      courtRepo.save(r);
+    });
+    await page.reload();
+    await page.locator('[data-ct-tab="tuong-tu"]').click();
+    const box = page.locator('.tt-wrap');
+    await expect(box).toContainText('Án lệ gợi ý theo nội dung vụ án');
+    await expect(box).toContainText('Án lệ 47/2021/AL');
+    await expect(box).toContainText('Khớp từ khóa: “Hung khí nguy hiểm”');
+    await expect(box).toContainText('Giải pháp pháp lý: Trường hợp này, Tòa án phải xác định bị cáo chịu trách nhiệm hình sự về tội “Giết người”');
+    await page.locator('[data-al-kho="47/2021/AL"]').click();
+    await expect(page.locator('.toast').last()).toContainText('Đã nạp án lệ 47/2021/AL');
+    await expect(box).toContainText('Trong kho');
+    // Khối án lệ trong lời nhắc AI.
+    const prompt = await page.evaluate(async () => {
+      const { thamTraAiPrompt } = await import('/assets/js/views/toa-an-tham-tra.js');
+      const { loadAnLeData } = await import('/assets/js/legal/an-le-data.js');
+      const { courtRepo } = await import('/assets/js/legal/repo.js');
+      return thamTraAiPrompt({ rec: courtRepo.list()[0], book: null, laws: [], docs: [], anLe: await loadAnLeData() }).content;
+    });
+    expect(prompt).toContain('ÁN LỆ CÓ THỂ LIÊN QUAN');
+    expect(prompt).toContain('Án lệ 47/2021/AL');
+    t.assertClean();
+  });
+
   test('án lệ chưa nạp: tab Bản án tương tự vẫn gợi ý tình huống, giải pháp từ gói kèm phần mềm', async ({ page }) => {
     const t = trackErrors(page);
     await freshApp(page, '#toa-an', { agency: 'toa-an' });
