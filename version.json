@@ -1,10 +1,7 @@
 {
-  "version": "2.44.0",
+  "version": "2.44.1",
   "date": "2026-10-28",
   "notes": [
-    "Khung kính chung cho cả ứng dụng: thanh bên là tấm kính bo góc, thanh trên trong suốt, thanh dưới điện thoại kính mờ; màn hình làm việc nằm trong khung đục bo góc trên nền kính",
-    "Bộ màu đỏ–vàng theo lực lượng: Tòa án đỏ con dấu + vàng kim, Cảnh sát điều tra đỏ cờ + vàng sao; logo và huy hiệu cơ quan đĩa đỏ biểu tượng vàng; mục đang chọn, nút chính, Tổng quan đổi theo cơ quan",
-    "Tổng quan: thẻ nhấn đỏ, cột và thanh tiến độ vàng gạch chéo; danh sách tài liệu gần đây có lại nút xóa (hỏi lại, hoàn tác)",
-    "Tương phản chữ phụ trên nền kính đạt chuẩn; bỏ hiệu ứng làm mờ nặng để điện thoại mượt"
+    "Điện thoại: ngăn kéo menu nền đục, không còn nhìn xuyên nội dung phía sau ở giao diện tối"
   ]
 }
