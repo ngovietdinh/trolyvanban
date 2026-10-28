@@ -295,7 +295,13 @@ function recentList(docs, ctx) {
     `${head('Tài liệu gần đây', 'Văn bản bạn vừa soạn, sửa', ctx.can('docs') ? `<a class="gx-btn gx-btn--sm" href="#docs">Xem tất cả</a>` : '')}
      ${
        rows.length
-         ? `<div class="gx-list">${rows.map((d) => `<a class="gx-list__row" href="#compose/doc/${d.id}"><span class="gx-bubble">${escapeHtml(getDocType(d.typeId)?.abbr || 'VB')}</span><span><b>${escapeHtml(d.title)}</b><small>${escapeHtml(getDocType(d.typeId)?.name || 'Văn bản')} · ${escapeHtml(relativeTime(d.updatedAt))}</small></span><span class="gx-pill">Word</span></a>`).join('')}</div>`
+         ? `<div class="gx-list">${rows
+             .map(
+               (d) => `<div class="gx-list__row doc-item"><a class="gx-list__link" href="#compose/doc/${d.id}"><span class="gx-bubble">${escapeHtml(getDocType(d.typeId)?.abbr || 'VB')}</span><span><b>${escapeHtml(d.title)}</b><small>${escapeHtml(getDocType(d.typeId)?.name || 'Văn bản')} · ${escapeHtml(relativeTime(d.updatedAt))}</small></span></a><span class="gx-pill">Word</span>${
+                 ctx.can('docs') ? `<button class="gx-list__del" type="button" data-del-doc="${d.id}" aria-label="Xóa “${escapeHtml(d.title)}”" title="Xóa">${icon('trash', 'ic-sm')}</button>` : ''
+               }</div>`,
+             )
+             .join('')}</div>`
          : `<div class="gx-empty"><span>Chưa có văn bản nào.</span>${ctx.can('docs') ? `<a class="gx-btn gx-btn--sm" href="#compose">Soạn văn bản</a>` : ''}</div>`
      }`,
   );

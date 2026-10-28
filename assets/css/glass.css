@@ -878,11 +878,42 @@ body.glass-dash .view {
 .gx-list__row:first-child {
   border-top: 0;
 }
-.gx-list__row > span:not(.gx-bubble):not(.gx-pill) {
+.gx-list__row > span:not(.gx-bubble):not(.gx-pill),
+.gx-list__link > span:not(.gx-bubble) {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+.gx-list__link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+.gx-list__link:hover b {
+  text-decoration: underline;
+}
+/* Nút xóa văn bản trong danh sách gần đây: hỏi lại và có hoàn tác (xử lý ở dashboard.js). */
+.gx-list__del {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: -4px -6px -4px 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.gx-list__del:hover {
+  background: rgba(var(--hi), calc(0.6 * var(--gk)));
+  color: var(--bad-fg);
 }
 .gx-list__row b {
   font-size: 12.5px;
