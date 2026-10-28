@@ -90,11 +90,11 @@ test('danh mục án lệ: 90 án lệ, số duy nhất, đủ đợt công bố
     assert.ok(a.linhVuc !== 'hs' || a.dieu.length, `${a.so} là án lệ hình sự phải có điều luật`);
   }
   assert.equal(AN_LE.filter((a) => a.linhVuc === 'hs').length, 21);
-  assert.equal(findAnLe('47/2021/AL').tenNgan.slice(0, 30), 'về việc xác định tội danh tron');
+  assert.match(findAnLe('47/2021/AL').tenNgan, /^Về việc xác định tội danh/);
   assert.equal(findAnLe('Án lệ số 7/2016/AL').so, '07/2016/AL');
   assert.equal(findAnLe('73').qdCongBo, '339a/QĐ-CA');
   assert.equal(findAnLe('99/2030/AL'), null);
-  assert.deepEqual(anLeForDieu(['174', '123']).map((a) => a.num), [1, 17, 18, 30, 45, 47, 59, 75]);
+  assert.deepEqual(anLeForDieu(['174', '123']).map((a) => a.num), [1, 17, 18, 30, 45, 47, 59, 73, 75]);
   assert.deepEqual(anLeForDieu([]), []);
   const joined = withKho([{ loai: 'an-le', so: '47/2021/AL', text: 'x' }, { loai: 'ban-an', so: '1/2026/HS-ST' }]);
   assert.equal(joined.filter((a) => a.doc).length, 1);

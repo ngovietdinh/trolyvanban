@@ -5387,3 +5387,13 @@ body.dg-lock { overflow: hidden; }
 @media (max-width: 640px) { .al-filters .check { width: 100%; } }
 .kho-kw, .kho-url { flex: 1; min-width: 220px; }
 .al-table .badge { white-space: nowrap; }
+/* Hộp xem án lệ: tên, thuộc tính hai cột, các mục tình huống – giải pháp – quy định, toàn văn thu gọn. */
+.al-view-ten { font-weight: 600; font-size: 16px; margin: -6px 0 10px; }
+.al-meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 12px; font-size: 13px; }
+.al-meta dt { color: var(--text-3); }
+.al-meta dd { margin: 0; }
+.al-view h3 { font-size: 14px; margin: 14px 0 4px; }
+.al-view p { margin: 0 0 6px; font-family: var(--font-serif); font-size: 16px; line-height: 1.6; }
+.al-full { margin-top: 12px; }
+.al-full summary { cursor: pointer; font-weight: 600; }
+.al-full .kho-text { margin-top: 8px; }

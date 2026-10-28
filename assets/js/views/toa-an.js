@@ -21,6 +21,7 @@ import { thamTraHtml, chungCuHtml, tuongTuHtml, bindThamTra, thamTraAiPrompt } f
 import { buildReplyLetter } from '../legal/court-review.js';
 import { renderKho } from './toa-an-kho.js';
 import { renderAnLe } from './toa-an-an-le.js';
+import { loadAnLeData } from '../legal/an-le-data.js';
 import { loadBook } from '../legal/binh-luan-store.js';
 import { dropzoneHtml, bindDropzone, readAll } from './acts-review.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
@@ -135,6 +136,11 @@ export function render(ctx, params = []) {
   let tab = TABS.some(([t]) => t === params[1]) ? params[1] : (rec.sources || []).length || rec.thuLy?.so ? 'tai-lieu' : 'vu-an';
   const panes = {};
   let khoDocs = [];
+  let anLeData = null;
+  loadAnLeData().then((d) => {
+    anLeData = d;
+    if (root.isConnected && tab === 'tuong-tu') update();
+  });
   const laws = () => mergeLaws(store.get(LAWS_KEY, null));
   const aiText = { 'phan-tich': '', don: '', 'tham-tra': '' };
   let aiBusy = null;
@@ -380,7 +386,7 @@ export function render(ctx, params = []) {
     else if (tab === 'hinh-phat') panes['hinh-phat'] ? panes['hinh-phat'].refresh() : (panes['hinh-phat'] = mountPenaltyPane($('[data-pane="hinh-phat"]', root), { rec, save, getBook: () => book }));
     else if (tab === 'bieu-mau') panes['bieu-mau'] ? panes['bieu-mau'].refresh() : (panes['bieu-mau'] = mountFormsPane($('[data-pane="bieu-mau"]', root), { ctx, rec, save }));
     if (!inOut) return;
-    const tctx = { rec, book, laws: laws(), docs: khoDocs, aiText: aiText['tham-tra'], aiBusy };
+    const tctx = { rec, book, laws: laws(), docs: khoDocs, anLe: anLeData, aiText: aiText['tham-tra'], aiBusy };
     out.innerHTML = tab === 'phan-tich' ? analysisHtml() : tab === 'kiem-tra' ? checkHtml() : tab === 'tham-tra' ? thamTraHtml(tctx) : tab === 'chung-cu' ? chungCuHtml(tctx) : tab === 'tuong-tu' ? tuongTuHtml(tctx) : reviewHtml();
   }, 120);
 

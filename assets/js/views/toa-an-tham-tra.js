@@ -63,7 +63,13 @@ function catalogHint(c) {
   const inKho = new Set((c.docs || []).filter((d) => d.loai === 'an-le').map((d) => String(d.so || '').toUpperCase().replace(/\s+/g, '')));
   const list = anLeForDieu(dieus).filter((a) => !inKho.has(a.so));
   if (!list.length) return '';
-  return `<p class="hint">Danh mục án lệ có ${list.length} án lệ hình sự liên quan Điều ${dieus.join(', ')} chưa có toàn văn trong kho:</p><ul class="ct-els">${list.map((a) => `<li>${icon('layers', 'ic-sm')}<span><b>${escapeHtml(a.so)}</b> ${escapeHtml(a.tenNgan.replace(/^về /, 'Về '))} <small>(Điều ${a.dieu.join(', ')} BLHS · áp dụng từ ${escapeHtml(a.apDung || '—')})</small></span></li>`).join('')}</ul><p class="hint"><a href="#toa-an/an-le/hs">${icon('upload', 'ic-sm')}Nạp toàn văn ở trang Án lệ</a> để phần mềm trích khái quát nội dung, giải pháp pháp lý khi thẩm tra.</p>`;
+  const data = c.anLe;
+  return `<p class="hint">${list.length} án lệ hình sự liên quan Điều ${dieus.join(', ')} chưa nạp vào kho (toàn văn kèm phần mềm):</p><ul class="ct-els">${list
+    .map((a) => {
+      const d = data?.get?.(a.so);
+      return `<li>${icon('layers', 'ic-sm')}<span><b>${escapeHtml(a.so)}</b> ${escapeHtml(a.tenNgan[0].toUpperCase() + a.tenNgan.slice(1))} <small>(Điều ${a.dieu.join(', ')} BLHS · áp dụng từ ${escapeHtml(a.apDung || '—')})</small>${d?.tinhHuong ? `<blockquote class="ct-law">Tình huống: ${escapeHtml(d.tinhHuong)}</blockquote>` : d?.khaiQuat ? `<blockquote class="ct-law">${escapeHtml(d.khaiQuat)}</blockquote>` : ''}${d?.giaiPhap ? `<blockquote class="ct-fact">Giải pháp pháp lý: ${escapeHtml(d.giaiPhap)}</blockquote>` : ''}</span></li>`;
+    })
+    .join('')}</ul><p class="hint"><a href="#toa-an/an-le/hs">${icon('download', 'ic-sm')}Nạp vào kho ở trang Án lệ</a> để đưa án lệ vào báo cáo thẩm tra và sổ Excel.</p>`;
 }
 
 /** Tab "Bản án tương tự, án lệ". */

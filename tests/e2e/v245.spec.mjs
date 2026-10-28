@@ -39,34 +39,43 @@ test.describe('v2.45 — Giám đốc thẩm, danh mục án lệ, tải bản �
     t.assertClean();
   });
 
-  test('danh mục án lệ: 90 án lệ, lọc hình sự, tìm theo điều luật, nạp toàn văn vào kho, gợi ý khi thẩm tra', async ({ page }) => {
+  test('án lệ: 90 án lệ kèm toàn văn, lọc hình sự, tìm theo điều luật, xem, nạp tất cả vào kho, gợi ý khi thẩm tra', async ({ page }) => {
     const t = trackErrors(page);
     await freshApp(page, '#toa-an/an-le', { agency: 'toa-an' });
     await expect(page.locator('.al-table tbody tr')).toHaveCount(90);
-    await expect(page.locator('[data-al-count]')).toContainText('90/90 án lệ · 0 có toàn văn');
+    await expect(page.locator('.page-sub')).toContainText('90 án lệ có toàn văn kèm phần mềm');
+    await expect(page.locator('[data-al-count]')).toContainText('90/90 án lệ · 0 đã nạp vào kho');
+    await expect(page.locator('[data-al-row="47/2021/AL"]')).toContainText('Kèm phần mềm');
     await page.selectOption('[data-al-lv]', 'hs');
     await expect(page.locator('.al-table tbody tr')).toHaveCount(21);
     await expect(page).toHaveURL(/#toa-an\/an-le\/hs$/);
     await page.fill('[data-al-q]', '174');
     await expect(page.locator('.al-table tbody tr')).toHaveCount(1);
     await expect(page.locator('.al-table tbody tr').first()).toContainText('75/2025/AL');
-    await page.fill('[data-al-q]', 'giet nguoi');
-    await expect(page.locator('.al-table tbody tr')).toHaveCount(6);
+    await page.fill('[data-al-q]', 'hung khi nguy hiem');
+    await expect(page.locator('[data-al-row="47/2021/AL"]')).toBeVisible();
     await page.fill('[data-al-q]', '');
-    // Nạp toàn văn bằng cách dán.
+    // Hộp xem: tình huống, giải pháp, quy định, toàn văn.
+    await page.locator('[data-al-view="47/2021/AL"]').click();
+    await expect(page.locator('.modal .al-view')).toContainText('Tình huống án lệ');
+    await expect(page.locator('.modal .al-view')).toContainText('hung khí nguy hiểm');
+    await expect(page.locator('.modal .al-view')).toContainText('Giải pháp pháp lý');
+    await expect(page.locator('.modal .al-meta')).toContainText('594/QĐ-CA');
+    await page.locator('.modal [data-close]').last().click();
+    // Nạp một án lệ, rồi nạp tất cả.
     await page.locator('[data-al-add="47/2021/AL"]').click();
-    await page.fill('[data-al-paste]', 'ÁN LỆ SỐ 47/2021/AL\nVề việc xác định tội danh trong trường hợp bị cáo dùng hung khí nguy hiểm đâm vào vùng trọng yếu của cơ thể bị hại\nKhái quát nội dung của án lệ:\nBị cáo dùng dao đâm vào vùng bụng bị hại thì phải chịu trách nhiệm về tội giết người.\n\nGiải pháp pháp lý:\nTrường hợp này, Tòa án phải xác định bị cáo phạm tội giết người.\n\nQuy định của pháp luật liên quan đến án lệ:\nĐiều 123 Bộ luật Hình sự năm 2015.\n');
-    await page.locator('[data-al-save]').click();
-    await expect(page.locator('.toast').last()).toContainText('Đã nạp toàn văn 47/2021/AL');
-    await expect(page.locator('[data-al-row="47/2021/AL"]')).toContainText('Có trong kho');
-    await expect(page.locator('[data-al-count]')).toContainText('1 có toàn văn');
+    await expect(page.locator('[data-al-row="47/2021/AL"]')).toContainText('Trong kho');
+    await page.selectOption('[data-al-lv]', '');
+    await page.locator('[data-al-add-all]').click();
+    await expect(page.locator('.toast').last()).toContainText('Đã nạp 89 án lệ');
+    await expect(page.locator('[data-al-count]')).toContainText('90 đã nạp vào kho');
     await page.check('[data-al-thieu]');
-    await expect(page.locator('.al-table tbody tr')).toHaveCount(20);
-    // Kho ghi nhận án lệ; trang kho có khối tìm trên mạng.
+    await expect(page.locator('.al-table tbody tr')).toHaveCount(0);
+    // Kho ghi nhận; trang kho có khối tìm trên mạng.
     await page.goto('/app.html#toa-an/kho-ban-an');
-    await expect(page.locator('[data-kho-count]')).toContainText('1 án lệ');
+    await expect(page.locator('[data-kho-count]')).toContainText('90 án lệ');
     await expect(page.locator('[data-kho-net]')).toBeVisible();
-    // Tab Bản án tương tự của vụ án Điều 123: án lệ trong kho hiện, án lệ chưa có toàn văn được gợi ý.
+    // Vụ án Điều 123: án lệ trong kho hiện với khái quát nội dung.
     await page.goto('/app.html#toa-an');
     await page.click('[data-new="so-tham"]');
     await page.evaluate(async () => {
@@ -79,8 +88,28 @@ test.describe('v2.45 — Giám đốc thẩm, danh mục án lệ, tải bản �
     await page.reload();
     await page.locator('[data-ct-tab="tuong-tu"]').click();
     await expect(page.locator('.tt-wrap')).toContainText('Án lệ 47/2021/AL');
-    await expect(page.locator('.tt-wrap')).toContainText('chưa có toàn văn trong kho');
-    await expect(page.locator('.tt-wrap')).toContainText('59/2023/AL');
+    await expect(page.locator('.tt-wrap')).toContainText('Án lệ 59/2023/AL');
+    await expect(page.locator('.tt-wrap')).toContainText('Giải pháp pháp lý');
+    t.assertClean();
+  });
+
+  test('án lệ chưa nạp: tab Bản án tương tự vẫn gợi ý tình huống, giải pháp từ gói kèm phần mềm', async ({ page }) => {
+    const t = trackErrors(page);
+    await freshApp(page, '#toa-an', { agency: 'toa-an' });
+    await page.click('[data-new="so-tham"]');
+    await page.evaluate(async () => {
+      const { courtRepo } = await import('/assets/js/legal/repo.js');
+      const r = courtRepo.list()[0];
+      r.defendants[0].hoTen = 'Trần B';
+      r.defendants[0].toiDanh = [{ dieu: '173', khoan: 1 }];
+      courtRepo.save(r);
+    });
+    await page.reload();
+    await page.locator('[data-ct-tab="tuong-tu"]').click();
+    await expect(page.locator('.tt-wrap')).toContainText('chưa nạp vào kho');
+    await expect(page.locator('.tt-wrap')).toContainText('75/2025/AL');
+    await expect(page.locator('.tt-wrap')).toContainText('Tình huống:');
+    await expect(page.locator('.tt-wrap')).toContainText('Trộm cắp tài sản');
     t.assertClean();
   });
 
