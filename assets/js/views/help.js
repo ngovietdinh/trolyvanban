@@ -1,11 +1,13 @@
 // Trung tâm hướng dẫn: danh mục theo nhóm, tìm kiếm, lộ trình làm quen và trang hướng dẫn chi tiết từng mục.
+import { currentAgency } from '../lib/agency.js';
 import { $, $$, icon, escapeHtml, debounce } from '../ui.js';
 import { GROUPS, findGuide, visibleGuides, searchGuides, inline } from '../guide/guides.js';
 import { mobilePanes } from '../lib/panes.js';
 import { guideBodyHtml, bindGuide, isSeen, setSeen, seenMap } from '../guide/render.js';
 
 // Thứ tự gợi ý cho người mới.
-const PATH = ['batdau', 'settings', 'compose', 'quytrinh', 'cases', 'legal', 'interview', 'kho', 'forms'];
+const PATH_CQDT = ['batdau', 'settings', 'compose', 'quytrinh', 'cases', 'legal', 'interview', 'kho', 'forms'];
+const PATH_TOA_AN = ['batdau', 'settings', 'compose', 'toa-an', 'legal', 'binh-luan'];
 
 export function render(ctx, params = []) {
   const guides = visibleGuides(ctx.can);
@@ -53,7 +55,7 @@ export function render(ctx, params = []) {
   }
 
   function renderHome() {
-    const path = PATH.map(findGuide).filter((g) => g && guides.includes(g));
+    const path = (currentAgency() === 'toa-an' ? PATH_TOA_AN : PATH_CQDT).map(findGuide).filter((g) => g && guides.includes(g));
     const next = path.find((g) => !isSeen(g.id));
     main.innerHTML = `
       <div class="help-home">

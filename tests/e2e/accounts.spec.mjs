@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { freshApp, loginAs, setApiKey, mockClaude, mockProviders, trackErrors, SUPER } from './helpers.mjs';
+import { freshApp, loginAs, setApiKey, mockClaude, mockProviders, trackErrors, SUPER, pickAgency } from './helpers.mjs';
 
 async function createUser(page, { name, email, password, role }) {
   await page.goto('/app.html#admin');
@@ -34,6 +34,7 @@ test.describe('Tài khoản và phân quyền', () => {
     await page.fill('#g-pass', SUPER.password);
     await page.click('[data-gate-form] button[type="submit"]');
     await expect(page.locator('.shell')).toBeVisible();
+    await pickAgency(page, 'cqdt');
     for (const nav of ['legal', 'interview', 'cases', 'admin', 'compose', 'spell']) await expect(page.locator(`[data-nav="${nav}"]`)).toBeVisible();
     // Mật khẩu không lưu dạng rõ
     const raw = await page.evaluate(() => localStorage.getItem('tlvb:users'));
@@ -79,7 +80,7 @@ test.describe('Tài khoản và phân quyền', () => {
     await page.click('[data-gate-form] button[type="submit"]');
     await expect(page.locator('.shell')).toBeVisible();
     for (const nav of ['legal', 'interview', 'cases', 'admin']) await expect(page.locator(`[data-nav="${nav}"]`)).toBeHidden();
-    await expect(page.locator('[data-perm-section="legal"]')).toBeHidden();
+    await expect(page.locator('[data-perm-section="legal"]:visible')).toHaveCount(0);
     await expect(page.locator('.legal-promo')).toHaveCount(0);
     for (const hash of ['#legal/222', '#interview', '#cases', '#admin']) {
       await page.goto('/app.html' + hash);

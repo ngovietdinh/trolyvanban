@@ -56,8 +56,25 @@ function sse(model, text) {
 
 export const SUPER = { name: 'Quản trị hệ thống', email: 'gsnvbu@gmail.com', password: 'matkhau-toi-cao' };
 
+/** Màn hình chọn cơ quan (hiện sau khi đăng nhập nếu tài khoản chưa chọn): chọn cơ quan cho kiểm thử. */
+export async function pickAgency(page, agency = 'cqdt') {
+  await page.waitForFunction(() => document.querySelector('#view')?.childElementCount > 0);
+  const pick = page.locator(`[data-agency-pick="${agency}"]`);
+  if (await pick.isVisible().catch(() => false)) {
+    await pick.click();
+    await page.waitForSelector('[data-agency-switch]:not([hidden])');
+    return;
+  }
+  // Đang ở màn hình không cần chọn (Cài đặt, Bảo mật…): tài khoản có phân hệ tố tụng mà chưa chọn thì chọn luôn.
+  const need = await page.evaluate(async () => {
+    const [{ accounts }, { currentAgency }] = await Promise.all([import('/assets/js/lib/accounts.js'), import('/assets/js/lib/agency.js')]);
+    return !!accounts.current()?.permSet.has('legal') && !currentAgency();
+  });
+  if (need) await page.evaluate(async (id) => (await import('/assets/js/lib/agency.js')).setAgency(id), agency);
+}
+
 /** Xóa dữ liệu, tạo tài khoản quản trị tối cao (toàn quyền) rồi mở màn hình cần kiểm thử. */
-export async function freshApp(page, hash = '', { login = true } = {}) {
+export async function freshApp(page, hash = '', { login = true, agency = 'cqdt' } = {}) {
   await page.goto('/index.html');
   await page.evaluate(() => {
     localStorage.clear();
@@ -70,11 +87,12 @@ export async function freshApp(page, hash = '', { login = true } = {}) {
   await page.fill('#g-pass', SUPER.password);
   await page.click('[data-gate-form] button[type="submit"]');
   await page.waitForSelector('.shell:not([hidden])');
+  await pickAgency(page, agency);
   if (hash) await page.goto('/app.html' + hash);
 }
 
 /** Đăng nhập bằng tài khoản có sẵn qua màn hình đăng nhập. */
-export async function loginAs(page, email, password) {
+export async function loginAs(page, email, password, { agency = 'cqdt' } = {}) {
   await page.goto('/app.html');
   if (await page.locator('.avatar-btn').isVisible().catch(() => false)) {
     await page.click('.avatar-btn');
@@ -85,6 +103,7 @@ export async function loginAs(page, email, password) {
   await page.fill('#g-pass', password);
   await page.click('[data-gate-form] button[type="submit"]');
   await page.waitForSelector('.shell:not([hidden])');
+  await pickAgency(page, agency);
 }
 
 /** Lưu API key (mã hóa trong kho của tài khoản) qua màn hình Cài đặt. */

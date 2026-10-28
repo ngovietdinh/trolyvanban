@@ -49,6 +49,8 @@
   --accent-ink: #ffffff;
   --brand: var(--ink-900);
   --focus: #2f6fed;
+  --mark-court: var(--seal-600);
+  --mark-police: #1f5a43;
   --success: var(--jade-600);
   --success-soft: var(--jade-100);
   --warning: var(--amber-600);
@@ -95,6 +97,8 @@
     --warning-soft: rgba(240, 180, 90, 0.12);
     --danger: #ef6b62;
     --danger-soft: rgba(239, 107, 98, 0.13);
+  --mark-court: #e0574f;
+  --mark-police: #5fc39b;
     --gold-200: #4a3d26;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.25), 0 12px 28px -8px rgba(0, 0, 0, 0.55);
@@ -123,6 +127,8 @@
   --warning-soft: rgba(240, 180, 90, 0.12);
   --danger: #ef6b62;
   --danger-soft: rgba(239, 107, 98, 0.13);
+  --mark-court: #e0574f;
+  --mark-police: #5fc39b;
   --gold-200: #4a3d26;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px -2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.25), 0 12px 28px -8px rgba(0, 0, 0, 0.55);

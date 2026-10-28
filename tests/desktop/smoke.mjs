@@ -38,6 +38,9 @@ async function register(name, email) {
   await page.fill('#g-pass', 'matkhau-123');
   await form.locator('button[type="submit"]').click();
   await page.locator('.shell:not([hidden])').waitFor({ timeout: 30000 });
+  // Tài khoản có phân hệ tố tụng: chọn cơ quan làm việc lần đầu.
+  const pick = page.locator('[data-agency-pick="cqdt"]');
+  if (await pick.isVisible().catch(() => false)) await pick.click();
 }
 
 const me = () =>

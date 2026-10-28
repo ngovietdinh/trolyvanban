@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { trackErrors } from './helpers.mjs';
+import { trackErrors, pickAgency } from './helpers.mjs';
 
 test.describe('Trang giới thiệu', () => {
   test('hiển thị đầy đủ các phần, không lỗi JavaScript', async ({ page }) => {
@@ -117,6 +117,7 @@ test.describe('Trang giới thiệu', () => {
     await page.fill('#g-email', 'gsnvbu@gmail.com');
     await page.fill('#g-pass', 'matkhau-toi-cao');
     await page.click('[data-gate-form] button[type="submit"]');
+    await pickAgency(page, 'cqdt');
     await expect(page.locator('[data-type="to-trinh"]')).toHaveAttribute('aria-selected', 'true');
   });
 

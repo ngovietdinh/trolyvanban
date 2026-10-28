@@ -1,9 +1,9 @@
 {
-  "version": "2.42.0",
+  "version": "2.43.0",
   "date": "2026-10-28",
   "notes": [
-    "Giao diện mới, bỏ các kiểu thiết kế AI: không còn khối chào nền tối, ô biểu tượng màu, nhãn chữ in hoa, chữ nghiêng tô đỏ, gradient, bóng đổ thừa; logo con dấu tròn",
-    "Trang Tổng quan: ô soạn nhanh, thời hạn Tòa án sắp tới, lối tắt; Sổ vụ án dạng bảng",
-    "Điện thoại: thanh dưới nền đặc, Tra cứu dạng danh sách; trang giới thiệu hiện đầy đủ ngay khi mở, bỏ số liệu tự đếm"
+    "Chọn cơ quan làm việc sau khi đăng nhập: Tòa án nhân dân (logo cân công lý) hoặc Cơ quan Cảnh sát điều tra (logo công an); đổi ở đầu thanh bên hoặc menu tài khoản, dữ liệu giữ nguyên",
+    "Mỗi cơ quan chỉ hiện mục của mình: thanh bên, Tổng quan, thanh dưới điện thoại, Tra cứu, bảng lệnh, lộ trình hướng dẫn",
+    "Điều tra viên và cán bộ Tòa án tự vào đúng cơ quan theo vai trò; Sổ vụ án, Kho bản án, Biểu mẫu Tòa án thành mục riêng trên thanh bên"
   ]
 }

@@ -3,7 +3,9 @@ import { docsRepo, usage } from '../lib/store.js';
 import { getDocType } from '../lib/doc-types.js';
 import { relativeTime } from '../lib/vn-date.js';
 import { deleteWithUndo, repoOps } from '../lib/undo-delete.js';
-import { courtRepo } from '../legal/repo.js';
+import { courtRepo, casesRepo } from '../legal/repo.js';
+import { agencyInfo } from '../lib/agency.js';
+import { findCrime } from '../legal/engine.js';
 import { upcoming } from '../legal/court-deadlines.js';
 import { fmtDate } from '../legal/court-penalty.js';
 import { courtRules } from './toa-an-case.js';
@@ -36,7 +38,8 @@ const conHan = (n) => (n < 0 ? `quá ${-n} ngày` : n === 0 ? 'hôm nay' : `còn
 /** Thời hạn Tòa án gần nhất (chỉ khi tài khoản có hồ sơ xét xử). */
 function courtSoon() {
   const list = courtRepo.list();
-  if (!list.length) return '';
+  if (!list.length)
+    return `<section class="panel dash-court"><div class="panel-head"><h2>Sổ vụ án</h2></div><div class="empty"><p>Sổ vụ án đang trống. Thụ lý vụ án sơ thẩm (từ cáo trạng) hoặc phúc thẩm (có kháng cáo, kháng nghị) để theo dõi thời hạn.</p><a class="btn btn-primary btn-sm" href="#toa-an">${icon('plus', 'ic-sm')}Mở sổ vụ án</a></div></section>`;
   const todo = upcoming(list, { rules: courtRules() }).filter((x) => x.trangThai !== 'moc').slice(0, 5);
   return `<section class="panel dash-court">
     <div class="panel-head"><h2>Thời hạn Tòa án sắp tới</h2><a class="btn btn-ghost btn-sm" href="#toa-an">Sổ vụ án</a></div>
@@ -46,6 +49,21 @@ function courtSoon() {
             .map((it) => `<li><b class="num">${fmtDate(it.han).slice(0, 5)}</b><a href="#toa-an/${it.rec.id}/vu-an">${escapeHtml(it.ten)}<small>${escapeHtml(it.rec.ten || '')}${it.rec.thuLy?.so ? `, thụ lý số ${escapeHtml(it.rec.thuLy.so)}` : ''}</small></a><span class="badge ${it.trangThai === 'qua-han' ? 'badge-danger' : it.trangThai === 'sap' ? 'badge-warning' : ''}">${conHan(it.con)}</span></li>`)
             .join('')}</ul>`
         : '<p class="dash-none">Không có thời hạn nào đang chạy. Nhập ngày thụ lý trong hồ sơ để theo dõi.</p>'
+    }
+  </section>`;
+}
+
+/** Hồ sơ vụ án gần đây (Cơ quan điều tra). */
+function casesSoon() {
+  const list = casesRepo.list().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 5);
+  return `<section class="panel dash-cases">
+    <div class="panel-head"><h2>Hồ sơ vụ án gần đây</h2><a class="btn btn-ghost btn-sm" href="#cases">Tất cả hồ sơ</a></div>
+    ${
+      list.length
+        ? `<ul class="dash-dl dash-cases-list">${list
+            .map((c) => `<li><b class="num">${new Date(c.updatedAt || Date.now()).toLocaleDateString('vi-VN').slice(0, 5)}</b><a href="#cases/${c.id}">${escapeHtml(c.ten || 'Hồ sơ vụ án')}<small>${(c.toiDanh || []).map((d) => `Điều ${escapeHtml(d)}${findCrime(d) ? ` ${escapeHtml(findCrime(d).ten.replace(/^Tội /, ''))}` : ''}`).join('; ') || 'Chưa xác định tội danh'}</small></a><span class="badge">${(c.persons || []).length} người</span></li>`)
+            .join('')}</ul>`
+        : '<p class="dash-none">Chưa có hồ sơ vụ án. Tạo hồ sơ để gắn kế hoạch hỏi, lời khai, sơ đồ vụ việc.</p>'
     }
   </section>`;
 }
@@ -72,7 +90,7 @@ export function render(ctx) {
 
     <div class="dash-grid">
       <div class="dash-main">
-        ${ctx.can('legal') ? courtSoon() : ''}
+        ${ctx.can('legal') ? (agencyInfo()?.id === 'cqdt' ? casesSoon() : agencyInfo()?.id === 'toa-an' ? courtSoon() : '') : ''}
         <section class="panel">
           <div class="panel-head"><h2>Tài liệu gần đây</h2><a class="btn btn-ghost btn-sm" href="#docs">Xem tất cả</a></div>
           ${
@@ -86,8 +104,8 @@ export function render(ctx) {
         <section class="panel">
           <div class="panel-head"><h2>Lối tắt</h2></div>
           <div class="sc-list">
+            ${ctx.can('legal') && agencyInfo() ? `<div class="legal-promo">${agencyInfo().shortcuts.map(([h, ic, t, sub]) => shortcut(`#${h}`, ic, t, sub)).join('')}</div>` : ''}
             ${ctx.can('docs') ? `${shortcut('#compose/cong-van', 'mail', 'Công văn', 'Trao đổi, đề nghị, hướng dẫn')}${shortcut('#compose/quyet-dinh', 'gavel', 'Quyết định', 'Bổ nhiệm, thành lập, ban hành')}${shortcut('#templates', 'file', 'Thư viện mẫu', 'Mẫu theo Phụ lục I, Nghị định 30/2020')}` : ''}
-            ${ctx.can('legal') ? `<div class="legal-promo">${shortcut('#toa-an', 'gavel', 'Tòa án', 'Sổ vụ án, thẩm tra, biểu mẫu')}${shortcut('#legal', 'layers', 'Cây hỏi đáp pháp luật', 'Lĩnh vực, tội danh, vấn đề cần làm rõ')}${shortcut('#interview', 'message', 'Ghi lời khai', 'Hỏi theo kế hoạch, phát hiện mâu thuẫn')}</div>` : ''}
             ${ctx.can('tools') ? `${shortcut('#spell', 'spell', 'Kiểm tra chính tả', 'Soát lỗi tiếng Việt, từ điển riêng')}${shortcut('#number', 'hash', 'Số thành chữ', 'Đọc số tiền cho chứng từ')}` : ''}
           </div>
         </section>

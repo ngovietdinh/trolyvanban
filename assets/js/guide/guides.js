@@ -1,4 +1,5 @@
 // Nội dung Trung tâm hướng dẫn: mỗi mục một hướng dẫn gồm các bước, ví dụ minh họa, gợi ý, lỗi thường gặp, hỏi đáp.
+import { routeBelongsElsewhere } from '../lib/agency.js';
 // Định dạng trong chuỗi: **đậm**, [[Tên nút]] = nhãn nút/ô trên giao diện, `phím` = phím tắt.
 // fill: màn hình có ô [data-input] — nút “Thử ngay” mở màn hình đó và điền sẵn ví dụ.
 
@@ -23,7 +24,8 @@ export const GUIDES = [
     time: '3 phút',
     when: ['Lần đầu đăng nhập phần mềm', 'Chưa biết chức năng nằm ở đâu'],
     steps: [
-      { t: 'Nhìn thanh bên trái', d: 'Các chức năng được chia nhóm: **Không gian** (soạn văn bản, trợ lý), **Tố tụng hình sự** (chỉ hiện khi được cấp quyền), **Công cụ**, **Lưu trữ**. Cần thêm chỗ làm việc: bấm nút biểu tượng bảng cạnh tên màn hình (hoặc `Ctrl B`) để thu gọn thanh bên thành dải biểu tượng, bấm lại để mở rộng. Trên điện thoại, bấm biểu tượng ☰ ở góc trên để mở.' },
+      { t: 'Chọn cơ quan làm việc', d: 'Tài khoản có phân hệ tố tụng: lần đầu đăng nhập chọn **Tòa án nhân dân** (logo cân công lý) hoặc **Cơ quan Cảnh sát điều tra** (logo công an). Thanh bên, trang Tổng quan, thanh dưới điện thoại chỉ hiện mục của cơ quan đã chọn. Đổi lại: bấm ô cơ quan ở đầu thanh bên hoặc menu tài khoản → [[Đổi cơ quan]]; dữ liệu giữ nguyên.', tip: 'Điều tra viên và cán bộ Tòa án tự vào đúng cơ quan theo vai trò, không phải chọn.' },
+      { t: 'Nhìn thanh bên trái', d: 'Các chức năng được chia nhóm: **Không gian** (soạn văn bản, trợ lý), **Xét xử hình sự** hoặc **Điều tra hình sự** (theo cơ quan đã chọn), **Tra cứu pháp luật**, **Công cụ**, **Lưu trữ**. Cần thêm chỗ làm việc: bấm nút biểu tượng bảng cạnh tên màn hình (hoặc `Ctrl B`) để thu gọn thanh bên thành dải biểu tượng, bấm lại để mở rộng. Trên điện thoại, bấm biểu tượng ☰ ở góc trên để mở.' },
       { t: 'Tìm nhanh bằng bảng lệnh', d: 'Bấm `Ctrl K` (hoặc ô [[Tìm chức năng, tài liệu…]] trên cùng) rồi gõ vài chữ không cần dấu, ví dụ “bblk”, “kham xet”, “dieu 353”. Dùng phím ↑ ↓ để chọn, `Enter` để mở.', tip: 'Gõ số điều luật để mở thẳng tội danh trong cây hỏi đáp.' },
       { t: 'Điền thông tin đơn vị một lần', d: 'Vào [[Cài đặt]] → **Thông tin đơn vị mặc định** (cơ quan, địa danh, người ký) và **Cơ quan điều tra** (tên cơ quan, mẫu số biên bản). Mọi văn bản sau đó tự điền sẵn.' },
       { t: 'Bật AI nếu cần', d: 'Trong [[Cài đặt]] → **Trí tuệ nhân tạo**, dán API key của ChatGPT, Gemini, Groq, Grok, OpenRouter hoặc Claude. Key được mã hóa theo mật khẩu tài khoản của bạn. Không có key, phần mềm vẫn chạy chế độ cơ bản trên máy.' },
@@ -794,7 +796,8 @@ export const findGuide = (id) => GUIDES.find((g) => g.id === id);
 /** Hướng dẫn cho màn hình (route) đang mở. */
 export const guideForRoute = (route) => GUIDES.find((g) => g.routes.includes(route)) || null;
 /** Hướng dẫn mà người dùng được phép xem (theo quyền). */
-export const visibleGuides = (can) => GUIDES.filter((g) => !g.perm || can(g.perm));
+// Hướng dẫn của màn hình thuộc riêng cơ quan khác (Tòa án / Cảnh sát điều tra) không hiện.
+export const visibleGuides = (can) => GUIDES.filter((g) => (!g.perm || can(g.perm)) && !routeBelongsElsewhere(String(g.route || '').replace(/^#/, '').split('/')[0]));
 
 const norm = (s) =>
   String(s || '')

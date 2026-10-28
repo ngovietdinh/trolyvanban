@@ -1,7 +1,8 @@
 // Trang "Tra cứu": một ô tìm cho mọi dữ liệu trên máy — trang đầu khi dùng điện thoại (điện thoại chủ yếu để xem, tìm).
 import { $, $$, icon, escapeHtml, debounce } from '../ui.js';
 import { docsRepo } from '../lib/store.js';
-import { casesRepo, recordsRepo, plansRepo, legalDocsRepo } from '../legal/repo.js';
+import { casesRepo, recordsRepo, plansRepo, legalDocsRepo, courtRepo } from '../legal/repo.js';
+import { currentAgency } from '../lib/agency.js';
 import { getRole } from '../legal/roles.js';
 import { ALL_CRIMES } from '../legal/engine.js';
 import { FORMS } from '../legal/forms-catalog.js';
@@ -34,23 +35,35 @@ export function render(ctx, params = []) {
   const root = ctx.view;
   const legal = ctx.can('legal');
   const docsOk = ctx.can('docs');
+  // Tòa án: tìm trong văn bản, điều luật, bình luận; dữ liệu điều tra (hồ sơ, biên bản, kho…) thuộc Cơ quan điều tra.
+  const police = legal && currentAgency() !== 'toa-an';
   const src = {
     roleName: (id) => getRole(id).ten.split('/')[0].trim(),
     formName: (id) => getDocType(id)?.name || '',
-    cases: legal ? casesRepo.list() : [],
-    records: legal ? recordsRepo.list() : [],
-    plans: legal ? plansRepo.list() : [],
-    ldocs: legal ? legalDocsRepo.list() : [],
+    cases: police ? casesRepo.list() : [],
+    records: police ? recordsRepo.list() : [],
+    plans: police ? plansRepo.list() : [],
+    ldocs: police ? legalDocsRepo.list() : [],
     docs: docsOk ? docsRepo.list() : [],
     crimes: legal ? ALL_CRIMES : [],
-    forms: legal ? FORMS : [],
+    forms: police ? FORMS : [],
     kho: [],
     mauForms: [],
     book: null,
   };
   if (params[0]) lastQ = decodeURIComponent(params[0]);
-  const filters = [['all', 'Tất cả'], ...GROUPS.filter((g) => legal || g.id === 'docs').map((g) => [g.id, g.label.replace(/ \(.*\)$/, '')])];
-  const tiles = [
+  const COURT_GROUPS = ['docs', 'crimes', 'binhluan'];
+  const filters = [['all', 'Tất cả'], ...GROUPS.filter((g) => (police ? true : legal ? COURT_GROUPS.includes(g.id) : g.id === 'docs')).map((g) => [g.id, g.label.replace(/ \(.*\)$/, '')])];
+  const court = legal && currentAgency() === 'toa-an';
+  const courtCases = court ? courtRepo.list() : [];
+  const tiles = court ? [
+    ['#toa-an', 'folder', 'Sổ vụ án', `${courtCases.length} hồ sơ xét xử`],
+    ['#toa-an/kho-ban-an', 'book', 'Kho bản án, án lệ', 'Bản án tương tự'],
+    ['#toa-an/bieu-mau', 'clipboard', 'Biểu mẫu Tòa án', 'Mẫu soạn sẵn'],
+    ['#binh-luan', 'book', 'Bình luận BLHS', 'Đọc từng điều'],
+    ['#legal', 'layers', 'Cây hỏi đáp', 'Tội danh, cấu thành'],
+    docsOk && ['#docs', 'file', 'Tài liệu của tôi', `${src.docs.length} văn bản`],
+  ].filter(Boolean) : [
     legal && ['#cases', 'folder', 'Hồ sơ vụ án', `${src.cases.length} hồ sơ`],
     legal && ['#binh-luan', 'book', 'Bình luận BLHS', 'Đọc từng điều'],
     legal && ['#forms', 'clipboard', 'Biểu mẫu tố tụng', 'Xem, tìm mẫu'],
@@ -79,8 +92,9 @@ export function render(ctx, params = []) {
         ? `<section class="tc-group"><h2>${icon(ic, 'ic-sm')}${title}</h2><ul class="tc-list">${items.map((x) => `<li><a href="${x.href}"><strong>${escapeHtml(x.title)}</strong>${x.sub ? `<small>${escapeHtml(x.sub)}</small>` : ''}</a></li>`).join('')}</ul></section>`
         : '';
     return `<nav class="tc-tiles" aria-label="Mở nhanh">${tiles.map(([h, ic, l, s]) => `<a class="tc-tile" href="${h}">${icon(ic)}<strong>${l}</strong><small>${escapeHtml(s)}</small></a>`).join('')}</nav>
-      ${list('Hồ sơ gần đây', 'folder', recentCases.map((c) => ({ title: c.ten, sub: [c.soHoSo, relDate(c.updatedAt)].filter(Boolean).join(' · '), href: `#cases/${c.id}` })))}
-      ${list('Biên bản gần đây', 'message', recentRecs.map((r) => ({ title: `${r.nguoiKhai?.hoTen || 'Chưa ghi tên'} — lần ${r.lan || 1}`, sub: [src.roleName(r.roleId), r.ngay?.split('-').reverse().join('/')].filter(Boolean).join(' · '), href: `#interview/${r.id}` })))}
+      ${court ? list('Hồ sơ xét xử gần đây', 'folder', courtCases.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 4).map((c) => ({ title: c.ten || 'Hồ sơ xét xử', sub: [c.thuLy?.so ? `Thụ lý số ${c.thuLy.so}` : '', relDate(c.updatedAt)].filter(Boolean).join(', '), href: `#toa-an/${c.id}` }))) : ''}
+      ${court ? '' : list('Hồ sơ gần đây', 'folder', recentCases.map((c) => ({ title: c.ten, sub: [c.soHoSo, relDate(c.updatedAt)].filter(Boolean).join(' · '), href: `#cases/${c.id}` })))}
+      ${court ? '' : list('Biên bản gần đây', 'message', recentRecs.map((r) => ({ title: `${r.nguoiKhai?.hoTen || 'Chưa ghi tên'} — lần ${r.lan || 1}`, sub: [src.roleName(r.roleId), r.ngay?.split('-').reverse().join('/')].filter(Boolean).join(' · '), href: `#interview/${r.id}` })))}
       ${list('Văn bản gần đây', 'file', recentDocs.map((d) => ({ title: d.title || '(không tên)', sub: relDate(d.updatedAt), href: `#compose/doc/${d.id}` })))}`;
   }
 
@@ -142,8 +156,8 @@ export function render(ctx, params = []) {
   (async () => {
     const jobs = [];
     if (legal) {
-      jobs.push(import('../lib/kho-db.js').then((m) => m.khoDb.list()).then((l) => (src.kho = l)).catch(() => {}));
-      jobs.push(import('./forms-mau.js').then((m) => m.loadMauMeta()).then((meta) => (src.mauForms = meta?.forms || [])).catch(() => {}));
+      if (police) jobs.push(import('../lib/kho-db.js').then((m) => m.khoDb.list()).then((l) => (src.kho = l)).catch(() => {}));
+      if (police) jobs.push(import('./forms-mau.js').then((m) => m.loadMauMeta()).then((meta) => (src.mauForms = meta?.forms || [])).catch(() => {}));
       jobs.push(loadBook().then((b) => (src.book = b)).catch(() => {}));
     }
     await Promise.all(jobs);

@@ -36,6 +36,8 @@ import * as security from './views/security.js';
 import * as binhLuan from './views/binh-luan.js';
 import * as traCuu from './views/tra-cuu.js';
 import * as toaAn from './views/toa-an.js';
+import * as coQuan from './views/co-quan.js';
+import { AGENCIES, currentAgency, setAgency, agencyInfo, routeBelongsElsewhere } from './lib/agency.js';
 import { openBlPopup } from './views/bl-popup.js';
 import { loadBook, onBookChange } from './legal/binh-luan-store.js';
 import { startLawLinks, stopLawLinks } from './lib/law-links.js';
@@ -72,7 +74,22 @@ const ROUTES = {
   settings: { mod: settings, title: 'Cài đặt' },
   'bao-mat': { mod: security, title: 'Bảo mật & an toàn thông tin' },
   help: { mod: help, title: 'Hướng dẫn sử dụng' },
+  'co-quan': { mod: coQuan, title: 'Chọn cơ quan làm việc', perm: 'legal' },
 };
+// Màn hình mở được khi chưa chọn cơ quan (cài đặt tài khoản, bảo mật, hướng dẫn, quản trị).
+const NO_AGENCY_OK = new Set(['co-quan', 'settings', 'bao-mat', 'help', 'admin']);
+/** Điều tra viên, cán bộ Tòa án: cơ quan mặc định theo vai trò, không cần hỏi. */
+const ROLE_AGENCY = { investigator: 'cqdt', court: 'toa-an' };
+/** Tài khoản có phân hệ tố tụng mà chưa chọn cơ quan → cần hỏi trước (vai trò có sẵn cơ quan thì tự chọn). */
+function agencyNeeded() {
+  const u = accounts.current();
+  if (!u?.permSet.has('legal') || currentAgency()) return false;
+  if (ROLE_AGENCY[u.role]) {
+    setAgency(ROLE_AGENCY[u.role]);
+    return false;
+  }
+  return true;
+}
 
 let view = $('#view');
 let cleanup = null;
@@ -191,6 +208,7 @@ export const ctx = {
   },
   handoff: null, // Dữ liệu chuyển giữa các màn hình (vd: bản nháp từ Trợ lý sang Soạn thảo).
   refreshChrome: () => refreshChrome(),
+  agencyChanged: () => refreshChrome(),
   lock: (reason) => lockApp(reason),
   modal,
   confirm,
@@ -234,6 +252,13 @@ function route() {
   }
   let r = ROUTES[name] || ROUTES.dashboard;
   if (!ROUTES[name]) name = 'dashboard';
+  // Chưa chọn cơ quan: hỏi trước, chọn xong tiếp tục vào đúng màn hình đang mở.
+  let agencyNext = null;
+  // Gọi trước để vai trò có sẵn cơ quan (điều tra viên, cán bộ Tòa án) được gán ngay cả khi đang ở Cài đặt, Quản trị…
+  if (agencyNeeded() && !NO_AGENCY_OK.has(name)) {
+    agencyNext = [name, ...params].join('/');
+    r = ROUTES['co-quan'];
+  }
   const denied = r.perm && !accounts.can(r.perm);
   if (typeof cleanup === 'function') cleanup();
   cleanup = null;
@@ -244,8 +269,10 @@ function route() {
   view = ctx.view = fresh;
   document.title = `${r.title} — Trợ Lý Văn Bản AI`;
   $('[data-view-title]').textContent = r.title;
+  // Mục con có đường dẫn riêng (vd. toa-an/kho-ban-an); còn lại tô sáng theo tên màn hình.
+  const subKey = params[0] && $(`[data-nav="${name}/${params[0]}"]`) ? `${name}/${params[0]}` : name;
   $$('[data-nav]').forEach((a) => {
-    const active = a.dataset.nav === name || (name === 'tpl' && a.dataset.nav === 'templates');
+    const active = a.dataset.nav === subKey || (name === 'tpl' && a.dataset.nav === 'templates');
     a.classList.toggle('active', active);
     if (active) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
@@ -257,7 +284,7 @@ function route() {
     return;
   }
   try {
-    cleanup = r.mod.render(ctx, params) || null;
+    cleanup = (agencyNext != null ? coQuan.render(ctx, [], { next: agencyNext }) : r.mod.render(ctx, params)) || null;
   } catch (err) {
     console.error(err);
     view.innerHTML = `<div class="page"><div class="empty"><div class="empty-icon">${icon('alert')}</div><h3>Đã xảy ra lỗi</h3><p>${escapeHtml(err.message)}</p></div></div>`;
@@ -341,10 +368,24 @@ function refreshChrome() {
   $('[data-cases-count]').textContent = casesRepo.list().length;
   // Ẩn mục điều hướng không có quyền.
   $$('[data-nav]').forEach((a) => {
-    const r = ROUTES[a.dataset.nav];
+    const r = ROUTES[a.dataset.nav.split('/')[0]];
     a.hidden = !!(r?.perm && !user.permSet.has(r.perm));
   });
   $$('[data-perm-section]').forEach((el) => (el.hidden = !user.permSet.has(el.dataset.permSection)));
+  // Mục riêng của từng cơ quan: chỉ hiện mục của cơ quan đang chọn.
+  const ag = user.permSet.has('legal') ? currentAgency() : null;
+  $$('.sidebar [data-agency]').forEach((el) => {
+    if (!ag || !el.dataset.agency.split(' ').includes(ag)) el.hidden = true;
+  });
+  const sw = $('[data-agency-switch]');
+  sw.hidden = !ag;
+  if (ag) {
+    $('[data-agency-mark]', sw).className = `sb-agency-mark cq-mark-${ag}`;
+    $('[data-agency-mark]', sw).innerHTML = icon(AGENCIES[ag].mark);
+    $('[data-agency-name]', sw).textContent = AGENCIES[ag].nhan;
+    sw.title = `${AGENCIES[ag].ten} — bấm để đổi cơ quan`;
+  }
+  document.body.dataset.currentAgency = ag || '';
   $$('[data-need-perm]').forEach((el) => (el.hidden = !user.permSet.has(el.dataset.needPerm)));
   const st = $('[data-ai-status]');
   const ai = ctx.ai();
@@ -378,16 +419,17 @@ function renderBottomNav() {
   const user = accounts.current();
   if (!host || !user) return;
   const has = (p) => user.permSet.has(p);
-  // Điện thoại chủ yếu để xem, tra cứu: thanh dưới ưu tiên Tra cứu, Hồ sơ, Bình luận, Biểu mẫu.
-  const items = has('legal')
-    ? [['tra-cuu', 'search', 'Tra cứu'], ['cases', 'folder', 'Hồ sơ'], ['binh-luan', 'book', 'Bình luận'], ['forms', 'clipboard', 'Biểu mẫu']]
-    : [['tra-cuu', 'search', 'Tra cứu'], ['docs', 'folder', 'Tài liệu'], ['templates', 'grid', 'Mẫu'], ['chat', 'sparkles', 'Trợ lý AI']];
-  const shown = items.filter(([k]) => !ROUTES[k].perm || has(ROUTES[k].perm));
+  // Điện thoại chủ yếu để xem, tra cứu: thanh dưới theo cơ quan (Tra cứu, Hồ sơ / Sổ vụ án, Bình luận, Biểu mẫu).
+  const ag = has('legal') ? agencyInfo() : null;
+  const items = ag ? ag.bottom : [['tra-cuu', 'search', 'Tra cứu'], ['docs', 'folder', 'Tài liệu'], ['templates', 'grid', 'Mẫu'], ['chat', 'sparkles', 'Trợ lý AI']];
+  const shown = items.filter(([k]) => { const r = ROUTES[k.split('/')[0]]; return !r.perm || has(r.perm); });
+  const { name: cur, params: cp } = parseHash();
+  const curKey = cp[0] && shown.some(([k]) => k === `${cur}/${cp[0]}`) ? `${cur}/${cp[0]}` : cur;
   const main = new Set(shown.map(([k]) => k));
   host.style.gridTemplateColumns = `repeat(${shown.length + 1}, minmax(0, 1fr))`;
   host.innerHTML =
-    shown.map(([k, ic, label]) => `<a href="#${k}" data-bn="${k}"${currentRoute === k ? ' aria-current="page"' : ''}>${icon(ic)}<span>${label}</span></a>`).join('') +
-    `<button type="button" data-bn-more aria-label="Mở menu đầy đủ"${currentRoute && !main.has(currentRoute) ? ' aria-current="page"' : ''}>${icon('menu')}<span>Thêm</span></button>`;
+    shown.map(([k, ic, label]) => `<a href="#${k}" data-bn="${k}"${curKey === k ? ' aria-current="page"' : ''}>${icon(ic)}<span>${label}</span></a>`).join('') +
+    `<button type="button" data-bn-more aria-label="Mở menu đầy đủ"${currentRoute && !main.has(curKey) ? ' aria-current="page"' : ''}>${icon('menu')}<span>Thêm</span></button>`;
   host.querySelector('[data-bn-more]').addEventListener('click', () => sidebar.classList.add('open'));
 }
 // Bàn phím ảo mở (chiều cao vùng nhìn giảm mạnh) → ẩn thanh dưới để rộng chỗ nhập liệu.
@@ -412,6 +454,7 @@ function renderUserMenu() {
       <div class="dropdown-head"><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.email)}</small><span class="badge badge-accent role-badge" data-role-badge>${escapeHtml(user.roleLabel)}</span></div>
       ${user.permSet.has('docs') ? `<a href="#docs" role="menuitem">${icon('folder')}Tài liệu của tôi</a>` : ''}
       ${user.permSet.has('users') ? `<a href="#admin" role="menuitem">${icon('shield')}Quản trị tài khoản</a>` : ''}
+      ${user.permSet.has('legal') ? `<a href="#co-quan" role="menuitem" data-agency-menu>${icon(agencyInfo()?.mark || 'layers')}Đổi cơ quan${agencyInfo() ? ` (đang: ${escapeHtml(agencyInfo().ngan)})` : ''}</a>` : ''}
       <a href="#settings" role="menuitem">${icon('settings')}Cài đặt</a>
       <a href="#bao-mat" role="menuitem">${icon('shield')}Bảo mật &amp; an toàn thông tin</a>
       ${getEnv() === 'secure' ? `<button type="button" role="menuitem" data-lock-now>${icon('lock')}Khóa ngay</button>` : ''}
@@ -793,7 +836,7 @@ const norm = (s) =>
 function paletteCommands() {
   const can = (p) => accounts.can(p);
   const nav = Object.entries(ROUTES)
-    .filter(([, r]) => !r.perm || can(r.perm))
+    .filter(([k, r]) => (!r.perm || can(r.perm)) && !routeBelongsElsewhere(k))
     .map(([k, r]) => ({ group: 'Điều hướng', label: r.title, icon: { dashboard: 'home', compose: 'file', legal: 'layers', interview: 'message', cases: 'folder', 'theo-doi': 'activity', 'loi-khai': 'quote', 'so-do': 'chart', forms: 'file', kho: 'sparkles', chat: 'sparkles', spell: 'spell', summary: 'book', number: 'hash', templates: 'layers', docs: 'folder', admin: 'shield', settings: 'settings', help: 'help', pdf: 'refresh' }[k], run: () => ctx.navigate(`#${k}`) }));
   const guides = visibleGuides(can).map((g) => ({ group: 'Hướng dẫn', label: `Hướng dẫn: ${g.title}`, icon: 'help', run: () => ctx.navigate(`#help/${g.id}`) }));
   const crimes = (can('legal') ? ALL_CRIMES : []).map((c) => ({ group: 'Tội danh — cây hỏi đáp', label: `Điều ${c.dieu}. ${c.ten}`, icon: 'gavel', run: () => ctx.navigate(`#legal/${c.dieu}`) }));

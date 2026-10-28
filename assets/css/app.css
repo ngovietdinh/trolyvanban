@@ -3730,3 +3730,86 @@ mark.err-mark.is-ai {
 .rd-note { display: flex; gap: 6px; align-items: flex-start; margin-top: 16px; }
 .mode-toggle { gap: 4px; }
 .mode-toggle[aria-pressed='true'] { background: var(--warning-soft); color: var(--warning); }
+
+/* ---------- Cơ quan làm việc: Tòa án / Cảnh sát điều tra ---------- */
+.cq-mark-toa-an { --mark: var(--mark-court); }
+.cq-mark-cqdt { --mark: var(--mark-police); }
+.sb-agency {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -4px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 0.15s;
+}
+.sb-agency:hover { border-color: var(--line-strong); }
+.sb-agency[hidden] { display: none; }
+.sb-agency-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid var(--mark, var(--accent));
+  color: var(--mark, var(--accent));
+}
+.sb-agency-mark .ic { width: 18px; height: 18px; }
+.sb-agency-text { display: grid; min-width: 0; line-height: 1.25; }
+.sb-agency-text strong { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-agency-text small { font-size: 12px; color: var(--text-3); }
+body.sb-collapsed .sb-agency-text { display: none; }
+body.sb-collapsed .sb-agency { justify-content: center; padding: 6px; }
+
+.cq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 18px;
+  max-width: 980px;
+}
+.cq-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 1fr auto;
+  gap: 4px 18px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.cq-card:hover { border-color: var(--line-strong); }
+.cq-card.is-current { border-color: var(--mark, var(--accent)); }
+.cq-card:has(.cq-mark-toa-an) { --mark: var(--mark-court); }
+.cq-card:has(.cq-mark-cqdt) { --mark: var(--mark-police); }
+.cq-mark {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid var(--mark);
+  color: var(--mark);
+}
+.cq-mark .ic { width: 32px; height: 32px; stroke-width: 1.6; }
+.cq-body { display: grid; gap: 6px; }
+.cq-body strong { font-size: 18px; font-weight: 600; }
+.cq-body > span { color: var(--text-2); font-size: 14px; }
+.cq-body ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.cq-body li { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); }
+.cq-body li .ic { color: var(--text-3); }
+.cq-go { grid-column: 2; justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 14px; font-weight: 600; color: var(--mark); }
+@media (max-width: 560px) {
+  .cq-card { grid-template-columns: minmax(0, 1fr); padding: 18px; }
+  .cq-mark { grid-row: auto; width: 52px; height: 52px; }
+  .cq-go { grid-column: 1; }
+}

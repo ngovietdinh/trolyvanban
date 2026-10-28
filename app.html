@@ -33,6 +33,11 @@
         </button>
       </div>
 
+      <a class="sb-agency" href="#co-quan" data-agency-switch hidden title="Đổi cơ quan làm việc">
+        <span class="sb-agency-mark" data-agency-mark></span>
+        <span class="sb-agency-text"><strong data-agency-name></strong><small>Đổi cơ quan</small></span>
+      </a>
+
       <a class="btn btn-primary sb-new" href="#compose" data-need-perm="docs">
         <svg class="ic"><use href="assets/icons.svg#i-plus" /></svg>Văn bản mới
       </a>
@@ -43,17 +48,22 @@
         <a href="#dashboard" data-nav="dashboard"><svg class="ic"><use href="assets/icons.svg#i-home" /></svg>Tổng quan</a>
         <a href="#compose" data-nav="compose"><svg class="ic"><use href="assets/icons.svg#i-file" /></svg>Soạn văn bản</a>
         <a href="#chat" data-nav="chat"><svg class="ic"><use href="assets/icons.svg#i-sparkles" /></svg>Trợ lý AI</a>
-        <span class="sb-label" data-perm-section="legal">Tố tụng hình sự</span>
-        <a href="#legal" data-nav="legal"><svg class="ic"><use href="assets/icons.svg#i-layers" /></svg>Cây hỏi đáp pháp luật</a>
-        <a href="#interview" data-nav="interview"><svg class="ic"><use href="assets/icons.svg#i-message" /></svg>Ghi lời khai</a>
-        <a href="#cases" data-nav="cases"><svg class="ic"><use href="assets/icons.svg#i-folder" /></svg>Hồ sơ vụ án<span class="sb-count" data-cases-count>0</span></a>
-        <a href="#theo-doi" data-nav="theo-doi"><svg class="ic"><use href="assets/icons.svg#i-activity" /></svg>Theo dõi &amp; báo cáo</a>
-        <a href="#loi-khai" data-nav="loi-khai"><svg class="ic"><use href="assets/icons.svg#i-quote" /></svg>Phân tích lời khai</a>
-        <a href="#so-do" data-nav="so-do"><svg class="ic"><use href="assets/icons.svg#i-chart" /></svg>Sơ đồ vụ việc</a>
-        <a href="#kho" data-nav="kho"><svg class="ic"><use href="assets/icons.svg#i-sparkles" /></svg>Kho hồ sơ &amp; Trợ lý AI</a>
-        <a href="#forms" data-nav="forms"><svg class="ic"><use href="assets/icons.svg#i-file" /></svg>Biểu mẫu tố tụng</a>
-        <a href="#binh-luan" data-nav="binh-luan"><svg class="ic"><use href="assets/icons.svg#i-book" /></svg>Bình luận BLHS</a>
-        <a href="#toa-an" data-nav="toa-an"><svg class="ic"><use href="assets/icons.svg#i-gavel" /></svg>Tòa án</a>
+        <span class="sb-label" data-perm-section="legal" data-agency="toa-an">Xét xử hình sự</span>
+        <a href="#toa-an" data-nav="toa-an" data-agency="toa-an"><svg class="ic"><use href="assets/icons.svg#i-folder" /></svg>Sổ vụ án</a>
+        <a href="#toa-an/kho-ban-an" data-nav="toa-an/kho-ban-an" data-agency="toa-an"><svg class="ic"><use href="assets/icons.svg#i-book" /></svg>Kho bản án, án lệ</a>
+        <a href="#toa-an/bieu-mau" data-nav="toa-an/bieu-mau" data-agency="toa-an"><svg class="ic"><use href="assets/icons.svg#i-clipboard" /></svg>Biểu mẫu Tòa án</a>
+        <a href="#toa-an/cai-dat" data-nav="toa-an/cai-dat" data-agency="toa-an"><svg class="ic"><use href="assets/icons.svg#i-settings" /></svg>Cài đặt thời hạn</a>
+        <span class="sb-label" data-perm-section="legal" data-agency="cqdt">Điều tra hình sự</span>
+        <a href="#cases" data-nav="cases" data-agency="cqdt"><svg class="ic"><use href="assets/icons.svg#i-folder" /></svg>Hồ sơ vụ án<span class="sb-count" data-cases-count>0</span></a>
+        <a href="#interview" data-nav="interview" data-agency="cqdt"><svg class="ic"><use href="assets/icons.svg#i-message" /></svg>Ghi lời khai</a>
+        <a href="#loi-khai" data-nav="loi-khai" data-agency="cqdt"><svg class="ic"><use href="assets/icons.svg#i-quote" /></svg>Phân tích lời khai</a>
+        <a href="#so-do" data-nav="so-do" data-agency="cqdt"><svg class="ic"><use href="assets/icons.svg#i-chart" /></svg>Sơ đồ vụ việc</a>
+        <a href="#theo-doi" data-nav="theo-doi" data-agency="cqdt"><svg class="ic"><use href="assets/icons.svg#i-activity" /></svg>Theo dõi &amp; báo cáo</a>
+        <a href="#kho" data-nav="kho" data-agency="cqdt"><svg class="ic"><use href="assets/icons.svg#i-sparkles" /></svg>Kho hồ sơ &amp; Trợ lý AI</a>
+        <a href="#forms" data-nav="forms" data-agency="cqdt"><svg class="ic"><use href="assets/icons.svg#i-clipboard" /></svg>Biểu mẫu tố tụng</a>
+        <span class="sb-label" data-perm-section="legal" data-agency="toa-an cqdt">Tra cứu pháp luật</span>
+        <a href="#legal" data-nav="legal" data-agency="toa-an cqdt"><svg class="ic"><use href="assets/icons.svg#i-layers" /></svg>Cây hỏi đáp pháp luật</a>
+        <a href="#binh-luan" data-nav="binh-luan" data-agency="toa-an cqdt"><svg class="ic"><use href="assets/icons.svg#i-book" /></svg>Bình luận BLHS</a>
         <span class="sb-label" data-perm-section="tools">Công cụ</span>
         <a href="#spell" data-nav="spell"><svg class="ic"><use href="assets/icons.svg#i-spell" /></svg>Kiểm tra chính tả</a>
         <a href="#summary" data-nav="summary"><svg class="ic"><use href="assets/icons.svg#i-book" /></svg>Tóm tắt văn bản</a>
