@@ -1,9 +1,9 @@
 {
-  "version": "2.40.0",
-  "date": "2026-10-27",
+  "version": "2.41.0",
+  "date": "2026-10-28",
   "notes": [
-    "Tòa án: sổ vụ án sơ thẩm, phúc thẩm; đọc cáo trạng; thời hạn tố tụng, cảnh báo quá hạn / sắp đến hạn",
-    "Tính hình phạt: khoảng hợp pháp (Điều 54, 57, 101), tổng hợp (Điều 55, 56), trừ tạm giam, ngày chấp hành xong",
-    "25 biểu mẫu Tòa án soạn sẵn tự điền; tải mẫu Word của đơn vị lên thay (riêng từng tài khoản)"
+    "Thẩm tra hồ sơ: 5 câu hỏi nghiệp vụ, đề xuất giữ nguyên / sửa / hủy án, kháng nghị giám đốc thẩm, tái thẩm",
+    "Bút lục cho mọi trích dẫn; rà soát chứng cứ (thiếu, mâu thuẫn, chỉ có lời nhận tội); pháp luật theo thời điểm",
+    "Báo cáo thẩm tra 8 mục (Word), bảng đối chiếu (Excel), dự thảo trả lời kiến nghị; kho bản án, án lệ"
   ]
 }
