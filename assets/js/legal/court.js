@@ -297,13 +297,23 @@ export function parseIndictment(text) {
 }
 
 /* ---------------- Căn cứ thực tế trong tài liệu (câu trích nguyên văn) ---------------- */
+// Mỗi câu kèm nguồn: tên tài liệu và BÚT LỤC (số bút lục bắt đầu của tài liệu + số trang chứa câu, nếu biết trang) để
+// mọi trích dẫn truy xuất được về hồ sơ gốc.
 export function sentencesOf(sources = []) {
   const out = [];
-  for (const s of sources) for (const t of String(s.text || '').replace(/\r/g, '').split(/(?<=[.!?;])\s+|\n+/u)) if (t.trim().length >= 12) out.push({ t: t.trim(), src: s.name || '' });
+  for (const s of sources) {
+    const pages = Array.isArray(s.pages) && s.pages.length ? s.pages : [s.text];
+    const start = Number.isFinite(+s.butLuc) && String(s.butLuc).trim() !== '' ? +s.butLuc : null;
+    pages.forEach((pg, pi) => {
+      const bl = start != null ? start + (pages.length > 1 ? pi : 0) : null;
+      const src = [s.name || '', bl != null ? `BL ${bl}` : ''].filter(Boolean).join(', ');
+      for (const t of String(pg || '').replace(/\r/g, '').split(/(?<=[.!?;])\s+|\n+/u)) if (t.trim().length >= 12) out.push({ t: t.trim(), src, name: s.name || '', loai: s.loai || '', bl });
+    });
+  }
   return out;
 }
 /** Tìm câu chứng minh: re khớp, không phải câu phủ định / câu hỏi. */
-function evidence(sents, re, { name = '' } = {}) {
+export function evidence(sents, re, { name = '' } = {}) {
   const nk = fold(name).split(' ').filter(Boolean).slice(-2).join(' ');
   const hits = sents.filter((x) => re.test(x.t) && !/^(hỏi|h)\s*[:.]/iu.test(x.t) && !/\b(không|chưa|chối|phủ nhận)\b[^,.;]{0,12}$/iu.test(x.t.split(re)[0] || ''));
   const pref = nk ? hits.filter((x) => fold(x.t).includes(nk)) : [];
@@ -311,7 +321,7 @@ function evidence(sents, re, { name = '' } = {}) {
 }
 
 // Dấu hiệu trong tài liệu gợi ý tình tiết giảm nhẹ (khớp theo NỘI DUNG điểm của Điều 51 trong sách, không theo chữ cái).
-const MITIGATE_CUES = [
+export const MITIGATE_CUES = [
   [/sửa chữa, bồi thường|khắc phục hậu quả/u, /(?:đã|tự nguyện|gia đình[^.]{0,30})\s*(?:bồi thường|khắc phục|nộp lại|nộp (?:số )?tiền|trả lại|hoàn trả|nộp khắc phục)/iu],
   [/thành khẩn khai báo/u, /thành khẩn|ăn năn|hối cải|thừa nhận (?:toàn bộ )?hành vi|khai nhận (?:toàn bộ )?hành vi/iu],
   [/tự thú/u, /tự thú/iu],
@@ -329,9 +339,9 @@ const MITIGATE_CUES = [
   [/hạn chế khả năng nhận thức hoặc khả năng điều khiển/u, /tâm thần|hạn chế khả năng nhận thức/iu],
   [/lập công/u, /lập công/iu],
 ];
-const K2_CUE = /đầu thú|gia đình (?:có công|chính sách)|hoàn cảnh (?:gia đình )?(?:đặc biệt )?khó khăn|lao động chính|(?:bố|mẹ|cha|ông|bà|anh|chị)[^.]{0,40}(?:có công|liệt sĩ|huân chương|huy chương)|bị hại (?:có đơn )?(?:xin giảm nhẹ|bãi nại)|đơn xin giảm nhẹ/iu;
+export const K2_CUE = /đầu thú|gia đình (?:có công|chính sách)|hoàn cảnh (?:gia đình )?(?:đặc biệt )?khó khăn|lao động chính|(?:bố|mẹ|cha|ông|bà|anh|chị)[^.]{0,40}(?:có công|liệt sĩ|huân chương|huy chương)|bị hại (?:có đơn )?(?:xin giảm nhẹ|bãi nại)|đơn xin giảm nhẹ/iu;
 // Tình tiết tăng nặng đã áp dụng cần có căn cứ trong tài liệu.
-const AGGRAVATE_CUES = [
+export const AGGRAVATE_CUES = [
   [/có tổ chức/u, /có tổ chức|bàn bạc|phân công|câu kết chặt chẽ/iu],
   [/chuyên nghiệp/u, /chuyên nghiệp|nhiều lần|nguồn sống chính|lấy[^.]{0,20}làm nguồn sống/iu],
   [/02 lần trở lên/u, /\b(?:0?2|hai|ba|nhiều)\s*lần\b/iu],

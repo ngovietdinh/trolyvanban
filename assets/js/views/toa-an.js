@@ -12,6 +12,14 @@ import { fmtDate } from '../legal/court-penalty.js';
 import { mountCasePane, renderCourtSettings, courtRules, nextDeadline } from './toa-an-case.js';
 import { mountPenaltyPane } from './toa-an-tools.js';
 import { mountFormsPane, renderFormsLibrary } from './toa-an-forms.js';
+import { SOURCE_TYPES, detectType, srcRange } from '../legal/court-evidence.js';
+import { extractText } from '../lib/extract.js';
+import { courtBaDb } from '../legal/court-ba-db.js';
+import { mergeLaws, LAWS_KEY } from '../legal/court-law-time.js';
+import { store } from '../lib/store.js';
+import { thamTraHtml, chungCuHtml, tuongTuHtml, bindThamTra, thamTraAiPrompt } from './toa-an-tham-tra.js';
+import { buildReplyLetter } from '../legal/court-review.js';
+import { renderKho } from './toa-an-kho.js';
 import { loadBook } from '../legal/binh-luan-store.js';
 import { dropzoneHtml, bindDropzone, readAll } from './acts-review.js';
 import { buildDocx, safeFileName } from '../lib/docx.js';
@@ -54,10 +62,13 @@ const recordText = (r) => [`BIÊN BẢN ${getRole(r.roleId).ten.split('/')[0].tr
 const TABS = [
   ['vu-an', 'folder', 'Vụ án, thời hạn'],
   ['tai-lieu', 'upload', 'Tài liệu & bị cáo'],
+  ['tham-tra', 'check-circle', 'Thẩm tra (5 câu hỏi)'],
+  ['chung-cu', 'layers', 'Chứng cứ, bút lục'],
   ['phan-tich', 'activity', 'Phân tích hành vi'],
   ['kiem-tra', 'check-circle', 'Kiểm tra bản án'],
   ['hinh-phat', 'gavel', 'Tính hình phạt'],
   ['khieu-nai', 'mail', 'Xem xét đơn'],
+  ['tuong-tu', 'book', 'Bản án tương tự, án lệ'],
   ['bieu-mau', 'file', 'Biểu mẫu'],
 ];
 const CAP = { 'so-tham': 'Sơ thẩm', 'phuc-tham': 'Phúc thẩm' };
@@ -72,7 +83,7 @@ function renderList(ctx) {
   ctx.view.innerHTML = `<div class="page ct-page">
     <div class="page-head"><div><h1 class="page-title">Tòa án — <em>hồ sơ xét xử hình sự</em></h1><p class="page-sub">Sổ vụ án sơ thẩm, phúc thẩm; thời hạn tố tụng và cảnh báo; phân tích hành vi, kiểm tra bản án, tính hình phạt; xem xét đơn khiếu nại, kháng cáo; biểu mẫu Tòa án tự điền. Dữ liệu lưu trên máy, riêng tài khoản của bạn.</p></div>
       <div class="inline"><button class="btn btn-primary" type="button" data-new="so-tham">${icon('plus', 'ic-sm')}Vụ án sơ thẩm</button><button class="btn" type="button" data-new="phuc-tham">${icon('plus', 'ic-sm')}Vụ án phúc thẩm</button></div></div>
-    <div class="inline ct-links"><a class="btn btn-sm btn-ghost" href="#toa-an/bieu-mau">${icon('file', 'ic-sm')}Biểu mẫu Tòa án</a><a class="btn btn-sm btn-ghost" href="#toa-an/cai-dat">${icon('settings', 'ic-sm')}Cài đặt Tòa án, thời hạn</a></div>
+    <div class="inline ct-links"><a class="btn btn-sm btn-ghost" href="#toa-an/bieu-mau">${icon('file', 'ic-sm')}Biểu mẫu Tòa án</a><a class="btn btn-sm btn-ghost" href="#toa-an/kho-ban-an">${icon('book', 'ic-sm')}Kho bản án, án lệ</a><a class="btn btn-sm btn-ghost" href="#toa-an/cai-dat">${icon('settings', 'ic-sm')}Cài đặt Tòa án, thời hạn, văn bản</a><input class="input input-sm ct-list-q" type="search" placeholder="Tìm hồ sơ: tên, bị cáo, số thụ lý…" data-list-q aria-label="Tìm hồ sơ xét xử" /></div>
     ${
       todo.length
         ? `<section class="panel ct-sec ct-todo"><h2>${icon('clock', 'ic-sm')}Việc cần làm theo thời hạn</h2><ul class="ct-dl">${todo
@@ -91,6 +102,11 @@ function renderList(ctx) {
         : `<section class="panel"><div class="empty"><div class="empty-icon">${icon('gavel', 'ic-lg')}</div><h3>Chưa có hồ sơ xét xử</h3><p>Tạo vụ án sơ thẩm (thụ lý từ cáo trạng) hoặc phúc thẩm (có kháng cáo, kháng nghị). Tải cáo trạng / bản án để phần mềm tự điền bị cáo, tội danh, nhân thân; nhập ngày thụ lý để theo dõi thời hạn.</p></div></section>`
     }
   </div>`;
+  const q = ctx.view.querySelector('[data-list-q]');
+  q?.addEventListener('input', () => {
+    const k = q.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+    ctx.view.querySelectorAll('.ct-list > li').forEach((li) => (li.hidden = !!k && !li.textContent.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').includes(k)));
+  });
   ctx.view.querySelectorAll('[data-new]').forEach((b) =>
     b.addEventListener('click', () => {
       const rec = newCourtCase(ctx, b.dataset.new);
@@ -104,6 +120,7 @@ export function render(ctx, params = []) {
   if (!params[0]) return renderList(ctx);
   if (params[0] === 'bieu-mau') return renderFormsLibrary(ctx);
   if (params[0] === 'cai-dat') return renderCourtSettings(ctx);
+  if (params[0] === 'kho-ban-an') return renderKho(ctx);
   let rec = courtRepo.get(params[0]);
   if (!rec) {
     toast('Không tìm thấy hồ sơ xét xử', { type: 'error' });
@@ -113,7 +130,9 @@ export function render(ctx, params = []) {
   rec.cap ||= 'so-tham';
   let tab = TABS.some(([t]) => t === params[1]) ? params[1] : (rec.sources || []).length || rec.thuLy?.so ? 'tai-lieu' : 'vu-an';
   const panes = {};
-  const aiText = { 'phan-tich': '', don: '' };
+  let khoDocs = [];
+  const laws = () => mergeLaws(store.get(LAWS_KEY, null));
+  const aiText = { 'phan-tich': '', don: '', 'tham-tra': '' };
   let aiBusy = null;
   rec.dons = rec.dons || [];
   let donSel = rec.dons[rec.dons.length - 1]?.id || null;
@@ -175,12 +194,13 @@ export function render(ctx, params = []) {
   function drawSources() {
     const host = $('[data-ct-sources]', root);
     host.innerHTML = (rec.sources || []).length
-      ? rec.sources.map((s, i) => `<li><span>${icon('file', 'ic-sm')}<strong>${escapeHtml(s.name)}</strong><small>${s.text.length.toLocaleString('vi-VN')} ký tự</small></span><button class="btn btn-ghost btn-sm btn-icon" type="button" data-src-del="${i}" aria-label="Bỏ tài liệu ${escapeHtml(s.name)}">${icon('x', 'ic-sm')}</button></li>`).join('')
+      ? rec.sources.map((s, i) => `<li class="ct-src-row"><span>${icon('file', 'ic-sm')}<strong>${escapeHtml(s.name)}</strong><small>${s.text.length.toLocaleString('vi-VN')} ký tự${s.pages?.length > 1 ? ` · ${s.pages.length} trang` : ''}${s.ocrConf != null ? ` · OCR ${Math.round(s.ocrConf * 100)}%` : ''}</small></span><span class="ct-src-meta"><select class="select input-sm" data-src-loai="${i}" aria-label="Loại tài liệu ${escapeHtml(s.name)}">${SOURCE_TYPES.map(([v, l]) => `<option value="${v}" ${v === (s.loai || 'khac') ? 'selected' : ''}>${l}</option>`).join('')}</select><label class="ct-bl">BL <input class="input input-sm" type="number" min="1" data-src-bl="${i}" value="${escapeHtml(String(s.butLuc ?? ''))}" aria-label="Bút lục bắt đầu của ${escapeHtml(s.name)}" placeholder="số" /></label><small data-src-range="${i}">${escapeHtml(srcRange(s))}</small></span><button class="btn btn-ghost btn-sm btn-icon" type="button" data-src-del="${i}" aria-label="Bỏ tài liệu ${escapeHtml(s.name)}">${icon('x', 'ic-sm')}</button></li>`).join('')
       : '<li class="hint">Chưa có tài liệu.</li>';
   }
-  const addSource = (name, text) => {
+  const addSource = (name, text, extra = {}) => {
     if (!String(text || '').trim()) return;
-    rec.sources = [...(rec.sources || []).filter((s) => s.name !== name), { name, text: String(text) }];
+    const old = (rec.sources || []).find((s) => s.name === name) || {};
+    rec.sources = [...(rec.sources || []).filter((s) => s.name !== name), { name, text: String(text), loai: old.loai || detectType(name, text), butLuc: old.butLuc ?? '', ...extra }];
     saveNow();
     drawSources();
     update();
@@ -202,6 +222,7 @@ export function render(ctx, params = []) {
         <div class="field"><label>Tuổi khi phạm tội</label><input class="input" type="number" min="14" max="100" data-f="tuoi" value="${d.tuoi ?? ''}" /></div>
         <div class="field"><label>Vai trò</label><select class="select" data-f="vaiTro">${VAI_TRO.map(([v, l]) => `<option value="${v}" ${v === (d.vaiTro || '') ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="field"><label>Năm sinh</label><input class="input" data-f="namSinh" value="${escapeHtml(d.namSinh || '')}" /></div>
+        <div class="field"><label>Ngày sinh (nếu có)</label><input class="input" data-f="ngaySinh" value="${escapeHtml(d.ngaySinh || '')}" placeholder="dd/mm/yyyy" /></div>
         <div class="field span-2"><label>Nơi cư trú</label><input class="input" data-f="noiCuTru" value="${escapeHtml(d.noiCuTru || '')}" /></div>
       </div>
       <div class="grid-3">
@@ -237,6 +258,7 @@ export function render(ctx, params = []) {
     d.tuoi = v('[data-f="tuoi"]').value ? +v('[data-f="tuoi"]').value : null;
     d.vaiTro = v('[data-f="vaiTro"]').value;
     d.namSinh = v('[data-f="namSinh"]').value.trim();
+    d.ngaySinh = v('[data-f="ngaySinh"]').value.trim();
     d.noiCuTru = v('[data-f="noiCuTru"]').value.trim();
     d.nganChan = { loai: v('[data-n="loai"]').value, tu: v('[data-n="tu"]').value, den: v('[data-n="den"]').value };
     d.soTien = parseMoney(v('[data-f="soTien"]').value);
@@ -331,7 +353,7 @@ export function render(ctx, params = []) {
           <ul class="ct-els">${it.co.map((x) => reasonHtml('ok', 'check', 'Có căn cứ', x)).join('')}${it.khong.map((x) => reasonHtml('no', 'x', 'Không có căn cứ', x)).join('')}${it.xacMinh.map((x) => reasonHtml('xm', 'help', 'Cần xác minh', x)).join('')}</ul></li>`,
         )
         .join('')}</ol>
-      <div class="inline"><button class="btn" type="button" data-don-preview>${icon('eye', 'ic-sm')}Xem trước phiếu xem xét đơn</button><button class="btn btn-primary" type="button" data-don-export>${icon('download', 'ic-sm')}Xuất Word</button><button class="btn btn-sm" type="button" data-ct-ai="don" ${aiBusy ? 'disabled' : ''}>${icon('sparkles', 'ic-sm')}${aiBusy ? 'AI đang xem xét…' : 'AI xem xét đơn (chỉ dựa trên tài liệu)'}</button></div>
+      <div class="inline"><button class="btn" type="button" data-don-preview>${icon('eye', 'ic-sm')}Xem trước phiếu xem xét đơn</button><button class="btn btn-primary" type="button" data-don-export>${icon('download', 'ic-sm')}Xuất Word</button><button class="btn" type="button" data-don-reply>${icon('mail', 'ic-sm')}Dự thảo văn bản trả lời</button><button class="btn btn-sm" type="button" data-ct-ai="don" ${aiBusy ? 'disabled' : ''}>${icon('sparkles', 'ic-sm')}${aiBusy ? 'AI đang xem xét…' : 'AI xem xét đơn (chỉ dựa trên tài liệu)'}</button></div>
       ${aiText.don ? `<div class="ct-ai md" data-ai-box="don">${escapeHtml(aiText.don).replace(/\n/g, '<br>')}</div>` : ''}
     </div>`;
   }
@@ -347,14 +369,15 @@ export function render(ctx, params = []) {
     $$('[data-ct-tab]', root).forEach((b) => b.setAttribute('aria-selected', String(b.dataset.ctTab === tab)));
     $('[data-ct-don]', root).hidden = tab !== 'khieu-nai';
     $$('[data-pane]', root).forEach((p) => (p.hidden = p.dataset.pane !== tab));
-    const inOut = ['phan-tich', 'kiem-tra', 'khieu-nai'].includes(tab);
+    const inOut = ['phan-tich', 'kiem-tra', 'khieu-nai', 'tham-tra', 'chung-cu', 'tuong-tu'].includes(tab);
     out.hidden = !inOut;
     $('[data-ct-book]', root).hidden = !!book || !['kiem-tra', 'hinh-phat', 'tai-lieu'].includes(tab);
     if (tab === 'vu-an') panes['vu-an'] ? panes['vu-an'].refresh() : (panes['vu-an'] = mountCasePane($('[data-pane="vu-an"]', root), { ctx, rec, save, getBook: () => book, onChange: onCaseChange }));
     else if (tab === 'hinh-phat') panes['hinh-phat'] ? panes['hinh-phat'].refresh() : (panes['hinh-phat'] = mountPenaltyPane($('[data-pane="hinh-phat"]', root), { rec, save, getBook: () => book }));
     else if (tab === 'bieu-mau') panes['bieu-mau'] ? panes['bieu-mau'].refresh() : (panes['bieu-mau'] = mountFormsPane($('[data-pane="bieu-mau"]', root), { ctx, rec, save }));
     if (!inOut) return;
-    out.innerHTML = tab === 'phan-tich' ? analysisHtml() : tab === 'kiem-tra' ? checkHtml() : reviewHtml();
+    const tctx = { rec, book, laws: laws(), docs: khoDocs, aiText: aiText['tham-tra'], aiBusy };
+    out.innerHTML = tab === 'phan-tich' ? analysisHtml() : tab === 'kiem-tra' ? checkHtml() : tab === 'tham-tra' ? thamTraHtml(tctx) : tab === 'chung-cu' ? chungCuHtml(tctx) : tab === 'tuong-tu' ? tuongTuHtml(tctx) : reviewHtml();
   }, 120);
 
   // Đổi cấp xét xử ở tab Vụ án → nhãn trên đầu; biểu mẫu vẽ lại theo cấp.
@@ -400,7 +423,10 @@ export function render(ctx, params = []) {
       const say = (t) => ($('[data-ct-say]', root).textContent = t);
       for (const f of [...files]) {
         try {
-          addSource(f.name, await readAll([f], '', say));
+          // Giữ từng trang (PDF) để tính bút lục của câu trích; ghi độ tin cậy OCR để cảnh báo tài liệu đọc không rõ.
+          say(`Đang đọc “${f.name}”…`);
+          const r = await extractText(f, { onProgress: (p) => say(`Nhận dạng chữ “${f.name}” — trang ${p.page}/${p.total}`) });
+          addSource(f.name, r.text, { ...(r.pageTexts?.length > 1 && { pages: r.pageTexts }), ...(r.ocr && r.confidence != null && { ocrConf: r.confidence > 1 ? r.confidence / 100 : r.confidence }) });
         } catch (e) {
           toast(e.message, { type: 'error', timeout: 6000 });
         }
@@ -461,7 +487,9 @@ export function render(ctx, params = []) {
       const ta = $('[data-ct-paste]', root);
       if (ta.value.trim()) $('[data-ct-add]', root).click();
       if (!(rec.sources || []).length) return warnMissing('Chưa có tài liệu: tải bản án / cáo trạng hoặc dán nội dung trước', $('[data-drop]', root));
-      const v = parseVerdict(rec.sources.map((s) => s.text).join('\n'));
+      // Chỉ đọc tài liệu loại "Bản án" nếu có (số tiền, quyết định lấy từ bản án, không lấy lời khai).
+      const pool = rec.sources.filter((s) => s.loai === 'ban-an');
+      const v = parseVerdict((pool.length ? pool : rec.sources).map((s) => s.text).join('\n'));
       if (!v.defendants.length) return warnMissing('Không đọc được phần quyết định (cần câu dạng “Áp dụng … Xử phạt bị cáo …”) — nhập tay ở phần Bị cáo');
       const maxMoney = v.money.sort((a, b) => b.v - a.v)[0]?.v ?? null;
       rec.defendants = v.defendants.map((d) => {
@@ -477,7 +505,8 @@ export function render(ctx, params = []) {
       const ta = $('[data-ct-paste]', root);
       if (ta.value.trim()) $('[data-ct-add]', root).click();
       if (!(rec.sources || []).length) return warnMissing('Chưa có tài liệu: tải cáo trạng hoặc dán nội dung trước', $('[data-drop]', root));
-      const ct = parseIndictment(rec.sources.map((s) => s.text).join('\n'));
+      const pool = rec.sources.filter((s) => s.loai === 'cao-trang');
+      const ct = parseIndictment((pool.length ? pool : rec.sources).map((s) => s.text).join('\n'));
       if (!ct.defendants.length) return warnMissing('Không đọc được phần truy tố (cần câu dạng “Truy tố bị can … về tội … theo … Điều …”) — nhập tay ở phần Bị cáo');
       rec.caoTrang = { ...(rec.caoTrang || {}), ...(ct.so && { so: ct.so }), ...(ct.ngay && { ngay: ct.ngay }), ...(ct.vks && { vks: ct.vks }) };
       rec.hdxx = { ...(rec.hdxx || {}) };
@@ -498,6 +527,17 @@ export function render(ctx, params = []) {
       drawDefs();
       update();
       toast(`Đã đọc cáo trạng${ct.so ? ` số ${ct.so}` : ''}: ${ct.defendants.length} bị cáo${ct.biHai.length ? `, ${ct.biHai.length} bị hại` : ''} — kiểm tra lại các ô đã điền`, { timeout: 5000 });
+    });
+    $('[data-ct-sources]', root).addEventListener('change', (e) => {
+      const t = e.target;
+      if (t.dataset.srcLoai != null) rec.sources[+t.dataset.srcLoai].loai = t.value;
+      else if (t.dataset.srcBl != null) {
+        const s = rec.sources[+t.dataset.srcBl];
+        s.butLuc = t.value === '' ? '' : Math.max(1, Math.round(+t.value));
+        $(`[data-src-range="${t.dataset.srcBl}"]`, root).textContent = srcRange(s);
+      } else return;
+      saveNow();
+      update();
     });
     $('[data-ct-sources]', root).addEventListener('click', (e) => {
       const b = e.target.closest('[data-src-del]');
@@ -543,6 +583,7 @@ export function render(ctx, params = []) {
       }),
     );
     const out = $('[data-ct-out]', root);
+    bindThamTra(out, { ctx, getRec: () => rec, getCtx: () => ({ book, laws: laws(), docs: khoDocs }), save, update });
     out.addEventListener('click', (e) => {
       if (e.target.closest('[data-don-export]')) {
         const doc = reviewDoc();
@@ -553,6 +594,20 @@ export function render(ctx, params = []) {
         const doc = reviewDoc();
         if (!doc) return;
         ctx.modal(`<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button><div class="preview-modal-body print-area">${renderDocumentHtml(doc)}</div><div class="modal-actions"><button class="btn" type="button" data-close>Đóng</button></div>`, { className: 'modal-wide preview-modal', label: 'Xem trước phiếu xem xét đơn' });
+      } else if (e.target.closest('[data-don-reply]')) {
+        const don = currentDon();
+        if (!don) return warnMissing('Chưa có đơn');
+        const doc = buildReplyLetter(rec, don, { book, org: ctx.settings?.().courtOrg || {} });
+        ctx.modal(`<button class="btn btn-ghost btn-sm btn-icon modal-close" type="button" aria-label="Đóng" data-close>${icon('x')}</button><div class="preview-modal-body print-area">${renderDocumentHtml(doc)}</div><div class="modal-actions"><button class="btn" type="button" data-close>Đóng</button><button class="btn btn-primary" type="button" data-reply-export>${icon('download', 'ic-sm')}Xuất Word</button></div>`, {
+          className: 'modal-wide preview-modal',
+          label: 'Dự thảo văn bản trả lời',
+          onMount(box) {
+            box.querySelector('[data-reply-export]').addEventListener('click', () => {
+              downloadBlob(buildDocx(doc, 'Tra loi don'), safeFileName(`Tra-loi-don-${don.name}`), DOCX_MIME);
+              toast('Đã xuất dự thảo văn bản trả lời (.docx)');
+            });
+          },
+        });
       } else if (e.target.closest('[data-ct-ai]')) runAi(e.target.closest('[data-ct-ai]').dataset.ctAi || 'phan-tich');
     });
   }
@@ -565,7 +620,9 @@ export function render(ctx, params = []) {
     if (kind === 'don' && !don) return warnMissing('Chưa có đơn để xem xét');
     let system;
     let content;
-    if (don) {
+    if (kind === 'tham-tra') {
+      ({ system, content } = thamTraAiPrompt({ rec, book, laws: laws(), docs: khoDocs }));
+    } else if (don) {
       const r = assess(don);
       const sum = r.items.map((it) => `- ${it.label}: ${KET_LUAN[it.kl]}`).join('\n');
       system = `Bạn là thẩm phán, kiểm sát viên giàu kinh nghiệm về Bộ luật Hình sự, Bộ luật Tố tụng hình sự. Xem xét đơn khiếu nại / kháng cáo: tách từng yêu cầu của đơn, kết luận mỗi yêu cầu Có căn cứ / Có căn cứ một phần / Cần xác minh thêm / Không có căn cứ.\nQUY TẮC (bắt buộc):\n${aiRules('nguon', 'nguyenVan', 'luat', 'gon')}\nLời trình bày trong đơn KHÔNG phải chứng cứ — chỉ dùng TÀI LIỆU VỤ ÁN làm căn cứ thực tế (trích nguyên văn ngắn). Không bịa tình tiết, số liệu, điều luật. Trình bày theo từng yêu cầu: nội dung đơn → kết luận → lý do, căn cứ; cuối cùng: kết luận chung và đề xuất hướng giải quyết đơn.`;
@@ -606,6 +663,10 @@ export function render(ctx, params = []) {
   drawDefs();
   bind();
   update();
+  courtBaDb.list().then((d) => {
+    khoDocs = d;
+    if (root.isConnected && ['tuong-tu', 'tham-tra'].includes(tab)) update();
+  }).catch(() => {});
   loadBook().then((b) => {
     book = b;
     if (!root.isConnected) return;

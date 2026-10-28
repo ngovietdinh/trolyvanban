@@ -42,7 +42,7 @@ export async function pdfToText(buffer) {
     // Văn bản phông cũ (TCVN3, VNI) → Unicode.
     pages.push(fixLegacy(pageText(content.items)));
   }
-  return { text: pages.join('\n\n'), pages: doc.numPages };
+  return { text: pages.join('\n\n'), pages: doc.numPages, pageTexts: pages };
 }
 
 const htmlToText = (s) =>

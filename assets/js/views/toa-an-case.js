@@ -4,6 +4,7 @@ import { $, icon, toast, escapeHtml, debounce } from '../ui.js';
 import { store } from '../lib/store.js';
 import { LOAI_TOI, DEFAULT_RULES, mergeRules, computeDeadlines, suggestLoaiToi, TRANG_THAI } from '../legal/court-deadlines.js';
 import { fmtDate } from '../legal/court-penalty.js';
+import { DEFAULT_LAWS, LAWS_KEY, mergeLaws } from '../legal/court-law-time.js';
 
 export const RULES_KEY = 'court-rules';
 export const courtRules = () => mergeRules(store.get(RULES_KEY, {}));
@@ -104,6 +105,7 @@ export function mountCasePane(host, { ctx, rec, save, getBook, onChange = () => 
           </div><p class="hint">Có tệp cáo trạng: tải lên ở tab <b>Tài liệu &amp; bị cáo</b> rồi bấm <b>Đọc cáo trạng</b> — phần mềm tự điền số, ngày, bị cáo, tội danh, nhân thân, biện pháp ngăn chặn.</p></section>`
         }
         <section class="panel ct-sec"><h2>${icon('calendar', 'ic-sm')}Mốc tố tụng</h2><div class="grid-3">
+          ${inp(rec, 'moc.ngayHanhVi', 'Ngày thực hiện hành vi phạm tội (xác định luật áp dụng)', { type: 'date' })}
           ${pt ? '' : inp(rec, 'moc.giaHan', 'Đã gia hạn thời hạn chuẩn bị xét xử', { type: 'check' })}
           ${pt ? '' : inp(rec, 'moc.ngayTraHoSo', 'Ngày trả hồ sơ điều tra bổ sung', { type: 'date' })}
           ${pt ? '' : inp(rec, 'moc.ngayNhanLaiHoSo', 'Ngày nhận lại hồ sơ', { type: 'date' })}
@@ -115,6 +117,7 @@ export function mountCasePane(host, { ctx, rec, save, getBook, onChange = () => 
           ${inp(rec, 'moc.xuKin', 'Xét xử kín', { type: 'check' })}
           ${inp(rec, 'moc.ngayTuyenAn', 'Ngày tuyên án', { type: 'date' })}
           ${pt ? '' : inp(rec, 'moc.ngayGiaoBanAn', 'Ngày giao, gửi bản án', { type: 'date' })}
+          ${pt ? inp(rec, 'moc.ngayHieuLuc', 'Ngày bản án có hiệu lực (thẩm tra giám đốc thẩm, tái thẩm)', { type: 'date' }) : ''}
           ${pt ? '' : inp(rec, 'moc.coKhangCao', 'Có kháng cáo / kháng nghị', { type: 'check' })}
           ${pt ? '' : rec.moc.coKhangCao ? inp(rec, 'moc.ngayGuiHoSo', 'Ngày gửi hồ sơ lên cấp phúc thẩm', { type: 'date' }) : inp(rec, 'moc.ngayHieuLuc', 'Ngày bản án có hiệu lực (nếu khác ngày tự tính)', { type: 'date' })}
           ${pt ? '' : inp(rec, 'moc.ngayQdThiHanh', 'Ngày ra quyết định thi hành án', { type: 'date' })}
@@ -176,6 +179,7 @@ export function renderCourtSettings(ctx) {
   const org = ctx.settings().courtOrg || {};
   const saved = store.get(RULES_KEY, {});
   const rules = mergeRules(saved);
+  const laws = mergeLaws(store.get(LAWS_KEY, null));
   root.innerHTML = `<div class="page ct-page" data-ct-settings>
     <a class="rd-back" href="#toa-an">${icon('chevron-left', 'ic-sm')}Tòa án</a>
     <div class="page-head"><div><h1 class="page-title">Cài đặt <em>Tòa án</em></h1><p class="page-sub">Lưu riêng cho tài khoản của bạn. Thông tin Tòa án tự điền vào hồ sơ xét xử mới và biểu mẫu.</p></div></div>
@@ -197,10 +201,25 @@ export function renderCourtSettings(ctx) {
       </tbody></table>
       <button class="btn btn-sm btn-ghost" type="button" data-rules-reset>${icon('refresh', 'ic-sm')}Khôi phục thời hạn mặc định</button>
     </section>
+    <section class="panel ct-sec"><h2>${icon('book', 'ic-sm')}Văn bản pháp luật theo thời điểm</h2>
+      <p class="hint">Dùng để xác định văn bản áp dụng theo ngày thực hiện hành vi, ngày xét xử (Điều 7 BLHS — quy định có lợi) và cảnh báo khi nguyên văn trong sách Bình luận chưa gồm sửa đổi mới. Dòng đánh dấu “cần kiểm tra” là thông tin đặt sẵn — đối chiếu nguồn chính thức và sửa ngày hiệu lực nếu khác.</p>
+      <table class="cf-table ct-laws"><thead><tr><th>Văn bản</th><th>Loại</th><th>Hiệu lực từ</th><th>Hết hiệu lực</th><th>Sửa đổi</th><th></th></tr></thead><tbody>
+      ${laws
+        .map((l, i) => `<tr data-law="${i}"><td><input class="input input-sm" data-lf="ten" value="${escapeHtml(l.ten)}" aria-label="Tên văn bản" />${l.kiemTra ? '<small>cần kiểm tra</small>' : ''}</td><td><select class="select input-sm" data-lf="loai"><option value="blhs" ${l.loai === 'blhs' ? 'selected' : ''}>BLHS</option><option value="bltths" ${l.loai === 'bltths' ? 'selected' : ''}>BLTTHS</option></select></td><td><input class="input input-sm" type="date" data-lf="tu" value="${escapeHtml(l.tu || '')}" aria-label="Hiệu lực từ" /></td><td><input class="input input-sm" type="date" data-lf="den" value="${escapeHtml(l.den || '')}" aria-label="Hết hiệu lực" /></td><td><input type="checkbox" data-lf="suaDoi" ${l.suaDoi ? 'checked' : ''} aria-label="Là văn bản sửa đổi" /></td><td><button class="btn btn-ghost btn-sm btn-icon" type="button" data-law-del="${i}" aria-label="Bỏ văn bản">${icon('x', 'ic-sm')}</button></td></tr>`)
+        .join('')}
+      </tbody></table>
+      <div class="inline"><button class="btn btn-sm" type="button" data-law-add>${icon('plus', 'ic-sm')}Thêm văn bản</button><button class="btn btn-sm btn-ghost" type="button" data-laws-reset>${icon('refresh', 'ic-sm')}Khôi phục danh mục đặt sẵn</button></div>
+    </section>
   </div>`;
   const page = $('[data-ct-settings]', root);
   page.addEventListener('input', (e) => {
     const t = e.target;
+    if (t.dataset.lf) {
+      const i = +t.closest('[data-law]').dataset.law;
+      laws[i] = { ...laws[i], [t.dataset.lf]: t.type === 'checkbox' ? t.checked : t.value, kiemTra: false };
+      store.set(LAWS_KEY, laws);
+      return;
+    }
     if (t.dataset.org) ctx.saveSettings({ courtOrg: { ...(ctx.settings().courtOrg || {}), [t.dataset.org]: t.value.trim() } });
     else if (t.dataset.rule) {
       const cur = store.get(RULES_KEY, {});
@@ -209,7 +228,24 @@ export function renderCourtSettings(ctx) {
       store.set(RULES_KEY, { ...cur, [t.dataset.rule]: { n } });
     }
   });
+  page.addEventListener('change', (e) => {
+    if (e.target.dataset.lf === 'loai' || e.target.dataset.lf === 'suaDoi') e.target.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   page.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (b?.matches('[data-law-add]')) {
+      store.set(LAWS_KEY, [...laws, { id: `vb-${Date.now()}`, loai: 'blhs', ten: 'Văn bản mới', tu: '', den: '', suaDoi: true }]);
+      return renderCourtSettings(ctx);
+    }
+    if (b?.dataset.lawDel != null) {
+      store.set(LAWS_KEY, laws.filter((_, i) => i !== +b.dataset.lawDel));
+      return renderCourtSettings(ctx);
+    }
+    if (b?.matches('[data-laws-reset]')) {
+      store.set(LAWS_KEY, DEFAULT_LAWS);
+      toast('Đã khôi phục danh mục văn bản đặt sẵn');
+      return renderCourtSettings(ctx);
+    }
     if (!e.target.closest('[data-rules-reset]')) return;
     store.set(RULES_KEY, {});
     toast('Đã khôi phục thời hạn mặc định');

@@ -5392,3 +5392,42 @@ body.dg-lock { overflow: hidden; }
   .ct-dl li { flex-direction: column; }
   .ct-dl-r { justify-items: start; text-align: left; }
 }
+
+/* ---------- Tòa án v2.41: thẩm tra, chứng cứ theo bút lục, bản án tương tự ---------- */
+.ct-list-q { margin-left: auto; min-width: 240px; }
+.ct-src-row { flex-wrap: wrap; }
+.ct-src-meta { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+.ct-src-meta .select { max-width: 230px; }
+.ct-bl { display: inline-flex; gap: 4px; align-items: center; font-size: 13px; color: var(--text-2); }
+.ct-bl .input { width: 80px; }
+.tt-wrap { display: grid; gap: 14px; }
+.tt-head .inline { margin-top: 6px; flex-wrap: wrap; }
+.tt-control { font-size: 13.5px; }
+.tt-qs { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.tt-q { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--line-strong); border-radius: 14px; padding: 12px 14px; }
+.tt-q.m-do { border-left-color: var(--danger); }
+.tt-q.m-vang { border-left-color: var(--warning); }
+.tt-q.m-xanh { border-left-color: var(--success); }
+.tt-q-head { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.tt-q-head strong { flex: 1; font-size: 15.5px; min-width: 240px; }
+.tt-q-n { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-weight: 700; font-size: 13px; }
+.tt-items { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; font-size: 14px; }
+.tt-it { display: flex; gap: 6px; align-items: flex-start; }
+.tt-it > .ic { flex: none; margin-top: 3px; }
+.tt-it > span { min-width: 0; }
+.tt-it.m-do > .ic { color: var(--danger); }
+.tt-it.m-vang > .ic { color: var(--warning); }
+.tt-it.m-xanh > .ic { color: var(--success); }
+.tt-it.m-xam > .ic { color: var(--text-3); }
+.tt-table-wrap { overflow-x: auto; margin-top: 8px; }
+.tt-table td { vertical-align: top; font-size: 13.5px; }
+.tt-table td small { display: block; color: var(--text-3); }
+.tt-table tr.warn td { background: var(--warning-soft); }
+.ct-laws .input { min-width: 0; }
+.ct-laws td:first-child .input { min-width: 260px; }
+.ct-laws td small { display: block; color: var(--warning); font-size: 12px; }
+.kho-text { white-space: pre-wrap; font-family: var(--font-serif); font-size: 14px; line-height: 1.6; max-height: 60vh; overflow: auto; background: var(--surface-2); padding: 12px; border-radius: 10px; }
+@media (max-width: 760px) {
+  .ct-list-q { margin-left: 0; min-width: 0; width: 100%; }
+  .ct-src-meta { margin-left: 0; width: 100%; }
+}
