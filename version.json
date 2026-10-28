@@ -1,9 +1,8 @@
 {
-  "version": "2.48.0",
+  "version": "2.49.0",
   "date": "2026-10-28",
   "notes": [
-    "Tòa án: khối “Nhập từ tệp — tự điền hồ sơ” ở tab Vụ án — kéo cáo trạng, quyết định đưa vụ án ra xét xử, thông báo thụ lý, bản án, kháng cáo, kháng nghị vào, phần mềm bắt số thụ lý, Tòa án, Hội đồng xét xử, cáo trạng, mốc tố tụng, bị cáo, người tham gia tố tụng; bảng duyệt kèm câu trích, chỉ điền ô trống, chọn ghi đè",
-    "Bộ bắt thông tin theo luật khai báo (một dòng luật cho mỗi ô), nhận loại văn bản, gộp nhiều tài liệu và đưa giá trị khác nhau thành lựa chọn",
-    "Hướng dẫn Tòa án cập nhật bước nhập từ tệp"
+    "Tòa án: tạo vụ án mở bản nháp, chỉ vào sổ khi bấm Lưu hồ sơ; Hủy có hỏi lại; lỡ rời trang thì giữ tạm — Sổ vụ án hiện Bản nháp chưa lưu để tiếp tục hoặc bỏ",
+    "Hồ sơ đã lưu: hiện Đã lưu hh:mm, nút Lưu và Xóa hồ sơ (hỏi lại)"
   ]
 }
