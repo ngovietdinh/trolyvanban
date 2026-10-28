@@ -38,7 +38,7 @@ export function render(ctx, params = []) {
   // Tòa án: tìm trong văn bản, điều luật, bình luận; dữ liệu điều tra (hồ sơ, biên bản, kho…) thuộc Cơ quan điều tra.
   const police = legal && currentAgency() !== 'toa-an';
   const src = {
-    roleName: (id) => getRole(id).ten.split('/')[0].trim(),
+    roleName: (id) => (getRole(id)?.ten || '').split('/')[0].trim(),
     formName: (id) => getDocType(id)?.name || '',
     cases: police ? casesRepo.list() : [],
     records: police ? recordsRepo.list() : [],

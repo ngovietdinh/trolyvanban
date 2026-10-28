@@ -183,7 +183,23 @@ Chuyển động chỉ để báo trạng thái, không trang trí. Theo chuẩn
 - `prefers-reduced-motion` đã có ở `base.css` (cắt toàn bộ); hiệu ứng mới không được né khối đó.
 - Hover chuyển động (nhấc thẻ, phóng to) chỉ trong `@media (hover: hover) and (pointer: fine)`; mặc định là không nhấc.
 
+## Hai lớp giao diện: màn hình nhìn (kính) và màn hình làm (phẳng)
+
+Học theo dashboard của Scada5 (repo riêng của người dùng, `apps/web/src/ui/dashboard/glass/`): **màn hình nhìn** — nơi người dùng lướt mắt để nắm tình hình — dùng kiểu **kính** (`assets/css/glass.css`, lớp `.gx`); **màn hình làm** — nơi nhập liệu, đọc lâu — giữ kiểu **phẳng** theo các mục trên. Hai lớp không trộn trong cùng một màn hình.
+
+Hiện dùng kính: Tổng quan (`views/dashboard.js`). Có thể mở rộng: trang thẩm tra tổng hợp, màn hình treo tường. Không dùng kính cho Hồ sơ xét xử, Soạn văn bản, Ghi lời khai, bảng dài.
+
+Luật của lớp kính (giữ đúng giá trị của Scada5, không tự chế):
+- Nền: đốm màu `--b0…--b5` làm mờ 20px + màn phủ `--veil-*`. Chủ đề "Giấy" (cát ấm) khi giao diện sáng, "Đêm" khi giao diện tối — token đặt trên `.gx`, đổi theo `data-theme`.
+- Màu: `--c1` ngọc cho đạt / xong, `--c2` đỏ con dấu cho quá hạn / cần xử lý, `--gx-accent` đen cho nút chính và chú giải. Thẻ ngọc (`gc--emerald`) chỉ một thẻ mỗi trang; thẻ đỏ (`gc--red`) chỉ khi có cảnh báo thật.
+- Khung: thanh chào kính bo 20px (lời chào, ô hỏi trợ lý có quả cầu, việc quá hạn, nút cơ quan); khung trang bo 30px; lưới 12 cột, thẻ `.gc` bo 18px có viền sáng trên và bóng mềm; khối lồng `.gx-inner` bo 14px; ô nhỏ `.gx-tile`; dock viên thuốc dưới đáy (ẩn trên điện thoại, thanh dưới thay thế).
+- Chữ số: `.gx-big` 26–36px, `.gx-mid` 22–28px, `tabular-nums`; chip `.gx-delta` ▲▼ xanh/đỏ chỉ khi có tháng trước để so, không bịa phần trăm; thiếu dữ liệu ghi "—" và câu hướng dẫn.
+- Chuyển động: thẻ hiện lần lượt 70ms, nội dung mờ → nét, cột mọc, thanh tiến độ chạy, số đếm lên 900ms; tất cả tắt khi `prefers-reduced-motion`. Nhấc thẻ khi rê chuột chỉ cho thẻ bấm được (`gc--link`) và chỉ trên con trỏ chuột.
+- Thanh trên của ứng dụng vẫn còn (tìm kiếm, trợ giúp, tài khoản) nhưng trong suốt, nổi trên nền kính; thanh bên giữ nguyên.
+
 ## Do's and Don'ts
+
+Áp dụng cho màn hình làm (phẳng). Màn hình nhìn kiểu kính theo mục riêng ở trên.
 
 **Làm:**
 - Đọc tệp này và token trong `base.css` trước khi viết CSS mới; tái dùng class sẵn có (`.panel`, `.btn`, `.badge`, `.cf-table`, `.tt-table`, `.field`, `.inline`, `.hint`).

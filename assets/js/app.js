@@ -275,6 +275,8 @@ function route() {
   // Màn hình chọn cơ quan chiếm trọn trang: ẩn thanh bên, thanh trên, thanh dưới.
   document.body.classList.toggle('agency-picking', agencyNext != null || (name === 'co-quan' && accounts.can('legal')));
   const denied = r.perm && !accounts.can(r.perm);
+  // Tổng quan là màn hình nhìn kiểu kính: thanh trên trong suốt nổi lên trên nền.
+  document.body.classList.toggle('glass-dash', name === 'dashboard' && agencyNext == null && !denied);
   if (typeof cleanup === 'function') cleanup();
   cleanup = null;
   currentRoute = name;

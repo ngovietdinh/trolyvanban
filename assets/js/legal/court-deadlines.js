@@ -104,7 +104,7 @@ export function computeDeadlines(rec, { rules = mergeRules(), today = new Date()
       if (han && m.giaHan && gh) han = plusRule(han, gh);
       if (han) while (isWeekend(han)) han = addDays(han, 1);
       push('chuan-bi', r || DEFAULT_RULES['chuan-bi-it'], han, {
-        ten: `Chuẩn bị xét xử${loai ? ` (${LOAI_TOI.find((x) => x.id === loai).ten.toLowerCase()})` : ''}${m.giaHan ? ', đã gia hạn' : ''}`,
+        ten: `Chuẩn bị xét xử${loai ? ` (${(LOAI_TOI.find((x) => x.id === loai)?.ten || loai).toLowerCase()})` : ''}${m.giaHan ? ', đã gia hạn' : ''}`,
         done: D('ngayQdXetXu') || traHoSo,
         ghiChu: !thuLy ? 'Nhập ngày thụ lý.' : !loai ? 'Chọn loại tội phạm để tính thời hạn chuẩn bị xét xử.' : traHoSo && !D('ngayQdXetXu') ? `Đã trả hồ sơ điều tra bổ sung ngày ${fmtDate(traHoSo)} — nhập ngày nhận lại hồ sơ.` : '',
       });

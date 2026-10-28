@@ -1320,10 +1320,6 @@ a.kw:hover {
   color: var(--text-2);
 }
 
-/* ---------- Trang chủ: phân hệ tố tụng ---------- */
-.legal-promo {
-  display: contents;
-}
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1280px) {

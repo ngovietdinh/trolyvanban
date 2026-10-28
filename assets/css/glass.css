@@ -1,0 +1,1069 @@
+/*
+ * Màn hình nhìn kiểu "kính" (học theo dashboard Scada5): nền đốm màu làm mờ, thanh chào kính, khung kính lớn chứa
+ * lưới 12 cột thẻ kính, dock viên thuốc dưới đáy. Dùng cho Tổng quan; các màn hình nhập liệu vẫn kiểu phẳng (DESIGN.md).
+ * Chủ đề "Giấy" (nền cát ấm, màu 1 ngọc = đạt / xong, màu 2 đỏ con dấu = quá hạn / cần xử lý); giao diện tối → chủ đề "Đêm".
+ */
+.gx {
+  --ink-rgb: 24, 24, 26;
+  --hi: 255, 255, 255;
+  --gk: 1;
+  --sh: 70, 45, 20;
+  --dock: 246, 238, 228;
+  --chip: #fff;
+  --chip-ink: #18181a;
+  --gx-accent: #1b1b1d;
+  --gx-accent-ink: #fff;
+  --c1: #19a37e;
+  --c1-hi: #34c79a;
+  --c1-lo: #129171;
+  --c1-soft: #8fe0c7;
+  --c2: #c0302f;
+  --c2-soft: #e8958f;
+  --b0: #b49c82;
+  --b1: #efe4d5;
+  --b2: #8a6a4c;
+  --b3: #5a4537;
+  --b4: #d6c4ae;
+  --b5: #a78a6c;
+  --veil-a: rgba(236, 224, 208, 0.36);
+  --veil-b: rgba(214, 196, 174, 0.18);
+  --veil-c: rgba(92, 70, 52, 0.28);
+  --veil-d: rgba(255, 246, 232, 0.25);
+  --ink: rgb(var(--ink-rgb));
+  --ink-2: rgba(var(--ink-rgb), 0.7);
+  --ink-3: rgba(var(--ink-rgb), 0.5);
+  --edge: rgba(var(--hi), calc(0.5 * var(--gk)));
+  --good-bg: #d6f5e4;
+  --good-fg: #137a4b;
+  --bad-bg: #fde1e1;
+  --bad-fg: #c3363b;
+  --amber-bg: #fff0d4;
+  --amber-fg: #b07208;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  isolation: isolate;
+  color: var(--ink);
+  background: var(--b0);
+  font-size: 13px;
+  line-height: 1.45;
+}
+/* Chủ đề "Đêm": nền gần đen, kính tối, chữ trắng — theo giao diện tối của ứng dụng. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .gx {
+    --ink-rgb: 238, 240, 245;
+    --gk: 0.34;
+    --sh: 0, 0, 0;
+    --dock: 30, 32, 38;
+    --chip: #f2f3f5;
+    --chip-ink: #111215;
+    --gx-accent: #f2f3f5;
+    --gx-accent-ink: #111215;
+    --c1: #3ddc97;
+    --c1-hi: #2fbf83;
+    --c1-lo: #12875a;
+    --c1-soft: #1d6b4c;
+    --c2: #ff7a45;
+    --c2-soft: #a8492a;
+    --b0: #0b0c0f;
+    --b1: #262a33;
+    --b2: #121419;
+    --b3: #050507;
+    --b4: #1c2029;
+    --b5: #2b2519;
+    --veil-a: rgba(0, 0, 0, 0.2);
+    --veil-b: rgba(0, 0, 0, 0.1);
+    --veil-c: rgba(0, 0, 0, 0.45);
+    --veil-d: rgba(80, 90, 110, 0.12);
+    --good-bg: rgba(61, 220, 151, 0.18);
+    --good-fg: #7ee6b8;
+    --bad-bg: rgba(255, 122, 69, 0.2);
+    --bad-fg: #ffb08f;
+    --amber-bg: rgba(255, 209, 102, 0.18);
+    --amber-fg: #ffd982;
+  }
+}
+:root[data-theme='dark'] .gx {
+  --ink-rgb: 238, 240, 245;
+  --gk: 0.34;
+  --sh: 0, 0, 0;
+  --dock: 30, 32, 38;
+  --chip: #f2f3f5;
+  --chip-ink: #111215;
+  --gx-accent: #f2f3f5;
+  --gx-accent-ink: #111215;
+  --c1: #3ddc97;
+  --c1-hi: #2fbf83;
+  --c1-lo: #12875a;
+  --c1-soft: #1d6b4c;
+  --c2: #ff7a45;
+  --c2-soft: #a8492a;
+  --b0: #0b0c0f;
+  --b1: #262a33;
+  --b2: #121419;
+  --b3: #050507;
+  --b4: #1c2029;
+  --b5: #2b2519;
+  --veil-a: rgba(0, 0, 0, 0.2);
+  --veil-b: rgba(0, 0, 0, 0.1);
+  --veil-c: rgba(0, 0, 0, 0.45);
+  --veil-d: rgba(80, 90, 110, 0.12);
+  --good-bg: rgba(61, 220, 151, 0.18);
+  --good-fg: #7ee6b8;
+  --bad-bg: rgba(255, 122, 69, 0.2);
+  --bad-fg: #ffb08f;
+  --amber-bg: rgba(255, 209, 102, 0.18);
+  --amber-fg: #ffd982;
+}
+
+/* Khung ứng dụng khi đang ở màn hình kính: thanh trên trong suốt nổi lên trên, vùng trang chiếm trọn. */
+body.glass-dash .main {
+  position: relative;
+}
+body.glass-dash .topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: transparent;
+  border-bottom: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+body.glass-dash .topbar .crumbs {
+  visibility: hidden;
+}
+body.glass-dash .view {
+  position: relative;
+  overflow: hidden;
+  animation: none;
+}
+.gx h1,
+.gx h3,
+.gx p {
+  margin: 0;
+}
+.gx b,
+.gx h1,
+.gx h3 {
+  color: inherit;
+}
+
+/* ---- nền */
+.gx-bg {
+  position: absolute;
+  inset: -70px;
+  z-index: -1;
+  filter: blur(20px);
+  background:
+    radial-gradient(38% 46% at 22% 18%, var(--b1) 0%, transparent 70%), radial-gradient(30% 40% at 78% 14%, var(--b2) 0%, transparent 72%),
+    radial-gradient(46% 38% at 60% 62%, var(--b3) 0%, transparent 70%), radial-gradient(42% 40% at 12% 82%, var(--b4) 0%, transparent 70%),
+    radial-gradient(50% 40% at 90% 92%, var(--b5) 0%, transparent 70%), var(--b0);
+}
+.gx-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, var(--veil-a) 0%, var(--veil-b) 45%, var(--veil-c) 100%), radial-gradient(70% 55% at 50% 40%, var(--veil-d), transparent 70%);
+}
+
+/* ---- thanh chào */
+.gx-top {
+  position: absolute;
+  top: 68px;
+  left: 16px;
+  right: 16px;
+  height: 54px;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: 1fr minmax(320px, 600px) 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 0 10px;
+  border-radius: 20px;
+  background: rgba(var(--hi), calc(0.16 * var(--gk)));
+  border: 1px solid rgba(var(--hi), calc(0.38 * var(--gk)));
+  backdrop-filter: blur(26px) saturate(1.3);
+  -webkit-backdrop-filter: blur(26px) saturate(1.3);
+  box-shadow: 0 10px 30px rgba(var(--sh), 0.1);
+  animation: gx-drop 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.gx-me {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.gx-me > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.gx-me h1 {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gx-me small {
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gx-avatar {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(150deg, #fff, #ece4da);
+  color: #18181a;
+  border: 2px solid rgba(var(--hi), calc(0.9 * var(--gk)));
+  font-weight: 700;
+  font-size: 12.5px;
+  box-shadow: 0 2px 8px rgba(var(--sh), 0.18);
+}
+.gx-ask {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 6px 0 8px;
+  border-radius: 999px;
+  background: rgba(var(--hi), calc(0.16 * var(--gk)));
+  border: 1px solid rgba(var(--hi), calc(0.32 * var(--gk)));
+  transition:
+    background 0.25s,
+    box-shadow 0.25s;
+}
+.gx-ask:focus-within {
+  background: rgba(var(--hi), calc(0.55 * var(--gk)));
+  box-shadow: 0 6px 24px rgba(var(--sh), 0.16);
+}
+.gx-ask input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+}
+.gx-ask input::placeholder {
+  color: var(--ink-2);
+}
+.gx-ask button {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: var(--gx-accent);
+  color: var(--gx-accent-ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.gx-orb {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff 0 8%, transparent 30%), conic-gradient(from 0deg, var(--c1), var(--c2), #e2a23a, var(--c1));
+  box-shadow: 0 0 14px rgba(25, 163, 126, 0.55);
+  animation: gx-orb 6s linear infinite;
+}
+.gx-top__r {
+  justify-self: end;
+  display: flex;
+  gap: 8px;
+}
+.gx-round {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--hi), calc(0.45 * var(--gk)));
+  background: rgba(var(--hi), calc(0.2 * var(--gk)));
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--ink);
+  text-decoration: none;
+  transition:
+    transform 0.2s,
+    background 0.2s;
+}
+.gx-round:hover {
+  background: rgba(var(--hi), calc(0.4 * var(--gk)));
+}
+.gx-round--white {
+  background: var(--chip);
+  color: var(--chip-ink);
+}
+.gx-round em {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  font-style: normal;
+  text-align: center;
+}
+
+/* ---- khung trang */
+.gx-panel {
+  position: absolute;
+  top: 134px;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  border-radius: 30px;
+  background: linear-gradient(170deg, rgba(var(--hi), calc(0.2 * var(--gk))), rgba(var(--hi), calc(0.07 * var(--gk))));
+  border: 1px solid rgba(var(--hi), calc(0.38 * var(--gk)));
+  box-shadow: inset 0 1px 0 rgba(var(--hi), calc(0.45 * var(--gk)));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  overflow: hidden;
+  animation: gx-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.gx-page {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 24px 28px 96px;
+}
+.gx-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  animation: gx-reveal 0.6s both;
+}
+.gx-head h1 {
+  font-size: clamp(24px, 2.3vw, 32px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.gx-head p {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.gx-head__r {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ---- nút, segment, nhãn */
+.gx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--chip);
+  color: var(--chip-ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgba(var(--sh), 0.1);
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
+  white-space: nowrap;
+}
+.gx-btn:hover {
+  box-shadow: 0 6px 16px rgba(var(--sh), 0.16);
+}
+.gx-btn--dark {
+  background: var(--gx-accent);
+  color: var(--gx-accent-ink);
+}
+.gx-btn--sm {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 11.5px;
+}
+.gx-seg {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(var(--hi), calc(0.32 * var(--gk)));
+  border: 1px solid rgba(var(--hi), calc(0.5 * var(--gk)));
+}
+.gx-seg button {
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    background 0.25s,
+    color 0.25s;
+}
+.gx-seg button[aria-selected='true'] {
+  background: var(--gx-accent);
+  color: var(--gx-accent-ink);
+}
+.gx-pill {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(var(--hi), calc(0.65 * var(--gk)));
+  white-space: nowrap;
+  color: var(--ink);
+}
+.gx-delta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.gx-delta {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+.gx-delta--good {
+  background: var(--good-bg);
+  color: var(--good-fg);
+}
+.gx-delta--bad {
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+}
+.gx-note {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.gx-red {
+  color: var(--bad-fg);
+}
+.gx-bubble {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(var(--hi), calc(0.75 * var(--gk)));
+  color: var(--chip-ink);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.gx-bubble .ic {
+  width: 14px;
+  height: 14px;
+}
+.gx-bubble--green {
+  background: var(--good-bg);
+  color: var(--good-fg);
+}
+.gx-bubble--red {
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+}
+.gx-bubble--amber {
+  background: var(--amber-bg);
+  color: var(--amber-fg);
+}
+.gx-bubble--dark {
+  background: rgba(var(--hi), calc(0.28 * var(--gk)));
+  color: #fff;
+}
+
+/* ---- lưới và thẻ kính */
+.gx-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+.gx-s4 {
+  grid-column: span 4;
+}
+.gx-s8 {
+  grid-column: span 8;
+}
+.gc {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: linear-gradient(160deg, rgba(var(--hi), calc(0.36 * var(--gk))), rgba(var(--hi), calc(0.16 * var(--gk))));
+  border: 1px solid var(--edge);
+  backdrop-filter: blur(18px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  box-shadow:
+    inset 0 1px 0 rgba(var(--hi), calc(0.6 * var(--gk))),
+    0 10px 28px rgba(var(--sh), 0.1);
+  animation: gx-shell 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--d, 0) * 70ms);
+  color: inherit;
+  text-align: left;
+}
+.gc > * {
+  animation: gx-reveal 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--d, 0) * 70ms + 140ms);
+}
+.gc--frame {
+  padding: 10px;
+  background: rgba(var(--hi), calc(0.14 * var(--gk)));
+}
+.gx-quad {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 10px;
+  height: 100%;
+}
+.gx-quad .gc {
+  padding: 14px 15px;
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(var(--hi), calc(0.5 * var(--gk))), rgba(var(--hi), calc(0.28 * var(--gk))));
+}
+.gc--emerald,
+.gx-quad .gc--emerald {
+  background: linear-gradient(150deg, var(--c1-hi) 0%, var(--c1-lo) 100%);
+  border-color: rgba(190, 255, 230, 0.6);
+  color: #fff;
+}
+.gc--emerald .gx-note,
+.gc--emerald small,
+.gc--emerald .gc__head h3 {
+  color: rgba(255, 255, 255, 0.86);
+}
+.gc--red,
+.gx-quad .gc--red {
+  background: linear-gradient(150deg, rgba(255, 128, 120, 0.85), rgba(214, 58, 64, 0.82));
+  color: #fff;
+  border-color: rgba(255, 210, 205, 0.7);
+}
+.gc--red .gc__head h3,
+.gc--red .gx-note,
+.gc--red small {
+  color: #fff;
+}
+.gc__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.gc__head h3 {
+  font-size: 13px;
+  font-weight: 600;
+}
+.gc__head p {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.gx-big {
+  font-size: clamp(26px, 2.5vw, 36px);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.gx-mid {
+  font-size: clamp(22px, 1.9vw, 28px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  margin: auto 0 6px;
+  white-space: nowrap;
+}
+.gx-big small,
+.gx-mid small {
+  margin-left: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: 0;
+}
+.gx-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 14px 0 12px;
+}
+.gx-inner {
+  margin-top: auto;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(var(--hi), calc(0.42 * var(--gk)));
+  border: 1px solid rgba(var(--hi), calc(0.55 * var(--gk)));
+}
+.gx-inner--chart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+}
+.gx-inner__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.gx-inner__head span {
+  color: var(--ink-3);
+}
+.gx-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.gx-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 9px;
+  border-radius: 11px;
+  background: rgba(var(--hi), calc(0.62 * var(--gk)));
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+.gx-tile__h {
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gx-tile b {
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.gx-tile__s {
+  font-size: 9.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gx-tile__ok {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--good-fg);
+}
+.gx-tile__ok--bad {
+  color: var(--bad-fg);
+}
+
+/* ---- biểu đồ cột chồng */
+.gx-legend {
+  display: inline-flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.gx-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.gx-key {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.gx-key--dark {
+  background: var(--gx-accent);
+}
+.gx-key--hatch {
+  background: repeating-linear-gradient(45deg, var(--c1) 0 2px, var(--c1-soft) 2px 4px);
+}
+.gx-bars {
+  flex: 1;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 10px;
+  align-items: end;
+  min-height: 120px;
+  padding-top: 6px;
+}
+.gx-bar {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 4px;
+  justify-items: center;
+  height: 100%;
+  font-size: 10px;
+  color: var(--ink-3);
+  text-align: center;
+}
+.gx-bar .st {
+  width: 70%;
+  align-self: end;
+  display: grid;
+  gap: 2px;
+}
+.gx-bar i {
+  display: block;
+  border-radius: 4px 4px 2px 2px;
+  transform-origin: 50% 100%;
+  animation: gx-grow 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--d, 0) * 70ms + 300ms);
+}
+.gx-bar .a {
+  background: var(--gx-accent);
+}
+.gx-bar .b {
+  background: repeating-linear-gradient(45deg, var(--c1) 0 2px, var(--c1-soft) 2px 4px);
+}
+.gx-bar b {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* ---- bảng, danh sách */
+.gx-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px;
+}
+.gx-table thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+  padding: 9px 10px;
+  background: rgba(var(--hi), calc(0.42 * var(--gk)));
+  white-space: nowrap;
+}
+.gx-table thead th:first-child {
+  border-radius: 10px 0 0 10px;
+}
+.gx-table thead th:last-child {
+  border-radius: 0 10px 10px 0;
+}
+.gx-table td {
+  padding: 10px;
+  border-bottom: 1px solid rgba(var(--hi), calc(0.35 * var(--gk)));
+  vertical-align: middle;
+}
+.gx-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.gx-table tbody tr {
+  animation: gx-reveal 0.5s both;
+}
+.gx-table a {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+}
+.gx-table a:hover {
+  text-decoration: underline;
+}
+.gx-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.gx-muted {
+  color: var(--ink-3);
+}
+.gx-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.gx-dot i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9aa0a8;
+}
+.gx-dot--green i {
+  background: #22a565;
+}
+.gx-dot--red i {
+  background: #e5484d;
+}
+.gx-dot--amber i {
+  background: #e8a21a;
+}
+.gx-prog {
+  display: block;
+  width: 110px;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: repeating-linear-gradient(-45deg, rgba(var(--hi), calc(0.7 * var(--gk))) 0 4px, rgba(var(--hi), calc(0.28 * var(--gk))) 4px 8px);
+}
+.gx-prog i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--c1);
+  transform-origin: 0 50%;
+  animation: gx-fill 1.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--d, 0) * 70ms + 300ms);
+}
+.gx-prog--orange i {
+  background: var(--c2);
+}
+.gx-empty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  min-height: 110px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-align: center;
+  padding: 10px;
+}
+.gx-list {
+  display: flex;
+  flex-direction: column;
+}
+.gx-list__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid rgba(var(--hi), calc(0.4 * var(--gk)));
+  color: inherit;
+  text-decoration: none;
+}
+.gx-list__row:first-child {
+  border-top: 0;
+}
+.gx-list__row > span:not(.gx-bubble):not(.gx-pill) {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.gx-list__row b {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gx-list__row small {
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+/* ---- dock */
+.gx-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 40px);
+  overflow-x: auto;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgba(var(--dock), 0.58);
+  border: 1px solid rgba(var(--hi), calc(0.6 * var(--gk)));
+  backdrop-filter: blur(28px) saturate(1.4);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+  box-shadow: 0 14px 40px rgba(var(--sh), 0.22);
+  animation: gx-dockin 0.7s 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.gx-dock a {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--ink-2);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 0.3s,
+    color 0.3s;
+}
+.gx-dock a:hover {
+  color: var(--ink);
+}
+.gx-dock a.is-on {
+  background: var(--chip);
+  color: var(--chip-ink);
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(var(--sh), 0.16);
+}
+.gx-dock .gx-dock__plus {
+  width: 36px;
+  padding: 0;
+  margin-left: 6px;
+  justify-content: center;
+  background: var(--chip);
+  color: var(--chip-ink);
+}
+
+/* ---- chuyển động */
+@keyframes gx-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+@keyframes gx-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@keyframes gx-shell {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+@keyframes gx-reveal {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+@keyframes gx-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes gx-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes gx-dockin {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+}
+@keyframes gx-orb {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .gc--link:hover {
+    transform: translateY(-4px);
+    box-shadow:
+      inset 0 1px 0 rgba(var(--hi), calc(0.7 * var(--gk))),
+      0 18px 40px rgba(var(--sh), 0.16);
+  }
+  .gc {
+    transition:
+      transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 0.35s;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gx *,
+  .gx *::before,
+  .gx *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---- màn hình hẹp */
+@media (max-width: 1180px) {
+  .gx-s4 {
+    grid-column: span 6;
+  }
+  .gx-s8 {
+    grid-column: span 12;
+  }
+}
+@media (max-width: 980px) {
+  .gx-top {
+    top: 64px;
+    left: 10px;
+    right: 10px;
+    height: 50px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 0 8px;
+  }
+  .gx-top .gx-ask {
+    display: none;
+  }
+  .gx-panel {
+    top: 124px;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    border-radius: 22px;
+  }
+  .gx-page {
+    padding: 18px 14px 24px;
+  }
+  .gx-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .gx-grid {
+    gap: 10px;
+  }
+  .gx-s4,
+  .gx-s8 {
+    grid-column: span 12;
+  }
+  .gx-quad {
+    grid-template-rows: auto auto;
+  }
+  .gx-dock {
+    display: none;
+  }
+  .gx-prog {
+    width: 70px;
+  }
+}

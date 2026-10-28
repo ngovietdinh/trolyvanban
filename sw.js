@@ -11,6 +11,7 @@ const CORE = [
   'assets/css/fonts.css',
   'assets/css/landing.css',
   'assets/css/app.css',
+  'assets/css/glass.css',
   'assets/css/document.css',
   'assets/css/legal.css',
   'assets/css/help.css',
