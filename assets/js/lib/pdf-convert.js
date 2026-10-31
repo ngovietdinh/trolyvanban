@@ -6,11 +6,11 @@ import { correctOcr } from './vi-correct.js';
 import { hasDesktopOcr, desktopOcrStatus, ocrImageDesktop } from './ocr-desktop.js';
 import { ocrEngine } from './extract.js';
 
-/** Bộ nhận dạng dùng cho phiên này: bản cài đặt có PaddleOCR + VietOCR sẵn sàng → 'vietocr', không thì 'tesseract'. */
+/** Bộ nhận dạng dùng cho phiên này: người dùng chọn VietOCR và bản cài đặt đã có mô hình → 'vietocr', không thì 'tesseract'. */
 let enginePromise = null;
 export function pickOcrEngine() {
   enginePromise ??= (async () => {
-    if (ocrEngine() === 'tesseract' || !hasDesktopOcr()) return 'tesseract';
+    if (ocrEngine() !== 'vietocr' || !hasDesktopOcr()) return 'tesseract';
     const st = await desktopOcrStatus();
     return st?.available ? 'vietocr' : 'tesseract';
   })();

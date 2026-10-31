@@ -67,10 +67,10 @@ export const setOcrAi = (fn) => (ocrAi = typeof fn === 'function' ? fn : () => n
 let ocrModeGetter = () => 'may';
 export const setOcrModeGetter = (fn) => (ocrModeGetter = typeof fn === 'function' ? fn : () => 'may');
 export const ocrMode = () => (OCR_MODES[ocrModeGetter()] ? ocrModeGetter() : 'may');
-/** Bộ nhận dạng trên máy: 'auto' (bản cài đặt có mô hình VietOCR thì dùng PaddleOCR + VietOCR, không thì Tesseract) | 'tesseract'. */
-let ocrEngineGetter = () => 'auto';
-export const setOcrEngineGetter = (fn) => (ocrEngineGetter = typeof fn === 'function' ? fn : () => 'auto');
-export const ocrEngine = () => (ocrEngineGetter() === 'tesseract' ? 'tesseract' : 'auto');
+/** Bộ nhận dạng trên máy: 'tesseract' (mặc định, kèm sẵn + sửa dấu theo mô hình ngôn ngữ) | 'vietocr' (bản cài đặt: PaddleOCR + VietOCR, cần tải mô hình). */
+let ocrEngineGetter = () => 'tesseract';
+export const setOcrEngineGetter = (fn) => (ocrEngineGetter = typeof fn === 'function' ? fn : () => 'tesseract');
+export const ocrEngine = () => (ocrEngineGetter() === 'vietocr' ? 'vietocr' : 'tesseract');
 
 /** Nhận dạng chữ (OCR) cho PDF ảnh quét / ảnh chụp — dùng bộ chuyển PDF sang Word; theo chế độ đã cài. */
 async function ocrText(file, onProgress, { mode = ocrMode() } = {}) {

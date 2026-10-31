@@ -26,7 +26,7 @@ parser.add_argument('--arch', default='vgg_transformer', choices=['vgg_transform
 parser.add_argument('--config-dir', default=os.path.join(os.path.dirname(__file__), 'config'))
 parser.add_argument('--out', default='desktop/ocr/models')
 parser.add_argument('--random-init', action='store_true', help='kiểm thử: khởi tạo ngẫu nhiên thay cho --weights (chỉ để kiểm tra luồng xuất/giải mã)')
-parser.add_argument('--quantize', action='store_true', help='lượng tử hóa int8 (nhỏ ~4 lần, chậm hơn một chút)')
+parser.add_argument('--quantize', choices=['none', 'decoder', 'all'], default='decoder', help='lượng tử hóa int8: decoder (mặc định — nhỏ hơn, nhanh hơn, độ chính xác gần như fp32), all (nhỏ ~4 lần nhưng bộ mã hóa CNN mất ~1 điểm % ký tự), none')
 args = parser.parse_args()
 
 from vietocr.model.transformerocr import VietOCR  # noqa: E402
@@ -158,16 +158,17 @@ with torch.no_grad():
         tgt = torch.tensor([[1]], dtype=torch.long)
         torch.onnx.export(dec, (tgt, memory, hidden), os.path.join(args.out, 'vietocr-decoder.onnx'), input_names=['tgt', 'memory', 'hidden'], output_names=['logits', 'hidden_out'], dynamic_axes={'memory': {0: 'T'}}, opset_version=14, dynamo=False)
 
-if args.quantize:
+if args.quantize != 'none':
     from onnxruntime.quantization import QuantType, quantize_dynamic
 
-    for n in ['vietocr-encoder.onnx', 'vietocr-decoder.onnx']:
+    for n in ['vietocr-decoder.onnx'] + (['vietocr-encoder.onnx'] if args.quantize == 'all' else []):
         p = os.path.join(args.out, n)
         quantize_dynamic(p, p, weight_type=QuantType.QUInt8)
 
 meta = {
     'arch': args.arch,
     'random_init': bool(args.random_init),
+    'quantize': args.quantize,
     'seq_modeling': cfg['seq_modeling'],
     'vocab': cfg['vocab'],
     'pad': 0,

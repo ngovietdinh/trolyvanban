@@ -3,7 +3,7 @@
 // trang văn bản, IPC từ giao diện, và bộ máy trực tiếp bằng Node (không cần Electron) trên ảnh PNG.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -55,6 +55,21 @@ test('bộ máy Node: phát hiện dòng chữ bằng PaddleOCR trên ảnh tran
   assert.equal(r.lines.length, boxes.length);
   await assert.rejects(() => eng.recognize({ width: 10, height: 10, data: new Uint8ClampedArray(400) }), /VietOCR/);
   eng.dispose();
+  // Tiền xử lý: khử nghiêng, tách dòng dài tại khoảng trắng, ký tự ngoài bộ chữ, ngoặc kép cong.
+  const { rotateRgba, estimateSkew, splitLine, cropRgba, fixUnknownChars, curlyQuotes } = require(join(root, 'desktop/ocr/engine.cjs'));
+  assert.equal(Math.abs(estimateSkew(img)) < 0.2, true, 'trang thẳng → góc ≈ 0');
+  const tilted = rotateRgba(img, 1.5);
+  const est = estimateSkew(tilted);
+  assert.ok(Math.abs(est + 1.5) <= 0.15, `góc ước lượng ${est} (xoay 1,5°)`);
+  const wide = boxes.reduce((a, b) => (b.x1 - b.x0 > a.x1 - a.x0 ? b : a));
+  const crop = cropRgba(img, wide.x0, wide.y0, wide.x1, wide.y1);
+  const parts = splitLine(crop);
+  assert.ok(parts.length >= 2 && parts.every(([a, b]) => b - a <= crop.height * 10 + 8), JSON.stringify(parts));
+  assert.equal(parts[0][0], 0);
+  assert.equal(parts[parts.length - 1][1], crop.width);
+  assert.equal(fixUnknownChars('Độc lập ? Tự do ? Hạnh phúc'), 'Độc lập – Tự do – Hạnh phúc');
+  assert.equal(fixUnknownChars('nói: ?Em đã say chưa?'), 'nói: “Em đã say chưa”');
+  assert.equal(curlyQuotes('T trả lời: "Có anh Hai ạ". Đ nói "Các ông"'), 'T trả lời: “Có anh Hai ạ”. Đ nói “Các ông”');
 });
 
 let app;
@@ -100,9 +115,43 @@ test('giao diện: tlvbDesktop.ocr.status() và page() qua IPC; Cài đặt hi�
   assert.match(txt, /VietOCR/);
   const dlVisible = await page.locator('[data-ocr-download]').isVisible();
   assert.equal(dlVisible, !/đã sẵn sàng/.test(txt), 'nút tải mô hình hiện khi chưa có VietOCR');
-  // Chọn Tesseract → bộ đọc PDF dùng Tesseract.
+  // Mặc định Tesseract; chọn VietOCR khi chưa có mô hình → vẫn Tesseract (không lỗi).
+  const pickEngine = () => page.evaluate(async () => (await import('/assets/js/lib/pdf-convert.js')).pickOcrEngine());
+  assert.equal(await pickEngine(), 'tesseract');
+  assert.equal(await page.getAttribute('[data-ocr-engine="tesseract"]', 'aria-pressed'), 'true');
+  await page.click('[data-ocr-engine="vietocr"]');
+  assert.equal(await pickEngine(), (await page.evaluate(() => window.tlvbDesktop.ocr.status())).available ? 'vietocr' : 'tesseract');
   await page.click('[data-ocr-engine="tesseract"]');
-  const eng = await page.evaluate(async () => (await import('/assets/js/lib/pdf-convert.js')).pickOcrEngine());
-  assert.equal(eng, 'tesseract');
+  assert.equal(await pickEngine(), 'tesseract');
   assert.ok(existsSync(join(tmp, 'page.png')));
+});
+
+// Có bộ mô hình VietOCR thật (TLVB_OCR_TEST_MODELS=<thư mục chứa vietocr-*.onnx + vietocr.json>): nhận dạng cả trang qua IPC
+// và chọn được bộ VietOCR trong Cài đặt. CI không có mô hình → bỏ qua.
+test('có mô hình VietOCR: nhận dạng trang qua IPC ra đúng chữ, Cài đặt chọn được PaddleOCR + VietOCR', { skip: !process.env.TLVB_OCR_TEST_MODELS && 'cần TLVB_OCR_TEST_MODELS' }, async () => {
+  const src = process.env.TLVB_OCR_TEST_MODELS;
+  const dest = join(tmp, 'profile', 'ocr-models');
+  mkdirSync(dest, { recursive: true });
+  for (const f of ['vietocr-encoder.onnx', 'vietocr-decoder.onnx', 'vietocr.json']) copyFileSync(join(src, f), join(dest, f));
+  const st = await page.evaluate(() => window.tlvbDesktop.ocr.status());
+  assert.equal(st.available, true, JSON.stringify(st));
+  const png = readFileSync(join(tmp, 'page.png'));
+  const r = await page.evaluate(async (b64) => {
+    const bin = atob(b64);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return window.tlvbDesktop.ocr.page(u8.buffer, {});
+  }, png.toString('base64'));
+  assert.ok(!r.error, r.error);
+  const text = r.lines.map((l) => l.text).join('\n');
+  assert.match(text, /CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM/);
+  assert.match(text, /Độc lập [-–] Tự do [-–] Hạnh phúc/);
+  assert.ok(r.lines.every((l) => l.conf > 0.5), 'độ tin cậy từng dòng');
+  await page.evaluate(() => (location.hash = '#pdf'));
+  await page.waitForTimeout(300);
+  await page.evaluate(() => (location.hash = '#settings'));
+  await page.locator('[data-ocr-engine-row]').waitFor();
+  await page.locator('[data-ocr-engine-status]').filter({ hasText: /đã sẵn sàng/ }).waitFor({ timeout: 10000 });
+  await page.click('[data-ocr-engine="vietocr"]');
+  assert.equal(await page.evaluate(async () => (await import('/assets/js/lib/pdf-convert.js')).pickOcrEngine()), 'vietocr');
 });

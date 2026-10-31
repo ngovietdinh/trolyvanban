@@ -1,0 +1,59 @@
+# Xuất mô hình VietOCR sang ONNX và đăng lên GitHub Releases (thẻ ocr-models-v1) để bản cài đặt máy tính tải về
+# khi bấm "Tải mô hình" (Cài đặt → Nhận dạng chữ bản quét). Chạy tay ở tab Actions; chỉ cần chạy lại khi đổi cách xuất
+# (scripts/ocr-vietocr/export.py) hoặc đổi thẻ phát hành (OCR_MODEL_BASE trong desktop/main.cjs).
+name: Mô hình OCR cho bản cài đặt
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Thẻ phát hành chứa mô hình
+        default: ocr-models-v1
+      quantize:
+        description: Lượng tử hóa int8 (decoder | all | none)
+        default: decoder
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Cài PyTorch (CPU), VietOCR, onnxruntime
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install vietocr==0.3.13 --no-deps
+          pip install einops pyyaml pillow onnx onnxscript onnxruntime numpy
+      - name: Tải trọng số VietOCR (vgg_transformer, Apache-2.0)
+        run: curl -fL --retry 3 -o vgg_transformer.pth https://vocr.vn/data/vietocr/vgg_transformer.pth
+      - name: Xuất ONNX
+        run: python scripts/ocr-vietocr/export.py --weights vgg_transformer.pth --arch vgg_transformer --quantize "${{ inputs.quantize }}" --out out
+      - name: Kiểm tra bằng onnxruntime
+        run: |
+          python - <<'PY'
+          import json, numpy as np, onnxruntime as ort
+          meta = json.load(open('out/vietocr.json', encoding='utf-8'))
+          enc = ort.InferenceSession('out/vietocr-encoder.onnx', providers=['CPUExecutionProvider'])
+          dec = ort.InferenceSession('out/vietocr-decoder.onnx', providers=['CPUExecutionProvider'])
+          for W in (160, 320, 512):
+              mem = enc.run(None, {'img': np.random.rand(1, 3, meta['image_height'], W).astype(np.float32)})[0]
+              lg = dec.run(None, {'tgt': np.array([[1]], dtype=np.int64), 'memory': mem})[0]
+              assert lg.shape[-1] == len(meta['vocab']) + 4, lg.shape
+          print('onnxruntime OK')
+          PY
+      - name: Đăng lên Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "Mô hình nhận dạng chữ cho bản cài đặt (VietOCR vgg_transformer, ONNX)" \
+              --notes "Mô hình VietOCR vgg_transformer (tác giả pbcquoc, Apache-2.0) xuất sang ONNX bằng scripts/ocr-vietocr/export.py để bản cài đặt máy tính đọc bản quét tiếng Việt tại chỗ (PaddleOCR phát hiện dòng + VietOCR nhận dạng). Ứng dụng tự tải các tệp này khi bấm Tải mô hình trong Cài đặt → Nhận dạng chữ bản quét; có thể chép tay vào thư mục dữ liệu/ocr-models."
+          fi
+          gh release upload "$TAG" out/vietocr.json out/vietocr-decoder.onnx out/vietocr-encoder.onnx --clobber

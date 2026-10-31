@@ -12,8 +12,13 @@ const path = require('node:path');
 let ort = null;
 const loadOrt = () => (ort ??= require('onnxruntime-node'));
 
-const DET = { limit: 960, thresh: 0.3, boxThresh: 0.5, unclip: 1.6, minSize: 3, mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225] };
-const CLS = { w: 192, h: 48, thresh: 0.9 };
+const DET = { limit: Number(process.env.TLVB_OCR_DET_LIMIT) || 1600, thresh: 0.3, boxThresh: 0.5, unclip: 1.6, minSize: 3, mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225] };
+const CLS = { w: 192, h: 48, thresh: 0.9, samples: 12 };
+// VietOCR được huấn luyện với ảnh dòng rộng tối đa 512 px ở cao 32 px (tỉ lệ 16:1) nhưng vẫn đọc tốt khi ép ngang tới ~1,8 lần
+// (đo thực tế trên bản quét). Dòng dài hơn mức đó mới tách tại khoảng trắng thành số đoạn ít nhất có thể; mỗi mép cắt là một
+// chỗ mô hình dễ "bịa" chữ nên lề hai đầu để rất nhỏ.
+const REC = { maxRatio: Number(process.env.TLVB_OCR_CHUNK_RATIO) || 10, pad: 2, vpad: process.env.TLVB_OCR_VPAD ? Number(process.env.TLVB_OCR_VPAD) : 0.4, fill: Number(process.env.TLVB_OCR_FILL) || 0.42, tight: !!process.env.TLVB_OCR_TIGHT };
+const SKEW = { max: 3, coarse: 0.25, fine: 0.05, min: 0.15, width: 1000 };
 
 /* ---------------- Ảnh ---------------- */
 /** Co giãn bitmap RGBA (nội suy song tuyến). */
@@ -45,6 +50,188 @@ function resizeRgba(img, w, h) {
   }
   return { width: w, height: h, data: out };
 }
+/** Thu nhỏ bằng trung bình vùng (giữ nét mảnh, dấu thanh); phóng to thì nội suy song tuyến. */
+function resizeArea(img, w, h) {
+  const { width: W, height: H, data } = img;
+  if (w >= W || h >= H) return resizeRgba(img, w, h);
+  const out = new Uint8ClampedArray(w * h * 4);
+  const sx = W / w;
+  const sy = H / h;
+  for (let y = 0; y < h; y++) {
+    const ya = y * sy;
+    const yb = Math.min(H, (y + 1) * sy);
+    const y0 = Math.floor(ya);
+    const y1 = Math.ceil(yb);
+    for (let x = 0; x < w; x++) {
+      const xa = x * sx;
+      const xb = Math.min(W, (x + 1) * sx);
+      const x0 = Math.floor(xa);
+      const x1 = Math.ceil(xb);
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let wsum = 0;
+      for (let yy = y0; yy < y1; yy++) {
+        const wy = Math.min(yb, yy + 1) - Math.max(ya, yy);
+        if (wy <= 0) continue;
+        for (let xx = x0; xx < x1; xx++) {
+          const wx = Math.min(xb, xx + 1) - Math.max(xa, xx);
+          if (wx <= 0) continue;
+          const k = wx * wy;
+          const i = (yy * W + xx) * 4;
+          r += data[i] * k;
+          g += data[i + 1] * k;
+          b += data[i + 2] * k;
+          wsum += k;
+        }
+      }
+      const o = (y * w + x) * 4;
+      out[o] = r / wsum;
+      out[o + 1] = g / wsum;
+      out[o + 2] = b / wsum;
+      out[o + 3] = 255;
+    }
+  }
+  return { width: w, height: h, data: out };
+}
+/** Xoay bitmap quanh tâm một góc (độ, dương = ngược chiều kim đồng hồ), nội suy song tuyến, nền trắng, giữ kích thước. */
+function rotateRgba(img, deg) {
+  const { width: W, height: H, data } = img;
+  const out = new Uint8ClampedArray(W * H * 4).fill(255);
+  const a = (deg * Math.PI) / 180;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  const cx = W / 2;
+  const cy = H / 2;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const sxf = cos * dx - sin * dy + cx;
+      const syf = sin * dx + cos * dy + cy;
+      const x0 = Math.floor(sxf);
+      const y0 = Math.floor(syf);
+      if (x0 < 0 || y0 < 0 || x0 >= W - 1 || y0 >= H - 1) continue;
+      const wx = sxf - x0;
+      const wy = syf - y0;
+      const o = (y * W + x) * 4;
+      for (let c = 0; c < 3; c++) {
+        const p00 = data[(y0 * W + x0) * 4 + c];
+        const p01 = data[(y0 * W + x0 + 1) * 4 + c];
+        const p10 = data[((y0 + 1) * W + x0) * 4 + c];
+        const p11 = data[((y0 + 1) * W + x0 + 1) * 4 + c];
+        out[o + c] = (p00 * (1 - wx) + p01 * wx) * (1 - wy) + (p10 * (1 - wx) + p11 * wx) * wy;
+      }
+    }
+  }
+  return { width: W, height: H, data: out };
+}
+/** Ảnh xám + ngưỡng Otsu → mảng 0/1 (1 = mực). */
+function inkMask(img) {
+  const { width: w, height: h, data } = img;
+  const gray = new Uint8Array(w * h);
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < w * h; i++) {
+    const g = (data[i * 4] * 299 + data[i * 4 + 1] * 587 + data[i * 4 + 2] * 114) / 1000;
+    gray[i] = g;
+    hist[g | 0]++;
+  }
+  let total = w * h;
+  let sum = 0;
+  for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let sumB = 0;
+  let wB = 0;
+  let best = 0;
+  let thr = 127;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (!wB) continue;
+    const wF = total - wB;
+    if (!wF) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const v = wB * wF * (mB - mF) * (mB - mF);
+    if (v > best) (best = v), (thr = t);
+  }
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) mask[i] = gray[i] < thr ? 1 : 0;
+  return { mask, thr, gray };
+}
+/**
+ * Ước lượng góc nghiêng của trang (độ) bằng biên dạng hàng: xoay thử các góc, góc nào cho biên dạng hàng "sắc" nhất
+ * (tổng bình phương lớn nhất) là góc nghiêng. Trả về góc cần xoay để dựng thẳng.
+ */
+function estimateSkew(img) {
+  const scale = Math.min(1, SKEW.width / img.width);
+  const small = scale < 1 ? resizeArea(img, Math.round(img.width * scale), Math.round(img.height * scale)) : img;
+  const { width: w, height: h } = small;
+  const { mask } = inkMask(small);
+  const xs = [];
+  const ys = [];
+  const step = Math.max(1, Math.floor((w * h) / 400000));
+  for (let i = 0; i < w * h; i += step) if (mask[i]) (xs.push(i % w), ys.push((i / w) | 0));
+  if (xs.length < 200) return 0;
+  const score = (deg) => {
+    const t = Math.tan((deg * Math.PI) / 180);
+    const rows = new Float64Array(h + w + 2);
+    const off = w;
+    for (let i = 0; i < xs.length; i++) rows[Math.round(ys[i] - xs[i] * t) + off]++;
+    let sq = 0;
+    for (let i = 0; i < rows.length; i++) sq += rows[i] * rows[i];
+    return sq;
+  };
+  let best = 0;
+  let bestScore = -1;
+  for (let a = -SKEW.max; a <= SKEW.max + 1e-9; a += SKEW.coarse) {
+    const sc = score(a);
+    if (sc > bestScore) (bestScore = sc), (best = a);
+  }
+  for (let a = best - SKEW.coarse; a <= best + SKEW.coarse + 1e-9; a += SKEW.fine) {
+    const sc = score(a);
+    if (sc > bestScore) (bestScore = sc), (best = a);
+  }
+  return Math.round(best * 100) / 100;
+}
+/** Cắt sát dòng chữ trong hộp phát hiện (bỏ phần nền thừa trên/dưới, hai đầu), chừa lề REC.margin theo chiều cao chữ. */
+function tightLine(crop) {
+  const { width: w, height: h } = crop;
+  const { mask } = inkMask(crop);
+  const rows = new Uint32Array(h);
+  const cols = new Uint32Array(w);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (mask[y * w + x]) (rows[y]++, cols[x]++);
+  let maxRow = 0;
+  for (let y = 0; y < h; y++) if (rows[y] > maxRow) maxRow = rows[y];
+  if (!maxRow) return crop;
+  const thr = Math.max(1, maxRow * 0.04);
+  // Dải hàng có mực quanh hàng có nhiều mực nhất gần tâm.
+  let c = h >> 1;
+  let bestC = -1;
+  for (let y = Math.floor(h * 0.25); y < Math.ceil(h * 0.75); y++) if (rows[y] > bestC) (bestC = rows[y]), (c = y);
+  const tol = Math.max(2, Math.round(h * 0.12));
+  let y0 = c;
+  let gap = 0;
+  for (let y = c; y >= 0; y--) {
+    if (rows[y] >= thr) (y0 = y), (gap = 0);
+    else if (++gap > tol) break;
+  }
+  let y1 = c;
+  gap = 0;
+  for (let y = c; y < h; y++) {
+    if (rows[y] >= thr) (y1 = y), (gap = 0);
+    else if (++gap > tol) break;
+  }
+  const bh = y1 - y0 + 1;
+  if (bh < h * 0.3 || bh < 6) return crop;
+  const m = Math.round((bh * (1 / REC.fill - 1)) / 2); // dải chữ chiếm REC.fill chiều cao ảnh đưa vào mô hình
+  let x0 = 0;
+  while (x0 < w - 1 && cols[x0] === 0) x0++;
+  let x1 = w - 1;
+  while (x1 > x0 && cols[x1] === 0) x1--;
+  const mx = Math.round(bh * (Number(process.env.TLVB_OCR_HPAD) || 0.05));
+  return cropRgba(crop, Math.max(0, x0 - mx), Math.max(0, y0 - m), Math.min(w, x1 + 1 + mx), Math.min(h, y1 + 1 + m));
+}
+
 /** Cắt vùng [x0,y0,x1,y1] (đã kẹp trong ảnh). */
 function cropRgba(img, x0, y0, x1, y1) {
   const X0 = Math.max(0, Math.floor(x0));
@@ -75,6 +262,108 @@ function toTensor(img, mean = [0, 0, 0], std = [1, 1, 1], scale = 1 / 255) {
     f[2 * n + i] = (data[i * 4 + 2] * scale - mean[2]) / std[2];
   }
   return new (loadOrt().Tensor)('float32', f, [1, 3, h, w]);
+}
+
+/** Số điểm mực theo từng cột (ảnh xám, ngưỡng giữa nền và mực). */
+function inkColumns(img) {
+  const { width: w, height: h, data } = img;
+  const gray = new Uint8Array(w * h);
+  let lo = 255;
+  let hi = 0;
+  for (let i = 0; i < w * h; i++) {
+    const g = (data[i * 4] * 299 + data[i * 4 + 1] * 587 + data[i * 4 + 2] * 114) / 1000;
+    gray[i] = g;
+    if (g < lo) lo = g;
+    if (g > hi) hi = g;
+  }
+  const thr = (lo + hi) / 2;
+  const cols = new Uint16Array(w);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (gray[y * w + x] < thr) cols[x]++;
+  return cols;
+}
+/**
+ * Tách ảnh dòng thành các đoạn [x0, x1) có tỉ lệ rộng/cao ≤ ratio, cắt tại khoảng trắng rộng nhất trong nửa sau của mỗi đoạn
+ * (không có khoảng trắng thì cắt cứng). Dòng ngắn trả về một đoạn.
+ */
+function splitLine(img, maxRatio = REC.maxRatio) {
+  const { width: w, height: h } = img;
+  const limit = Math.max(h * 2, Math.floor(h * maxRatio));
+  if (w <= limit) return [[0, w]];
+  const n = Math.ceil(w / limit);
+  const target = w / n;
+  const cols = inkColumns(img);
+  const gaps = [];
+  for (let x = 0; x < w; ) {
+    if (cols[x] === 0) {
+      let e = x;
+      while (e < w && cols[e] === 0) e++;
+      if (e - x >= Math.max(2, h * 0.12)) gaps.push([x, e]);
+      x = e;
+    } else x++;
+  }
+  const parts = [];
+  let start = 0;
+  for (let k = 1; k < n; k++) {
+    const aim = Math.round(k * target);
+    const lo = Math.max(start + h * 2, aim - target * 0.35);
+    const hi = Math.min(w - h * 2, aim + target * 0.35);
+    let best = null;
+    let bestScore = -Infinity;
+    for (const g of gaps) {
+      const mid = (g[0] + g[1]) >> 1;
+      if (mid < lo || mid > hi) continue;
+      const score = (g[1] - g[0]) - Math.abs(mid - aim) / h; // khoảng trắng rộng, gần mốc
+      if (score > bestScore) (bestScore = score), (best = g);
+    }
+    const cut = best ? (best[0] + best[1]) >> 1 : aim;
+    if (cut - start > limit) {
+      // Đoạn vẫn quá dài (không có khoảng trắng): cắt cứng tại giới hạn.
+      parts.push([start, start + limit]);
+      start += limit;
+    } else {
+      parts.push([start, cut]);
+      start = cut;
+    }
+  }
+  parts.push([start, w]);
+  return parts.map(([a, b]) => [Math.max(0, a - REC.pad), Math.min(w, b + REC.pad)]);
+}
+/** Ký tự ngoài bộ chữ VietOCR (ra “?”): “ ? ” giữa hai dấu cách là gạch ngang; “?” dính trước chữ là mở ngoặc kép; “?” sau chữ khi đang mở ngoặc là đóng ngoặc kép. */
+function fixUnknownChars(text) {
+  let t = text.replace(/(^|\s)\?(?=\s|$)/g, '$1–');
+  t = t.replace(/(^|[\s(\[])\?(?=[\p{L}\p{N}])/gu, '$1“');
+  let open = false;
+  let out = '';
+  for (const ch of t) {
+    if (ch === '“') open = true;
+    if (ch === '?' && open) {
+      out += '”';
+      open = false;
+    } else out += ch;
+  }
+  return out;
+}
+/** Ngoặc kép thẳng " → cong “ ” theo vị trí (mở khi đứng trước chữ, đóng khi đứng sau chữ/dấu câu), như Word tự sửa. */
+function curlyQuotes(text) {
+  let open = false;
+  let out = '';
+  const chars = [...text];
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (ch !== '"') {
+      out += ch;
+      continue;
+    }
+    const prev = i ? chars[i - 1] : ' ';
+    const next = i + 1 < chars.length ? chars[i + 1] : ' ';
+    const before = /[\s(\[{–—-]/.test(prev);
+    const after = /[\p{L}\p{N}]/u.test(next);
+    if (!open && before && after) (out += '“'), (open = true);
+    else if (open) (out += '”'), (open = false);
+    else if (before && after) (out += '“'), (open = true);
+    else out += '”';
+  }
+  return out;
 }
 
 /* ---------------- Phát hiện vùng chữ (DBNet) ---------------- */
@@ -172,7 +461,7 @@ class Engine {
     const ratio = Math.min(1, DET.limit / Math.max(img.width, img.height));
     const w = Math.max(32, Math.round((img.width * ratio) / 32) * 32);
     const h = Math.max(32, Math.round((img.height * ratio) / 32) * 32);
-    const small = resizeRgba(img, w, h);
+    const small = resizeArea(img, w, h);
     const out = await s.run({ [s.inputNames[0]]: toTensor(small, DET.mean, DET.std) });
     const prob = out[s.outputNames[0]].data;
     const sx = img.width / w;
@@ -199,7 +488,7 @@ class Engine {
     const H = meta.image_height || 32;
     let w = Math.round((crop.width * H) / Math.max(1, crop.height));
     w = Math.min(meta.image_max_width || 512, Math.max(meta.image_min_width || 32, Math.ceil(w / 10) * 10));
-    const img = resizeRgba(crop, w, H);
+    const img = resizeArea(crop, w, H);
     const enc = await this.session('vietocr-encoder.onnx');
     const dec = await this.session('vietocr-decoder.onnx');
     const O = loadOrt();
@@ -245,32 +534,84 @@ class Engine {
     const conf = confs.length ? confs.reduce((a, b) => a + b, 0) / confs.length : 0;
     return { text, conf };
   }
+  /** Nhận dạng một dòng dài: tách đoạn tại khoảng trắng, nhận dạng từng đoạn, nối bằng dấu cách. */
+  async recognizeLine(crop) {
+    if (REC.tight) crop = tightLine(crop);
+    const parts = splitLine(crop);
+    if (parts.length === 1) return this.recognize(crop);
+    const texts = [];
+    let conf = 0;
+    let n = 0;
+    for (const [a, b] of parts) {
+      const r = await this.recognize(cropRgba(crop, a, 0, b, crop.height));
+      const t = r.text.trim();
+      if (!t) continue;
+      texts.push(t);
+      conf += r.conf * t.length;
+      n += t.length;
+    }
+    return { text: texts.join(' '), conf: n ? conf / n : 0 };
+  }
+  /** Cả trang có bị lật ngược 180° không: bỏ phiếu bộ phân loại hướng trên các đoạn đầu dòng (tỉ lệ ≈ 4:1). */
+  async pageUpsideDown(img, boxes) {
+    if (!this.file('ppocr-cls.onnx')) return false;
+    const picks = boxes.filter((b) => b.y1 - b.y0 >= 8 && b.x1 - b.x0 >= (b.y1 - b.y0) * 2);
+    const step = Math.max(1, Math.floor(picks.length / CLS.samples));
+    let up = 0;
+    let down = 0;
+    for (let i = 0; i < picks.length && up + down < CLS.samples; i += step) {
+      const b = picks[i];
+      const h = b.y1 - b.y0;
+      const w = Math.min(b.x1 - b.x0, h * 4);
+      try {
+        if (await this.upsideDown(cropRgba(img, b.x0, b.y0, b.x0 + w, b.y1))) down++;
+        else up++;
+      } catch {}
+    }
+    return up + down >= 3 && down > up;
+  }
   /**
    * Cả trang: bitmap RGBA → { width, height, lines: [{ x0, y0, x1, y1, text, conf }] } (đã sắp theo thứ tự đọc).
    * onProgress(i, n) theo từng dòng.
    */
-  async page(img, { onProgress = null, withText = true } = {}) {
-    const boxes = await this.detect(img);
+  async page(img, { onProgress = null, withText = true, deskew = true } = {}) {
+    let skew = 0;
+    if (deskew && !process.env.TLVB_OCR_NO_DESKEW) {
+      skew = estimateSkew(img);
+      if (Math.abs(skew) >= SKEW.min) img = rotateRgba(img, skew);
+      else skew = 0;
+    }
+    let boxes = await this.detect(img);
+    let rotated = false;
+    if (withText && (await this.pageUpsideDown(img, boxes))) {
+      // Trang quét bị lật ngược: xoay cả trang rồi phát hiện lại; tọa độ trả về theo trang đã dựng đứng.
+      img = rotate180(img);
+      boxes = await this.detect(img);
+      rotated = true;
+    }
     const lines = [];
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
-      let crop = cropRgba(img, b.x0, b.y0, b.x1, b.y1);
       let text = '';
       let conf = 0;
       if (withText) {
-        if (this.file('ppocr-cls.onnx') && crop.width > crop.height * 1.5) {
-          try {
-            if (await this.upsideDown(crop)) crop = rotate180(crop);
-          } catch {}
-        }
-        const r = await this.recognize(crop);
-        text = r.text;
+        const vp = REC.vpad * (b.y1 - b.y0); // nới hộp theo chiều dọc: VietOCR đọc tốt nhất khi chữ chiếm ~45% chiều cao ảnh dòng
+        const r = await this.recognizeLine(cropRgba(img, b.x0, b.y0 - vp, b.x1, b.y1 + vp));
+        text = this.fixText(r.text);
         conf = r.conf;
       }
       lines.push({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, score: b.score, text, conf });
       onProgress?.(i + 1, boxes.length);
     }
-    return { width: img.width, height: img.height, lines };
+    return { width: img.width, height: img.height, rotated, skew, lines };
+  }
+  /** Sửa ký tự ngoài bộ chữ khi bộ chữ không có ngoặc kép cong. */
+  fixText(text) {
+    const meta = this.loadMeta();
+    if ((meta?.vocab || '').includes('“')) return text;
+    let t = text.includes('?') ? fixUnknownChars(text) : text;
+    if (t.includes('"')) t = curlyQuotes(t);
+    return t;
   }
   dispose() {
     for (const s of Object.values(this.sessions)) s.release?.();
@@ -278,4 +619,4 @@ class Engine {
   }
 }
 
-module.exports = { Engine, resizeRgba, cropRgba, rotate180, dbBoxes, sortBoxes, toTensor };
+module.exports = { Engine, resizeRgba, resizeArea, rotateRgba, cropRgba, rotate180, dbBoxes, sortBoxes, toTensor, splitLine, tightLine, estimateSkew, fixUnknownChars, curlyQuotes };
