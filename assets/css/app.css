@@ -3155,6 +3155,109 @@ mark.err-mark.is-ai {
     transform: rotate(360deg);
   }
 }
+/* PDF sang Word — nhiều tệp: danh sách tệp đã chọn và hàng tiến độ từng tệp */
+.pw-files {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+.pw-files-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pw-files-head small {
+  color: var(--text-3);
+}
+.pw-files-head .btn {
+  margin-left: auto;
+}
+.pw-files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+.pw-files-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 28px;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 13px;
+}
+.pw-files-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pw-files-list small {
+  color: var(--text-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pw-batch {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 12px;
+  display: grid;
+  gap: 2px;
+}
+.pw-batch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'main act' 'bar bar' 'sub sub';
+  gap: 4px 12px;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.pw-batch-main {
+  grid-area: main;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.pw-batch-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.pw-batch-row .bar {
+  grid-area: bar;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.pw-batch-row .bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+.pw-batch-row small {
+  grid-area: sub;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.pw-batch-act {
+  grid-area: act;
+  min-height: 28px;
+}
+@media (max-width: 640px) {
+  .pw-batch-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'main' 'bar' 'sub' 'act';
+  }
+}
+
 .pw-res-head {
   display: flex;
   justify-content: space-between;
