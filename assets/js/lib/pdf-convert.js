@@ -2,6 +2,7 @@
 // sửa lỗi nhận dạng, gom kết quả. Giao diện ở views/pdf.js; bộ xuất .docx ở docx-flow.js.
 import { openPdf, pageItems, pageRules, ruledTables, buildLines, layoutPage, ocrToLines, isScanned, renderPage } from './pdf2word.js';
 import { ocrImage } from './ocr.js';
+import { correctOcr } from './vi-correct.js';
 import { syllableProblem, suggestSyllable } from './vn-syllable.js';
 
 /** Sửa lỗi OCR hay gặp bằng quy tắc âm tiết: chữ in hoa mất mũ (BIEN → BIÊN), chữ dính số 0/O, l/1… */
@@ -115,6 +116,8 @@ export async function convertFile(file, opts = {}) {
     }
     onProgress?.({ page: pageNo, total, stage: 'Nhận dạng chữ (OCR)', pct: 0 });
     const ocr = await ocrImage(canvas, { onProgress: (m) => m.status === 'recognizing text' && onProgress?.({ page: pageNo, total, stage: 'Nhận dạng chữ (OCR)', pct: m.progress }) });
+    // Sửa dấu / chữ sai theo mô hình ngôn ngữ pháp lý (chạy trên máy, không đổi vị trí chữ).
+    stats.fixed = (stats.fixed || 0) + (await correctOcr(ocr).catch(() => 0));
     check();
     let lines = ocrToLines(ocr, scale).map(fixLineRuns);
     if (aiFix && lines.length) {

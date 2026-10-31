@@ -1033,6 +1033,14 @@ setSecurityBlockHook((r) => {
   audit('Chặn kết nối ra ngoài', `${r.host} — ${r.reason}`);
 });
 bindThemeToggles();
+// Bộ đọc tệp (lib/extract.js): chế độ OCR theo cài đặt và nguồn AI của tài khoản hiện tại.
+import('./lib/extract.js').then(({ setOcrAi, setOcrModeGetter }) => {
+  setOcrModeGetter(() => store.get('ocr-mode', 'may'));
+  setOcrAi(() => {
+    const ai = ctx.hasAI() ? ctx.ai() : null;
+    return ai ? { call: (o) => streamClaude({ ...ai, ...o }), label: ai.label } : null;
+  });
+});
 window.addEventListener('hashchange', route);
 window.addEventListener('storage', () => accounts.current() && refreshChrome());
 document.addEventListener('docs-changed', refreshChrome);

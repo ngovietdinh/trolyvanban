@@ -54,6 +54,7 @@ export function render(ctx) {
   const org = s.org || {};
   const legalOrg = s.legalOrg || {};
   const theme = document.documentElement.dataset.theme || 'system';
+  const ocrModeNow = store.get('ocr-mode', 'may');
 
   ctx.view.innerHTML = `
   <div class="page page-narrow">
@@ -119,6 +120,18 @@ export function render(ctx) {
         <div class="setting-row">
           <div><h3>Nhật ký AI</h3><p>Các lỗi và lần tự chuyển nhà cung cấp gần đây — giúp kiểm tra khi AI không phản hồi.</p></div>
           <div class="setting-ctl" data-ai-log></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>${icon('search', 'ic-sm')}Nhận dạng chữ bản quét (OCR)</h2></div>
+        <div class="setting-row">
+          <div><h3>Cách đọc PDF quét, ảnh chụp văn bản</h3><p>Trên máy: Tesseract tiếng Việt + mô hình ngôn ngữ pháp lý tự sửa dấu, không gửi gì ra ngoài. Hai chế độ AI chính xác hơn với bản quét mờ, chữ hoa có dấu nhưng gửi chữ (soát lỗi) hoặc ảnh trang (đọc ảnh) tới dịch vụ AI; chế độ bảo mật đang bật thì tự về “Trên máy”.</p></div>
+          <div class="setting-ctl"><div class="seg" role="group" aria-label="Chế độ nhận dạng chữ">
+            <button type="button" data-ocr-mode="may" aria-pressed="${ocrModeNow === 'may'}">${icon('shield', 'ic-sm')}Trên máy</button>
+            <button type="button" data-ocr-mode="may-ai" aria-pressed="${ocrModeNow === 'may-ai'}" ${ctx.hasAI() ? '' : 'disabled title="Cần kết nối AI"'}>${icon('spell', 'ic-sm')}Trên máy + AI soát lỗi</button>
+            <button type="button" data-ocr-mode="ai" aria-pressed="${ocrModeNow === 'ai'}" ${ctx.hasAI() ? '' : 'disabled title="Cần kết nối AI"'}>${icon('sparkles', 'ic-sm')}AI đọc ảnh trang</button>
+          </div></div>
         </div>
       </section>
 
@@ -598,6 +611,13 @@ export function render(ctx) {
     toast('Đã lưu thông tin đơn vị');
   });
 
+  $$('[data-ocr-mode]', root).forEach((b) =>
+    b.addEventListener('click', () => {
+      store.set('ocr-mode', b.dataset.ocrMode);
+      $$('[data-ocr-mode]', root).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      toast(b.dataset.ocrMode === 'may' ? 'Nhận dạng chữ trên máy, không gửi ra ngoài' : b.dataset.ocrMode === 'ai' ? 'Bản quét sẽ được AI đọc từng trang (gửi ảnh trang tới dịch vụ AI)' : 'Nhận dạng trên máy, AI soát lỗi chữ đã nhận dạng');
+    }),
+  );
   $$('[data-theme]', root).forEach((b) =>
     b.addEventListener('click', () => {
       setTheme(b.dataset.theme);

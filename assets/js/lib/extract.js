@@ -56,11 +56,32 @@ const htmlToText = (s) =>
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>');
 
-/** Nhận dạng chữ (OCR) cho PDF ảnh quét / ảnh chụp — dùng bộ chuyển PDF sang Word. */
-async function ocrText(file, onProgress) {
+/* ---------------- Nhận dạng chữ bản quét: chế độ và nguồn AI ----------------
+ * Cài đặt 'ocr-mode' (riêng tài khoản): 'may' (mặc định — Tesseract + mô hình ngôn ngữ pháp lý trên máy, không gửi gì ra ngoài),
+ * 'may-ai' (như trên, rồi AI soát lỗi từng dòng chữ — chỉ gửi chữ đã nhận dạng), 'ai' (AI đọc ảnh từng trang — chính xác nhất
+ * với bản quét mờ, chữ hoa có dấu; gửi ảnh trang tới dịch vụ AI). Hai chế độ sau chỉ chạy khi có AI và không bị chế độ bảo mật chặn.
+ * Ứng dụng đăng ký nguồn AI bằng setOcrAi(() => ({ call, hasAI })). */
+export const OCR_MODES = { may: 'Trên máy', 'may-ai': 'Trên máy + AI soát lỗi', ai: 'AI đọc ảnh trang' };
+let ocrAi = () => null;
+export const setOcrAi = (fn) => (ocrAi = typeof fn === 'function' ? fn : () => null);
+let ocrModeGetter = () => 'may';
+export const setOcrModeGetter = (fn) => (ocrModeGetter = typeof fn === 'function' ? fn : () => 'may');
+export const ocrMode = () => (OCR_MODES[ocrModeGetter()] ? ocrModeGetter() : 'may');
+
+/** Nhận dạng chữ (OCR) cho PDF ảnh quét / ảnh chụp — dùng bộ chuyển PDF sang Word; theo chế độ đã cài. */
+async function ocrText(file, onProgress, { mode = ocrMode() } = {}) {
   const [{ convertFile }, { flowToText }] = await Promise.all([import('./pdf-convert.js'), import('./docx-flow.js')]);
-  const { doc, stats } = await convertFile(file, { mode: 'auto', onProgress });
-  return { text: flowToText(doc), pages: doc.pages.length, ocr: true, confidence: stats.confidence };
+  const ai = mode !== 'may' ? ocrAi() : null;
+  let aiPage = null;
+  let aiFix = null;
+  if (ai?.call) {
+    const { aiReadPage, aiFixLines } = await import('./pdf-ai.js');
+    if (mode === 'ai') aiPage = (b64) => aiReadPage(ai.call, b64);
+    else if (mode === 'may-ai') aiFix = (lines) => aiFixLines(ai.call, lines);
+  }
+  const used = aiPage ? 'ai' : aiFix ? 'may-ai' : 'may';
+  const { doc, stats } = await convertFile(file, { mode: aiPage ? 'ai' : 'auto', onProgress, aiPage, aiFix });
+  return { text: flowToText(doc), pages: doc.pages.length, ocr: true, confidence: stats.confidence, ocrMode: used, fixed: stats.fixed || 0, aiFixed: stats.aiFixed || 0 };
 }
 
 /**
