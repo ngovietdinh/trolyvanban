@@ -1,8 +1,8 @@
 {
-  "version": "2.51.0",
+  "version": "2.51.1",
   "date": "2026-10-31",
   "notes": [
-    "PDF sang Word nhiều tệp: chọn hoặc kéo thả nhiều PDF/ảnh, chuyển lần lượt, thanh tiến độ từng tệp, xong tệp nào tự tải tệp Word đó về (hoặc Tải tất cả .zip); tệp hỏng chỉ báo lỗi ở hàng của nó",
-    "Gợi ý tội danh chính xác hơn: không kết tội từ ngôn ngữ thủ tục lời khai (“khai báo”, “tự nguyện”), cụm 2 âm tiết thông dụng hay cụm chung của hồ sơ; tội của quân nhân chỉ gợi ý khi có bối cảnh quân đội; thêm 708 cụm hành vi rút từ Bình luận khoa học BLHS làm căn cứ phụ (ghi “theo bình luận” khi khớp)"
+    "Gợi ý tội danh khớp theo động từ hành vi + đối tượng: “chỉnh sửa / điều chỉnh / tẩy xóa dữ liệu, số liệu, hồ sơ” được hiểu cùng nhóm với “làm giả, làm sai lệch tài liệu” (15 nhóm động từ, 9 nhóm đối tượng); động từ có thể hợp pháp chỉ tính khi cùng câu có dấu hiệu trái pháp luật; khớp tương đương ghi rõ “≈ cụm gốc” để kiểm tra",
+    "Phân tích lời khai, hành vi nhanh hơn 15 lần (lần đầu 0,4 giây thay vì 5–7 giây)"
   ]
 }
