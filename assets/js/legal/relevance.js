@@ -14,7 +14,7 @@ const MIL_CUE = /quân nhân|quân đội|bộ đội|sĩ quan|hạ sĩ quan|bin
 import { LAW_PHRASES } from './law-phrases-generated.js';
 import { namePhrases } from './law-phrases.js';
 import { findPhrase, rx as rxl } from './lexicon.js';
-import { parseAct, actRegex, ILLEGAL_CUE, ACT_LABEL, needsCue, VERB_CLASSES } from './verbs.js';
+import { parseAct, actRegex, ILLEGAL_CUE, ACT_LABEL, needsCue, VERB_CLASSES, CLASS_RE } from './verbs.js';
 
 /* ---------------- Cụm định tội rút từ nguyên văn Bộ luật (law-phrases.js) ----------------
  * Điều chưa có bộ nhận diện chi tiết được xét bằng CỤM định tội của chính điều đó (khoản 1 + tên điều), khớp theo cụm có
@@ -33,10 +33,47 @@ export function lawPhrasesOf(d) {
     // ("giả mạo giấy tờ" trong Điều 161 bầu cử) chỉ là căn cứ yếu.
     // … và tên tội cũng phải có động từ cùng nhóm (Điều 255 “tổ chức sử dụng … ma túy” không nhận khớp tương đương của nhóm mua bán).
     const actCore = act ? VERB_CLASSES[act.v].some((v) => tenNorm.includes(v)) && (tenNorm.includes(act.obj) || (act.literal ? tenNorm.includes(act.literal) : false)) : false;
-    return { ph, w, solo: !!solo, bl: nguon === 'bl', re: rxl(`(?<![\\p{L}\\p{M}])${ph.replace(/ /g, '\\s+')}(?![\\p{L}\\p{M}])`, 'iu'), act, actCore, actRe: act ? actRegex(act) : null };
+    // Lọc nhanh bằng includes (chữ thường) trước khi chạy biểu thức Unicode (đắt: 2.500 cụm × từng cảnh); biểu thức biên dịch lười.
+    const key = ph.toLocaleLowerCase('vi-VN');
+    let re = null;
+    return {
+      ph,
+      w,
+      solo: !!solo,
+      bl: nguon === 'bl',
+      key,
+      get re() {
+        return (re ??= rxl(`(?<![\\p{L}\\p{M}])${ph.replace(/ /g, '\\s+')}(?![\\p{L}\\p{M}])`, 'iu'));
+      },
+      act,
+      actCore,
+      actRe: act ? actRegex(act) : null,
+    };
   });
   PH.set(k, list);
   return list;
+}
+const LOW_CACHE = new Map();
+const lowerOf = (text) => {
+  let v = LOW_CACHE.get(text);
+  if (v == null) {
+    if (LOW_CACHE.size > 200) LOW_CACHE.clear();
+    v = text.toLocaleLowerCase('vi-VN');
+    LOW_CACHE.set(text, v);
+  }
+  return v;
+};
+const CLASS_CACHE = new Map();
+/** Nhóm động từ / đối tượng xuất hiện trong một đoạn (nhớ theo đoạn — cùng cảnh được hỏi cho 320 điều). */
+function actClassesIn(text) {
+  let r = CLASS_CACHE.get(text);
+  if (r) return r;
+  r = { v: new Set(), o: new Set() };
+  for (const [id, re] of Object.entries(CLASS_RE.v)) if (re.test(text)) r.v.add(id);
+  for (const [id, re] of Object.entries(CLASS_RE.o)) if (re.test(text)) r.o.add(id);
+  if (CLASS_CACHE.size > 200) CLASS_CACHE.clear();
+  CLASS_CACHE.set(text, r);
+  return r;
 }
 /** Căn cứ theo cụm định tội: cảnh tốt nhất { hits: [{ph, w, solo, khop}], score, strong, quote } hoặc null. */
 export function phraseEvidence(d, sents) {
@@ -48,13 +85,15 @@ export function phraseEvidence(d, sents) {
     const text = win.map((x) => x.t).join(' ');
     const hits = [];
     const seenAct = new Set();
+    const present = actClassesIn(text); // nhóm động từ / đối tượng có trong cảnh → chỉ chạy khớp tương đương khi có cả hai
+    const low = lowerOf(text);
     for (const p of P) {
-      const m = findPhrase(text, p.re);
+      const m = low.includes(p.key) ? findPhrase(text, p.re) : null;
       if (m) {
         hits.push({ ph: p.ph, w: p.w, solo: p.solo, bl: p.bl, khop: p.bl ? `${m.khop} (theo bình luận)` : m.khop });
         continue;
       }
-      if (!p.actRe) continue;
+      if (!p.actRe || !present.v.has(p.act.v) || !(p.act.literal ? true : present.o.has(p.act.o))) continue;
       const key = `${p.act.v}|${p.act.literal || p.act.o}`;
       if (seenAct.has(key)) continue;
       const em = text.match(p.actRe);

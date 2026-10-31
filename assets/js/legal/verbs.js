@@ -45,22 +45,35 @@ export const OBJECT_CLASSES = {
 const NEUTRAL = new Set(['nội dung', 'của', 'khác', 'các', 'những', 'một', 'số', 'về', 'trong', 'cho', 'đó', 'này']);
 
 const VC = Object.entries(VERB_CLASSES).map(([id, ws]) => ({ id, ws: [...ws].sort((a, b) => b.length - a.length) }));
-const OC = Object.entries(OBJECT_CLASSES).map(([id, ws]) => ({ id, ws: [...ws].sort((a, b) => b.length - a.length) }));
+// Mỗi từ đối tượng biên dịch sẵn một lần (parseAct chạy cho hàng nghìn cụm khi khởi động).
+const OC = Object.entries(OBJECT_CLASSES).map(([id, ws]) => ({ id, ws: [...ws].sort((a, b) => b.length - a.length).map((o) => ({ o, re: new RegExp(`(?:^|\\s)${o.replace(/ /g, '\\s+')}(?:\\s|$)`, 'u') })) }));
+/** Có động từ / đối tượng của nhóm trong đoạn văn không (lọc nhanh trước khi chạy biểu thức đầy đủ). */
+export const CLASS_RE = {
+  v: Object.fromEntries(Object.entries(VERB_CLASSES).map(([id, ws]) => [id, rx(B(alt(ws)), 'iu')])),
+  o: Object.fromEntries(Object.entries(OBJECT_CLASSES).map(([id, ws]) => [id, rx(B(alt(ws)), 'iu')])),
+};
 const norm = (s) => String(s || '').normalize('NFC').toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ').trim();
 
 /**
  * Phân tích cụm định tội "động từ + đối tượng": "làm giả con dấu" → { v: 'lam_gia', o: 'tai_lieu', verb: 'làm giả', obj: 'con dấu' }.
  * Trả về null khi cụm không bắt đầu bằng động từ của một nhóm hoặc phần còn lại không chứa đối tượng của nhóm nào.
  */
+const ACT_CACHE = new Map();
 export function parseAct(phrase) {
   const p = norm(phrase);
+  if (ACT_CACHE.has(p)) return ACT_CACHE.get(p);
+  const r = parseActRaw(p);
+  ACT_CACHE.set(p, r);
+  return r;
+}
+function parseActRaw(p) {
   for (const vc of VC) {
     for (const v of vc.ws) {
       if (p === v || !p.startsWith(v + ' ')) continue;
       const rest = p.slice(v.length + 1);
       for (const oc of OC) {
-        for (const o of oc.ws) {
-          if (!new RegExp(`(?:^|\\s)${o.replace(/ /g, '\\s+')}(?:\\s|$)`, 'u').test(rest)) continue;
+        for (const { o, re } of oc.ws) {
+          if (!re.test(rest)) continue;
           // Đối tượng có giới hạn thêm ("chứng từ thanh toán", "kết quả bầu cử", "con dấu của cơ quan") → chỉ đổi động từ, giữ nguyên
           // đối tượng; đối tượng trần ("tài liệu", "giấy tờ") → chấp nhận cả nhóm đối tượng.
           let extra = ` ${rest.replace(o, ' ')} `;
