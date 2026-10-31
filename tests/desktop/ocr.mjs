@@ -3,10 +3,10 @@
 // trang văn bản, IPC từ giao diện, và bộ máy trực tiếp bằng Node (không cần Electron) trên ảnh PNG.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { _electron as electron } from '@playwright/test';
 
@@ -16,29 +16,9 @@ const tmp = mkdtempSync(join(tmpdir(), 'tlvb-ocr-'));
 const EXE = process.env.TLVB_EXE || join(root, 'desktop/node_modules/electron/dist/electron');
 const launchArgs = () => [...(process.env.TLVB_EXE ? [] : [join(root, 'desktop')]), '--no-sandbox', `--user-data-dir=${join(tmp, 'profile')}`];
 
-/**
- * Ảnh trang văn bản mẫu (PNG 1588×2246, tỉ lệ 2×) từ tests/fixtures/van-ban-mau.html — vẽ bằng chính Electron (cửa sổ ẩn,
- * capturePage) nên chạy được cả trên CI không có trình duyệt Playwright và với bản đã đóng gói.
- */
-async function pagePng() {
-  const url = pathToFileURL(join(root, 'tests/fixtures/van-ban-mau.html')).href;
-  const b64 = await app.evaluate(async ({ BrowserWindow }, u) => {
-    const w = new BrowserWindow({ show: false, width: 1588, height: 2246, enableLargerThanScreen: true, webPreferences: { offscreen: true, sandbox: true } });
-    try {
-      await w.loadURL(u);
-      await w.webContents.insertCSS('body{padding:76px 57px 76px 113px}');
-      w.webContents.setZoomFactor(2);
-      await new Promise((r) => setTimeout(r, 600));
-      const img = await w.webContents.capturePage();
-      return img.toPNG().toString('base64');
-    } finally {
-      w.destroy();
-    }
-  }, url);
-  const png = Buffer.from(b64, 'base64');
-  writeFileSync(join(tmp, 'page.png'), png);
-  return png;
-}
+/** Ảnh trang văn bản mẫu: tests/fixtures/van-ban-mau.png (1588×2246, vẽ từ van-ban-mau.html ở tỉ lệ 2×, ảnh xám) — cố định để
+ * không phụ thuộc màn hình của máy chạy kiểm thử (CI Windows chỉ có 1024 px). */
+const PAGE_PNG = join(root, 'tests/fixtures/van-ban-mau.png');
 
 let app;
 let page;
@@ -46,7 +26,6 @@ before(async () => {
   app = await electron.launch({ executablePath: EXE, args: launchArgs() });
   page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
-  await pagePng();
 });
 after(async () => {
   await app?.close();
@@ -55,7 +34,7 @@ after(async () => {
 test('bộ máy Node: phát hiện dòng chữ bằng PaddleOCR trên ảnh trang; trạng thái báo thiếu VietOCR khi chưa tải', async () => {
   const { Engine, cropRgba } = require(join(root, 'desktop/ocr/engine.cjs'));
   const { PNG } = require(join(root, 'node_modules/pngjs'));
-  const png = PNG.sync.read(readFileSync(join(tmp, 'page.png')));
+  const png = PNG.sync.read(readFileSync(PAGE_PNG));
   const img = { width: png.width, height: png.height, data: new Uint8ClampedArray(png.data.buffer, png.data.byteOffset, png.data.length) };
   const eng = new Engine({ modelDir: join(root, 'desktop/ocr/models'), userDir: join(tmp, 'models') });
   const st = eng.status();
@@ -103,7 +82,7 @@ test('giao diện: tlvbDesktop.ocr.status() và page() qua IPC; Cài đặt hi�
   const st = await page.evaluate(() => window.tlvbDesktop.ocr.status());
   assert.equal(st.det, true);
   assert.equal(typeof st.modelBase, 'string');
-  const png = readFileSync(join(tmp, 'page.png'));
+  const png = readFileSync(PAGE_PNG);
   const r = await page.evaluate(async (b64) => {
     const bin = atob(b64);
     const u8 = new Uint8Array(bin.length);
@@ -112,9 +91,7 @@ test('giao diện: tlvbDesktop.ocr.status() và page() qua IPC; Cài đặt hi�
   }, png.toString('base64'));
   assert.ok(!r.error, r.error);
   assert.ok(r.lines.length >= 10, `dòng: ${r.lines.length}`);
-  // Kích thước trả về đúng bằng ảnh đã gửi (màn hình ảo nhỏ có thể làm cửa sổ chụp hẹp hơn 1588).
-  assert.equal(r.width, png.readUInt32BE(16));
-  assert.ok(r.width >= 1200, `ảnh trang quá hẹp: ${r.width}`);
+  assert.equal(r.width, 1588);
   // Đăng ký tài khoản → Cài đặt → hàng Bộ nhận dạng.
   const form = page.locator('[data-gate-form="register"]');
   await form.waitFor();
@@ -141,7 +118,6 @@ test('giao diện: tlvbDesktop.ocr.status() và page() qua IPC; Cài đặt hi�
   assert.equal(await pickEngine(), (await page.evaluate(() => window.tlvbDesktop.ocr.status())).available ? 'vietocr' : 'tesseract');
   await page.click('[data-ocr-engine="tesseract"]');
   assert.equal(await pickEngine(), 'tesseract');
-  assert.ok(existsSync(join(tmp, 'page.png')));
 });
 
 // Có bộ mô hình VietOCR thật (TLVB_OCR_TEST_MODELS=<thư mục chứa vietocr-*.onnx + vietocr.json>): nhận dạng cả trang qua IPC
@@ -157,7 +133,7 @@ test('có mô hình VietOCR: nhận dạng trang qua IPC ra đúng chữ, Cài �
   const st = await page.evaluate(() => window.tlvbDesktop.ocr.status());
   if (!st.rec && !src) return t.skip('bộ cài không kèm mô hình VietOCR và không có TLVB_OCR_TEST_MODELS');
   assert.equal(st.available, true, `bộ nhận dạng phải sẵn sàng: ${JSON.stringify(st)}`);
-  const png = readFileSync(join(tmp, 'page.png'));
+  const png = readFileSync(PAGE_PNG);
   const r = await page.evaluate(async (b64) => {
     const bin = atob(b64);
     const u8 = new Uint8Array(bin.length);
@@ -166,7 +142,7 @@ test('có mô hình VietOCR: nhận dạng trang qua IPC ra đúng chữ, Cài �
   }, png.toString('base64'));
   assert.ok(!r.error, r.error);
   const text = r.lines.map((l) => l.text).join('\n');
-  assert.match(text, /CỘNG HÒA XÃ HỘI CHỦ/); // màn hình ảo hẹp có thể ngắt dòng tiêu đề
+  assert.match(text, /CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM/);
   assert.match(text, /Độc lập [-–] Tự do [-–] Hạnh phúc/);
   assert.ok(r.lines.every((l) => l.conf > 0.5), 'độ tin cậy từng dòng');
   await page.evaluate(() => (location.hash = '#pdf'));
