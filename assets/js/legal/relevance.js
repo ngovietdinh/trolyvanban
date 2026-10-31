@@ -14,6 +14,7 @@ const MIL_CUE = /quân nhân|quân đội|bộ đội|sĩ quan|hạ sĩ quan|bin
 import { LAW_PHRASES } from './law-phrases-generated.js';
 import { namePhrases } from './law-phrases.js';
 import { findPhrase, rx as rxl } from './lexicon.js';
+import { parseAct, actRegex, ILLEGAL_CUE, ACT_LABEL, needsCue, VERB_CLASSES } from './verbs.js';
 
 /* ---------------- Cụm định tội rút từ nguyên văn Bộ luật (law-phrases.js) ----------------
  * Điều chưa có bộ nhận diện chi tiết được xét bằng CỤM định tội của chính điều đó (khoản 1 + tên điều), khớp theo cụm có
@@ -25,7 +26,15 @@ export function lawPhrasesOf(d) {
   if (PH.has(k)) return PH.get(k);
   // Điều chưa có trong gói sinh sẵn (điều mới bổ sung): dùng tên điều làm cụm định danh — tên phải xuất hiện nguyên cụm.
   const src = LAW_PHRASES[k] || namePhrases(findCrime(k)?.ten || '').map((n) => [n, 3, 1]);
-  const list = src.map(([ph, w, solo, nguon]) => ({ ph, w, solo: !!solo, bl: nguon === 'bl', re: rxl(`(?<![\\p{L}\\p{M}])${ph.replace(/ /g, '\\s+')}(?![\\p{L}\\p{M}])`, 'iu') }));
+  const tenNorm = norm(findCrime(k)?.ten || '');
+  const list = src.map(([ph, w, solo, nguon]) => {
+    const act = parseAct(ph); // động từ + đối tượng → khớp tương đương ("chỉnh sửa dữ liệu" ≈ "làm giả tài liệu")
+    // Khớp tương đương chỉ là căn cứ đặc trưng khi đối tượng của cụm có trong TÊN tội (Điều 341: "tài liệu"); cụm phụ của điều khác
+    // ("giả mạo giấy tờ" trong Điều 161 bầu cử) chỉ là căn cứ yếu.
+    // … và tên tội cũng phải có động từ cùng nhóm (Điều 255 “tổ chức sử dụng … ma túy” không nhận khớp tương đương của nhóm mua bán).
+    const actCore = act ? VERB_CLASSES[act.v].some((v) => tenNorm.includes(v)) && (tenNorm.includes(act.obj) || (act.literal ? tenNorm.includes(act.literal) : false)) : false;
+    return { ph, w, solo: !!solo, bl: nguon === 'bl', re: rxl(`(?<![\\p{L}\\p{M}])${ph.replace(/ /g, '\\s+')}(?![\\p{L}\\p{M}])`, 'iu'), act, actCore, actRe: act ? actRegex(act) : null };
+  });
   PH.set(k, list);
   return list;
 }
@@ -38,15 +47,31 @@ export function phraseEvidence(d, sents) {
     const win = sents.slice(i, i + 3);
     const text = win.map((x) => x.t).join(' ');
     const hits = [];
+    const seenAct = new Set();
     for (const p of P) {
       const m = findPhrase(text, p.re);
-      if (m) hits.push({ ph: p.ph, w: p.w, solo: p.solo, bl: p.bl, khop: p.bl ? `${m.khop} (theo bình luận)` : m.khop });
+      if (m) {
+        hits.push({ ph: p.ph, w: p.w, solo: p.solo, bl: p.bl, khop: p.bl ? `${m.khop} (theo bình luận)` : m.khop });
+        continue;
+      }
+      if (!p.actRe) continue;
+      const key = `${p.act.v}|${p.act.literal || p.act.o}`;
+      if (seenAct.has(key)) continue;
+      const em = text.match(p.actRe);
+      if (!em) continue;
+      // Động từ yếu (sửa, điều chỉnh, thay đổi…) chỉ tính khi cảnh có dấu hiệu trái pháp luật.
+      if (needsCue(p.act.v, em[0]) && !ILLEGAL_CUE.test(text)) continue;
+      seenAct.add(key);
+      // Khớp theo động từ: căn cứ phụ (w ≤ 2, không tự đủ), ghi rõ là tương đương để người dùng kiểm tra.
+      hits.push({ ph: p.ph, w: p.actCore ? Math.min(2, p.w) : 1, solo: false, bl: p.bl, eq: p.act.v, eqCore: p.actCore, khop: `${em[0].replace(/\s+/g, ' ')} ≈ “${p.ph}” (cùng nhóm hành vi ${ACT_LABEL[p.act.v]})` });
     }
     if (!hits.length) continue;
     const spec = hits.filter((h) => h.w >= 2);
     const score = hits.reduce((n, h) => n + h.w, 0);
-    const strong = hits.some((h) => h.solo) || spec.length >= 2 || (spec.length >= 1 && hits.length >= 3);
-    const quote = win.find((x) => hits.some((h) => findPhrase(x.t, P.find((p) => p.ph === h.ph).re)))?.t || win[0].t;
+    // Hành vi nhóm làm giả / làm sai lệch khớp theo động từ + có dấu hiệu trái pháp luật trong cùng cảnh → đủ để đưa ra xem xét.
+    const falsify = hits.some((h) => h.eq === 'lam_gia' && h.eqCore) && ILLEGAL_CUE.test(text);
+    const strong = hits.some((h) => h.solo) || spec.length >= 2 || (spec.length >= 1 && hits.length >= 3) || (falsify && spec.length >= 1);
+    const quote = win.find((x) => hits.some((h) => (h.eq ? P.find((p) => p.ph === h.ph).actRe.test(x.t) : findPhrase(x.t, P.find((p) => p.ph === h.ph).re))))?.t || win[0].t;
     const cand = { hits, score, strong, quote };
     if (!best || (cand.strong && !best.strong) || (cand.strong === best.strong && cand.score > best.score)) best = cand;
   }

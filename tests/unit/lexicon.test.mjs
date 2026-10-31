@@ -5,6 +5,7 @@ import { assessCrime } from '../../assets/js/legal/relevance.js';
 import { analyzeOffline } from '../../assets/js/legal/analyze.js';
 import { findPhrase, pctInjury, isActionSentence, EXCLUDE, ASSAULT, groupRe } from '../../assets/js/legal/lexicon.js';
 import { chunksOf, namePhrases, conductText, extractLawPhrases, PROCEDURAL, commentaryPhrasesOf } from '../../assets/js/legal/law-phrases.js';
+import { parseAct } from '../../assets/js/legal/verbs.js';
 import { LAW_PHRASES } from '../../assets/js/legal/law-phrases-generated.js';
 import { phraseEvidence, lawPhrasesOf } from '../../assets/js/legal/relevance.js';
 
@@ -149,7 +150,8 @@ test('nhận diện theo cụm định tội cho điều chưa có bộ yếu t�
   assert.ok(r330.includes('330') && !r330.includes('118'), r330.join());
   for (const t of ['Hội đồng đánh giá hồ sơ dự thầu; các tài liệu của cơ quan được lưu trữ đúng quy định; tổ chức họp đánh giá.', 'Ông Hải lập hồ sơ giả mạo chữ ký của chủ đất cũ để sang tên.', 'Công ty mua bán hàng hóa thông thường, nộp thuế đầy đủ, an toàn xã hội được bảo đảm.', 'Bị cáo mua bán trái phép chất ma túy: bán 2 gói heroin cho T lấy 500.000 đồng.']) {
     const got = analyzeOffline(t, {}).crimes.map((c) => c.dieu);
-    assert.ok(got.every((d) => d === '251'), `${t} → ${got.join()}`);
+    // "giả mạo chữ ký … để sang tên" khớp theo động từ nhóm làm giả + chữ ký → Điều 341 (làm giả tài liệu) là đúng; không lan sang 214, 359.
+    assert.ok(got.every((d) => d === '251' || d === '341'), `${t} → ${got.join()}`);
   }
   assert.equal(phraseEvidence('214', [{ t: 'Ông Hải lập hồ sơ giả mạo chữ ký.' }])?.strong, false, 'một cụm 4 âm tiết chưa tự đủ');
 });
@@ -192,4 +194,30 @@ test('cụm hành vi từ Bình luận BLHS: chỉ cụm động từ + đối t
   assert.ok(nBl >= 300, `có cụm bình luận trong gói: ${nBl}`);
   // Cụm bình luận một mình không đủ: một câu chỉ khớp cụm bình luận không làm hiện điều.
   assert.equal(assessCrime('353', 'Kế toán sửa chữa sổ sách cho khớp số liệu cuối năm.').show, false);
+});
+
+
+test('khớp theo động từ hành vi + đối tượng: “chỉnh sửa dữ liệu” trái pháp luật → Điều 341, không kéo theo 161/206/400; sửa hồ sơ hợp pháp → không', () => {
+  assert.deepEqual(parseAct('làm giả con dấu'), { v: 'lam_gia', o: 'con_dau', verb: 'làm giả', obj: 'con dấu', literal: null });
+  assert.equal(parseAct('làm sai lệch nội dung giấy tờ').literal, null, '“nội dung” là từ trung tính');
+  assert.equal(parseAct('làm giả chứng từ thanh toán').literal, 'chứng từ thanh toán', 'đối tượng có giới hạn thêm → giữ nguyên văn');
+  assert.equal(parseAct('gây rối trật tự công cộng'), null);
+  const quanTrac = 'Trong lúc chờ duyệt, tôi chỉ đạo anh Lân liên hệ Công ty Việt An hỏi cách chỉnh sửa dữ liệu luôn dưới ngưỡng cho phép. Tôi đồng ý cho anh Lân chỉnh sửa dữ liệu truyền về Sở Nông nghiệp và Môi trường. Tôi biết chỉnh sửa dữ liệu quan trắc là trái pháp luật nhưng không ngăn chặn.';
+  const got = analyzeOffline(quanTrac, {}).crimes.map((c) => c.dieu);
+  assert.ok(got.includes('341'), got.join());
+  for (const d of ['161', '206', '400', '214']) assert.ok(!got.includes(d), `không được kéo theo Điều ${d}: ${got.join()}`);
+  const a341 = assessCrime('341', quanTrac);
+  assert.equal(a341.show, true);
+  // Bộ yếu tố cấu thành của Điều 341 nêu đúng đoạn khớp để người dùng kiểm tra.
+  assert.ok(a341.yeuTo.some((y) => /chỉnh sửa dữ liệu/i.test(y.khop || y.quote || '')), JSON.stringify(a341.yeuTo.map((y) => [y.label, y.khop])));
+  // Điều không có bộ nhận diện riêng: khớp tương đương ghi “≈” và nhóm hành vi.
+  const pe = phraseEvidence('353', [{ t: 'Thủ quỹ biển thủ tiền quỹ cơ quan rồi điều chỉnh sổ sách để che giấu.' }]);
+  assert.ok(pe?.hits.some((h) => h.eq && /≈/.test(h.khop)), JSON.stringify(pe?.hits));
+  // Động từ yếu không có dấu hiệu trái pháp luật → không tính.
+  assert.equal(analyzeOffline('Văn thư sửa chữa hồ sơ lưu trữ theo yêu cầu của phòng, báo cáo số liệu quý đúng hạn.', {}).crimes.length, 0);
+  assert.equal(phraseEvidence('341', [{ t: 'Văn thư sửa chữa hồ sơ lưu trữ theo yêu cầu của phòng.' }]), null);
+  // Kế toán sửa sổ sách để che giấu khoản chi → có 359 hoặc 341 (người dùng chọn), không có điều bầu cử.
+  const ke = analyzeOffline('Kế toán Hằng sửa số liệu sổ sách để che giấu khoản chi 300 triệu đồng không có chứng từ.', {}).crimes.map((c) => c.dieu);
+  assert.ok(ke.includes('359') || ke.includes('341'), ke.join());
+  assert.ok(!ke.includes('161'));
 });

@@ -4,6 +4,7 @@
 // thiếu (kèm câu hỏi làm rõ) và vì sao không chọn điều gần nghĩa. Điều chưa có bộ nhận diện dùng cách khớp từ khóa
 // trong relevance.js (độ chắc chắn thấp hơn, ghi rõ).
 import { amountsIn } from './terms.js';
+import { falsifySrc } from './verbs.js';
 import { ASSAULT, INJURY, KILL, DEATH, EXCLUDE, findPhrase, pctInjury, rx as rxl } from './lexicon.js';
 // Mô hình cụm từ có nghĩa (lexicon.js): yếu tố khớp theo CỤM (động từ + bổ ngữ / công cụ / đối tượng), có danh sách cụm
 // vô hại để loại (“đánh giá” ≠ đánh người, “10% cổ phần” ≠ tỷ lệ thương tích). Mỗi yếu tố khớp trả về đúng cụm đã khớp (khop).
@@ -103,7 +104,7 @@ export const RECOGNIZERS = [
     d: '359',
     vs: 'Khác Điều 341: chủ thể là người có chức vụ, quyền hạn sửa chữa, làm sai lệch giấy tờ trong công tác vì vụ lợi / động cơ cá nhân.',
     el: [
-      E('hanh-vi', 'Sửa chữa, làm sai lệch nội dung hoặc làm, cấp giấy tờ giả', 'giả mạo|làm giả|sửa\\s+(?:chữa|đổi)|làm sai lệch|tẩy xóa|hợp thức hóa|lập\\s+(?:khống|giả)', { req: true, w: 3, hoi: 'Đã sửa / làm giả giấy tờ nào, nội dung sai lệch ở điểm nào?' }),
+      E('hanh-vi', 'Sửa chữa, làm sai lệch nội dung hoặc làm, cấp giấy tờ giả', ['giả mạo|làm giả|sửa\\s+(?:chữa|đổi)|làm sai lệch|tẩy xóa|hợp thức hóa|lập\\s+(?:khống|giả)', falsifySrc(['ho_so', 'chu_ky', 'giay_to_tuy_than'])], { req: true, w: 3, hoi: 'Đã sửa / làm giả giấy tờ nào, nội dung sai lệch ở điểm nào?' }),
       E('giay-to', 'Giấy tờ, tài liệu, hồ sơ, chứng từ', GIAY, { req: true, w: 2, hoi: 'Giấy tờ, tài liệu cụ thể là gì (số, ngày, cơ quan cấp)?' }),
       E('vu-loi', 'Vì vụ lợi hoặc động cơ cá nhân khác', VULOI, { w: 2, hoi: 'Làm vì mục đích gì, được lợi gì?' }),
       CHUCVU(),
@@ -190,8 +191,8 @@ export const RECOGNIZERS = [
     win: 1,
     vs: 'Khác Điều 359: chủ thể không cần là người có chức vụ; hành vi LÀM GIẢ hoặc SỬ DỤNG con dấu, tài liệu giả của cơ quan, tổ chức.',
     el: [
-      E('lam-gia', 'Làm giả hoặc sử dụng giả', 'làm giả|giả mạo|giả\\s+(?:con dấu|chữ ký|giấy|văn bằng|chứng chỉ)|tự\\s+(?:khắc|làm)\\s+(?:con dấu|giấy)|photo\\s+ghép|sử dụng\\s+(?:con dấu|giấy tờ|tài liệu)\\s+giả', { req: true, w: 3, hoi: 'Đã làm giả bằng cách nào, ai làm, ai sử dụng?' }),
-      E('doi-tuong', 'Con dấu, tài liệu của cơ quan, tổ chức', 'con dấu|giấy chứng nhận|văn bằng|bằng\\s+(?:tốt nghiệp|lái)|chứng chỉ|giấy phép|công văn|quyết định|(?:của|do)\\s+(?:cơ quan|tổ chức|UBND|sở|phòng)', { req: true, w: 2, hoi: 'Con dấu, tài liệu của cơ quan, tổ chức nào (số, ngày)?' }),
+      E('lam-gia', 'Làm giả hoặc sử dụng giả', ['làm giả|giả mạo|giả\\s+(?:con dấu|chữ ký|giấy|văn bằng|chứng chỉ)|tự\\s+(?:khắc|làm)\\s+(?:con dấu|giấy)|photo\\s+ghép|sử dụng\\s+(?:con dấu|giấy tờ|tài liệu)\\s+giả', falsifySrc(['ho_so', 'con_dau', 'chu_ky', 'giay_to_tuy_than'])], { req: true, w: 3, hoi: 'Đã làm giả bằng cách nào, ai làm, ai sử dụng?' }),
+      E('doi-tuong', 'Con dấu, tài liệu của cơ quan, tổ chức', 'con dấu|giấy chứng nhận|văn bằng|bằng\\s+(?:tốt nghiệp|lái)|chứng chỉ|giấy phép|công văn|quyết định|dữ liệu|số liệu|báo cáo|sổ sách|chứng từ|hồ sơ|tài liệu|(?:của|do|về|cho|gửi|truyền về|nộp cho|báo cáo)\\s+(?:cơ quan|tổ chức|UBND|sở|phòng|bộ|cục|chi cục)', { req: true, w: 2, hoi: 'Con dấu, tài liệu của cơ quan, tổ chức nào (số, ngày)?' }),
     ],
   },
   {
