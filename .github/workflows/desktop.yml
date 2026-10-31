@@ -16,7 +16,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Mô hình VietOCR (ONNX) đóng gói kèm bộ cài để cài một lần là đọc được bản quét bằng PaddleOCR + VietOCR, không phải tải thêm.
+  # Xuất từ trọng số gốc (vocr.vn) bằng scripts/ocr-vietocr/export.py; có bộ đệm theo nội dung script nên chỉ xuất lại khi script đổi.
+  ocr-models:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: ocr-out
+          key: ocr-models-${{ hashFiles('scripts/ocr-vietocr/**') }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - if: steps.cache.outputs.cache-hit != 'true'
+        name: Cài PyTorch (CPU), VietOCR, onnxruntime
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install vietocr==0.3.13 --no-deps
+          pip install einops pyyaml pillow onnx onnxscript onnxruntime numpy
+      - if: steps.cache.outputs.cache-hit != 'true'
+        name: Tải trọng số VietOCR và xuất ONNX
+        run: |
+          curl -fL --retry 3 -o vgg_transformer.pth https://vocr.vn/data/vietocr/vgg_transformer.pth
+          python scripts/ocr-vietocr/export.py --weights vgg_transformer.pth --arch vgg_transformer --quantize decoder --out ocr-out
+      - name: Kiểm tra bằng onnxruntime
+        run: |
+          pip install onnxruntime numpy >/dev/null
+          python - <<'PY'
+          import json, numpy as np, onnxruntime as ort
+          meta = json.load(open('ocr-out/vietocr.json', encoding='utf-8'))
+          assert not meta.get('random_init')
+          enc = ort.InferenceSession('ocr-out/vietocr-encoder.onnx', providers=['CPUExecutionProvider'])
+          dec = ort.InferenceSession('ocr-out/vietocr-decoder.onnx', providers=['CPUExecutionProvider'])
+          for W in (160, 320, 512):
+              mem = enc.run(None, {'img': np.random.rand(1, 3, meta['image_height'], W).astype(np.float32)})[0]
+              lg = dec.run(None, {'tgt': np.array([[1]], dtype=np.int64), 'memory': mem})[0]
+              assert lg.shape[-1] == len(meta['vocab']) + 4, lg.shape
+          print('onnxruntime OK')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ocr-models
+          path: ocr-out/vietocr*
+          if-no-files-found: error
+
   build:
+    needs: ocr-models
     strategy:
       fail-fast: false
       matrix:
@@ -35,6 +84,13 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
       - name: Chuẩn bị mã web
         run: node scripts/desktop.mjs
+      - name: Mô hình VietOCR vào bộ cài
+        uses: actions/download-artifact@v4
+        with:
+          name: ocr-models
+          path: desktop/ocr/models
+      - run: ls -la desktop/ocr/models
+        shell: bash
       - name: Cài Electron
         working-directory: desktop
         env:

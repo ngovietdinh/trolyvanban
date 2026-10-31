@@ -137,7 +137,7 @@ export function render(ctx) {
         ${
           window.tlvbDesktop?.ocr
             ? `<div class="setting-row" data-ocr-engine-row>
-          <div><h3>Bộ nhận dạng trên máy (bản cài đặt)</h3><p><b>Tesseract</b> (kèm sẵn) + sửa dấu theo mô hình ngôn ngữ pháp lý: đo trên trang án lệ in rõ và bản quét giả lập sai 0,5–1,4% ký tự. <b>PaddleOCR + VietOCR</b>: mô hình nhận dạng huấn luyện riêng cho tiếng Việt, tự khử nghiêng trang, đọc đúng hơn một số chữ dấu mờ, chữ hoa có dấu trên bản quét thật nhưng trên trang in rõ sai 1,3–3,7% ký tự; nên thử khi Tesseract đọc kém. Mô hình VietOCR tải một lần (124 MB) về thư mục dữ liệu; chế độ bảo mật thì chép tệp mô hình vào thư mục đó.</p></div>
+          <div><h3>Bộ nhận dạng trên máy (bản cài đặt)</h3><p><b>Tesseract</b> (kèm sẵn) + sửa dấu theo mô hình ngôn ngữ pháp lý: đo trên trang án lệ in rõ và bản quét giả lập sai 0,5–1,4% ký tự. <b>PaddleOCR + VietOCR</b>: mô hình nhận dạng huấn luyện riêng cho tiếng Việt, tự khử nghiêng trang, đọc đúng hơn một số chữ dấu mờ, chữ hoa có dấu trên bản quét thật nhưng trên trang in rõ sai 1,3–3,7% ký tự; nên thử khi Tesseract đọc kém. Cả hai mô hình đi kèm bộ cài, không cần tải thêm.</p></div>
           <div class="setting-ctl"><div class="seg" role="group" aria-label="Bộ nhận dạng">
             <button type="button" data-ocr-engine="tesseract" aria-pressed="${ocrEngineNow !== 'vietocr'}">${icon('shield', 'ic-sm')}Tesseract (mặc định)</button>
             <button type="button" data-ocr-engine="vietocr" aria-pressed="${ocrEngineNow === 'vietocr'}">${icon('sparkles', 'ic-sm')}PaddleOCR + VietOCR</button>
@@ -648,7 +648,7 @@ export function render(ctx) {
       if (!statusEl) return;
       if (!st) statusEl.textContent = 'Không đọc được tình trạng mô hình.';
       else if (st.available) statusEl.textContent = `Mô hình đã sẵn sàng: phát hiện (PaddleOCR) và nhận dạng (VietOCR).${store.get('ocr-engine', 'tesseract') === 'vietocr' ? ' Bản quét sẽ được đọc bằng bộ này.' : ' Chọn “PaddleOCR + VietOCR” ở trên để dùng.'}`;
-      else if (st.det) statusEl.textContent = `Đã có bộ phát hiện dòng chữ; chưa có mô hình VietOCR — bấm Tải mô hình (hoặc chép vietocr-encoder.onnx, vietocr-decoder.onnx, vietocr.json vào ${st.dir}).`;
+      else if (st.det) statusEl.textContent = `Bộ cài này thiếu mô hình VietOCR — bấm Tải mô hình, hoặc chép vietocr-encoder.onnx, vietocr-decoder.onnx, vietocr.json vào ${st.dir}.`;
       else statusEl.textContent = st.error ? `Bộ nhận dạng tại chỗ lỗi: ${st.error}` : 'Thiếu mô hình phát hiện dòng chữ (ppocr-det.onnx) trong bộ cài.';
       if (dl) dl.hidden = !st || st.available || !st.det;
       if (rm) rm.hidden = !st?.rec;

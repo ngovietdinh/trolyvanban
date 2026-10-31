@@ -11,4 +11,6 @@ bieu-mau-docx/
 
 # Sinh ra khi đóng gói (scripts/desktop.mjs)
 desktop/security-forced.json
+# Mô hình VietOCR (124 MB) do CI xuất và đóng gói kèm bộ cài; không đưa vào kho. Xuất tại chỗ: scripts/ocr-vietocr/export.py --out desktop/ocr/models
+desktop/ocr/models/vietocr*
 .tmp-review/
