@@ -1,9 +1,8 @@
 {
-  "version": "2.50.0",
+  "version": "2.50.1",
   "date": "2026-10-31",
   "notes": [
-    "Nhận diện tội danh theo cụm có nghĩa: không luận tội từ chữ đơn lẻ (“10%”, “đánh giá” không còn bị gán vào cố ý gây thương tích); 1.866 cụm hành vi quét tự động từ nguyên văn Bộ luật cho 320 điều, hiện “khớp cụm” ở Tòa án và Cơ quan điều tra",
-    "Đọc PDF quét, ảnh chụp tiếng Việt: mô hình ngôn ngữ pháp lý tự sửa dấu sau OCR (“TOI CAO” → “TỐI CAO”, “Quyét định so” → “Quyết định số”); Cài đặt có ba cách: Trên máy, Trên máy + AI soát lỗi, AI đọc ảnh trang",
-    "Bản cài đặt máy tính: thêm bộ nhận dạng PaddleOCR + VietOCR chạy ngay trong máy, đóng gói sẵn trong bộ cài (bộ cài nặng thêm khoảng 120 MB), tự khử nghiêng trang; chọn ở Cài đặt → Nhận dạng chữ bản quét khi Tesseract đọc kém"
+    "Bản cài đặt Windows, macOS: sửa lỗi bộ PaddleOCR + VietOCR đọc ra trang trắng (bộ cài thiếu thư viện onnxruntime theo hệ máy); khi bộ này lỗi thì tự đọc bằng Tesseract và báo rõ lý do ở trang PDF sang Word và Cài đặt",
+    "Gợi ý tội danh: không kết tội từ ngôn ngữ thủ tục lời khai (“khai báo”, “tự nguyện”, “lời khai”) hay cụm 2 âm tiết thông dụng; cụm có mặt ở hầu hết hồ sơ không còn tự đủ làm căn cứ; tội của quân nhân (Chương XXV) chỉ gợi ý khi nội dung có bối cảnh quân đội"
   ]
 }
