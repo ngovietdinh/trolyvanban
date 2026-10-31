@@ -9,6 +9,47 @@ import { ALL_CRIMES, findCrime } from './engine.js';
 import { termsOf, norm } from './terms.js';
 import { splitSentences } from '../lib/summarize.js';
 import { RECOGNIZER_OF, recognize, explain, JOB_CUE } from './recognizers.js';
+import { LAW_PHRASES } from './law-phrases-generated.js';
+import { namePhrases } from './law-phrases.js';
+import { findPhrase, rx as rxl } from './lexicon.js';
+
+/* ---------------- Cụm định tội rút từ nguyên văn Bộ luật (law-phrases.js) ----------------
+ * Điều chưa có bộ nhận diện chi tiết được xét bằng CỤM định tội của chính điều đó (khoản 1 + tên điều), khớp theo cụm có
+ * loại trừ cụm vô hại (lexicon.js). Đủ căn cứ khi: có cụm tự đủ (tên điều, cụm dài chỉ điều này dùng) hoặc ≥ 2 cụm đặc
+ * trưng khác nhau trong cùng cảnh (3 câu liền nhau). */
+const PH = new Map();
+export function lawPhrasesOf(d) {
+  const k = String(d);
+  if (PH.has(k)) return PH.get(k);
+  // Điều chưa có trong gói sinh sẵn (điều mới bổ sung): dùng tên điều làm cụm định danh — tên phải xuất hiện nguyên cụm.
+  const src = LAW_PHRASES[k] || namePhrases(findCrime(k)?.ten || '').map((n) => [n, 3, 1]);
+  const list = src.map(([ph, w, solo]) => ({ ph, w, solo: !!solo, re: rxl(`(?<![\\p{L}\\p{M}])${ph.replace(/ /g, '\\s+')}(?![\\p{L}\\p{M}])`, 'iu') }));
+  PH.set(k, list);
+  return list;
+}
+/** Căn cứ theo cụm định tội: cảnh tốt nhất { hits: [{ph, w, solo, khop}], score, strong, quote } hoặc null. */
+export function phraseEvidence(d, sents) {
+  const P = lawPhrasesOf(d);
+  if (!P.length || !sents.length) return null;
+  let best = null;
+  for (let i = 0; i < sents.length; i++) {
+    const win = sents.slice(i, i + 3);
+    const text = win.map((x) => x.t).join(' ');
+    const hits = [];
+    for (const p of P) {
+      const m = findPhrase(text, p.re);
+      if (m) hits.push({ ph: p.ph, w: p.w, solo: p.solo, khop: m.khop });
+    }
+    if (!hits.length) continue;
+    const spec = hits.filter((h) => h.w >= 2);
+    const score = hits.reduce((n, h) => n + h.w, 0);
+    const strong = hits.some((h) => h.solo) || spec.length >= 2 || (spec.length >= 1 && hits.length >= 3);
+    const quote = win.find((x) => hits.some((h) => findPhrase(x.t, P.find((p) => p.ph === h.ph).re)))?.t || win[0].t;
+    const cand = { hits, score, strong, quote };
+    if (!best || (cand.strong && !best.strong) || (cand.strong === best.strong && cand.score > best.score)) best = cand;
+  }
+  return best;
+}
 
 // Các tội “biến thể” khác tội cơ bản bởi một tình tiết trong tên (vô ý, kích động mạnh, vượt quá phòng vệ…):
 // chỉ xét khi nội dung có nhắc tình tiết đó.
@@ -80,6 +121,20 @@ export function keywordEvidence(dieu, text, { sentences = null, primary = null, 
   const p = ix.prof.get(d);
   if (!p) return null;
   const sents = sentences || sentencesOf(text);
+  const isCited0 = !!cited?.has(d);
+  const isPrimary0 = primary != null && String(primary) === d;
+  // Có cụm định tội rút từ Bộ luật → xét theo cụm (chính xác hơn cụm 2 âm tiết thống kê).
+  const pe = phraseEvidence(d, sents);
+  if (lawPhrasesOf(d).length) {
+    const subjectOk = !p.needJob || JOB_CUE.test(text || '');
+    const seed = seedHit(d, text || '');
+    const qualOk = !missingQualifier(p.ten, norm(text || ''));
+    const strong = !!pe?.strong;
+    const show = isCited0 || isPrimary0 || (subjectOk && qualOk && strong);
+    const candidate = show || (!!pe && pe.hits.some((h) => h.w >= 2) && qualOk) || (seed && subjectOk);
+    const why = isCited0 ? `Tài liệu viện dẫn Điều ${d}` : isPrimary0 ? 'Điều đang xét của hồ sơ' : pe ? `Khớp cụm định tội của Điều ${d}: ${pe.hits.slice(0, 4).map((h) => `“${h.khop}”`).join(', ')}` : '';
+    return { dieu: d, ev: pe ? pe.score * 4 : 0, n: pe?.hits.length || 0, trich: pe?.quote || '', nameHit: !!pe?.hits.some((h) => h.solo), subjectOk, thin: p.thin, seed, isCited: isCited0, isPrimary: isPrimary0, show, candidate, strong, why, khop: pe?.hits.map((h) => h.khop) || [] };
+  }
   let best = { ev: 0, n: 0, s: '' };
   const union = new Set();
   for (const s of sents) {
@@ -107,7 +162,7 @@ export function keywordEvidence(dieu, text, { sentences = null, primary = null, 
   const show = isCited || isPrimary || (subjectOk && qualOk && strong);
   const candidate = show || (nameHit && qualOk) || (seed && subjectOk) || (!p.thin && best.n >= 3 && best.ev >= 8);
   const why = isCited ? `Tài liệu viện dẫn Điều ${d}` : isPrimary ? 'Điều đang xét của hồ sơ' : nameHit ? 'Nội dung nêu đúng tên tội danh' : strong ? `Câu khớp ${best.n} cụm từ đặc trưng của hành vi trong điều này` : '';
-  return { dieu: d, ev: Math.round(best.ev * 10) / 10, n: best.n, trich: best.s, nameHit, subjectOk, thin: p.thin, seed, isCited, isPrimary, show, candidate, why };
+  return { dieu: d, ev: Math.round(best.ev * 10) / 10, n: best.n, trich: best.s, nameHit, subjectOk, thin: p.thin, seed, isCited, isPrimary, show, candidate, strong, why, khop: [] };
 }
 
 /**
@@ -160,10 +215,10 @@ export function assessCrime(dieu, text, { sentences = null, primary = null, cite
     show,
     candidate: !!e?.candidate,
     ev: e?.ev || 0,
-    yeuTo: show && e.trich ? [{ id: 'tu-khoa', label: 'Cụm từ đặc trưng của điều luật khớp nội dung', ok: true, quote: e.trich, req: false }] : [],
+    yeuTo: show && e.trich ? [{ id: 'tu-khoa', label: 'Cụm định tội của điều luật khớp nội dung', ok: true, quote: e.trich, khop: (e.khop || []).join('”, “'), req: false }] : [],
     thieu: [],
     trich: e?.trich || '',
-    why: [pinWhy, e?.why && !pinWhy ? `${e.why} (khớp từ khóa — chưa có bộ nhận diện chi tiết cho điều này, cần kiểm tra kỹ)` : ''].filter(Boolean).join('; '),
+    why: [pinWhy, e?.why && !pinWhy ? `${e.why} (khớp cụm định tội — chưa có bộ nhận diện yếu tố cấu thành cho điều này, cần kiểm tra kỹ)` : ''].filter(Boolean).join('; '),
     seed: e?.seed,
     n: e?.n,
     nameHit: e?.nameHit,
@@ -219,8 +274,8 @@ export function lawGate(dieu, { trich = '', source = '', primary = null, cited =
   // Điều chưa có bộ nhận diện: khớp từ khóa (nghiêm hơn — cần tên tội danh hoặc ≥ 3 cụm đặc trưng) + chủ thể.
   const e = keywordEvidence(d, trich, { primary, cited });
   if (/^Người có chức vụ/i.test(findCrime(d).chuThe || '') && !JOB_CUE.test(`${source} ${trich}`)) return { ok: false, why: 'Điều này cần chủ thể là người có chức vụ, quyền hạn — nội dung chưa nêu', yeuTo: [], thieu: [] };
-  const lex = (e.nameHit && e.ev >= 4) || (!e.thin && e.n >= 3 && e.ev >= 10);
-  if (lex || (e.seed && (!e.thin || e.nameHit))) return { ok: true, why: `${e.why || 'Đoạn trích khớp dấu hiệu của điều này'} (khớp từ khóa — chưa có bộ nhận diện chi tiết, cần kiểm tra kỹ)`, yeuTo: [{ id: 'tu-khoa', label: 'Cụm từ đặc trưng của điều luật khớp đoạn trích', ok: true, quote: trich, req: false }], thieu: [], muc: 'thap', nguon: 'tu-khoa' };
+  const lex = e.strong != null && lawPhrasesOf(d).length ? e.strong : (e.nameHit && e.ev >= 4) || (!e.thin && e.n >= 3 && e.ev >= 10);
+  if (lex || (e.seed && (!e.thin || e.nameHit))) return { ok: true, why: `${e.why || 'Đoạn trích khớp dấu hiệu của điều này'} (khớp cụm định tội — chưa có bộ nhận diện chi tiết, cần kiểm tra kỹ)`, yeuTo: [{ id: 'tu-khoa', label: 'Cụm định tội của điều luật khớp đoạn trích', ok: true, quote: trich, khop: (e.khop || []).join('”, “'), req: false }], thieu: [], muc: 'thap', nguon: 'tu-khoa' };
   return { ok: false, why: 'Đoạn trích chưa đủ dấu hiệu của điều này', yeuTo: [], thieu: [] };
 }
 

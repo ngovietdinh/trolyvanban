@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import { assessCrime } from '../../assets/js/legal/relevance.js';
 import { analyzeOffline } from '../../assets/js/legal/analyze.js';
 import { findPhrase, pctInjury, isActionSentence, EXCLUDE, ASSAULT, groupRe } from '../../assets/js/legal/lexicon.js';
+import { chunksOf, namePhrases, conductText, extractLawPhrases } from '../../assets/js/legal/law-phrases.js';
+import { LAW_PHRASES } from '../../assets/js/legal/law-phrases-generated.js';
+import { phraseEvidence, lawPhrasesOf } from '../../assets/js/legal/relevance.js';
 
 // Câu bẫy: có từ nhạy cảm (đánh, đâm, chém, đá, chết, giết, %, nhập viện…) nhưng KHÔNG mô tả hành vi phạm tội.
 const BAY = [
@@ -80,4 +83,73 @@ test('findPhrase bỏ khớp nằm trong cụm vô hại; isActionSentence chỉ
   const all = Object.values(EXCLUDE).flat();
   assert.ok(all.length > 100);
   assert.equal(new Set(all).size, all.length, 'cụm vô hại trùng nhau');
+});
+
+test('bộ quét Bộ luật: rút cụm định tội từ khoản 1 và tên điều (bỏ chủ ngữ, định lượng, hình phạt; tách theo liên từ)', () => {
+  const vb = ['1. Người nào dùng vũ lực, đe dọa dùng vũ lực ngay tức khắc hoặc có hành vi khác làm cho người bị tấn công lâm vào tình trạng không thể chống cự được nhằm chiếm đoạt tài sản, thì bị phạt tù từ 03 năm đến 10 năm.', '2. Phạm tội thuộc một trong các trường hợp sau đây, thì bị phạt tù từ 07 năm đến 15 năm:', 'a) Có tổ chức;'];
+  assert.deepEqual(conductText(vb).length, 1);
+  const ch = chunksOf(conductText(vb)[0]);
+  assert.ok(ch.includes('dùng vũ lực') && ch.includes('đe dọa dùng vũ lực ngay tức khắc') && ch.includes('chiếm đoạt tài sản'), ch.join(' | '));
+  assert.ok(!ch.some((c) => /thì bị|năm|người nào/.test(c)), 'không còn hình phạt, chủ ngữ');
+  // "và" không bị tách trong "vào"; đuôi "trở lên", "có khối lượng" bị bỏ; số lượng bị bỏ.
+  assert.ok(chunksOf('lâm vào tình trạng không thể chống cự được').some((c) => c.endsWith('tình trạng không thể chống cự')), 'không tách “và” trong “vào”');
+  assert.deepEqual(chunksOf('giết 02 người trở lên'), []);
+  assert.deepEqual(chunksOf('nhựa thuốc phiện có khối lượng từ 01 gam đến dưới 500 gam'), ['nhựa thuốc phiện']);
+  assert.deepEqual(namePhrases('Tội sản xuất, buôn bán hàng cấm'), ['sản xuất hàng cấm', 'buôn bán hàng cấm']);
+  assert.deepEqual(namePhrases('Tội bắt, giữ hoặc giam người trái pháp luật'), ['bắt người trái pháp luật', 'giữ người trái pháp luật', 'giam người trái pháp luật']);
+  assert.deepEqual(namePhrases('Tội làm nhục người khác'), ['làm nhục']);
+  assert.deepEqual(namePhrases('Tội giết người'), ['giết người']);
+  // Tên gồm động từ + đối tượng chung: không đứng một mình ("tài liệu của cơ quan" không phải cụm định tội).
+  const n341 = namePhrases('Tội làm giả con dấu, tài liệu của cơ quan, tổ chức; tội sử dụng con dấu hoặc tài liệu giả của cơ quan, tổ chức');
+  assert.ok(n341.includes('làm giả con dấu') && !n341.includes('tài liệu của cơ quan'), n341.join(' | '));
+  const P = extractLawPhrases([{ so: '168', ten: 'Tội cướp tài sản', vb }, { so: '170', ten: 'Tội cưỡng đoạt tài sản', vb: ['1. Người nào đe dọa sẽ dùng vũ lực hoặc có thủ đoạn khác uy hiếp tinh thần người khác nhằm chiếm đoạt tài sản, thì bị phạt tù từ 01 năm đến 05 năm.'] }]);
+  assert.equal(P['168'][0][0], 'cướp tài sản');
+  assert.ok(P['168'].some((x) => x[0] === 'đe dọa dùng vũ lực ngay tức khắc' && x[1] === 3 && x[2] === 1));
+  assert.ok(P['168'].some((x) => x[0] === 'chiếm đoạt tài sản' && x[1] <= 2 && x[2] === 0), 'cụm hai điều cùng dùng không tự đủ');
+});
+
+test('gói cụm sinh sẵn: đủ các điều, không cụm một âm tiết, không chứa số, không trùng cụm vô hại; tên điều khác không làm căn cứ', () => {
+  const ds = Object.keys(LAW_PHRASES);
+  assert.ok(ds.length >= 300, `chỉ ${ds.length} điều`);
+  for (const [d, list] of Object.entries(LAW_PHRASES)) {
+    assert.ok(list.length >= 1, d);
+    for (const [ph, w, solo] of list) {
+      assert.ok(ph.split(' ').length >= 2, `${d}: cụm một âm tiết “${ph}”`);
+      assert.ok(!/^\d|\d\s*%|\d\s*đồng$|khối lượng$/.test(ph), `${d}: cụm mang định lượng “${ph}”`); // số tuổi trong tên điều ("người dưới 16 tuổi") được giữ
+      assert.ok([1, 2, 3].includes(w) && [0, 1].includes(solo), `${d}: trọng số ${ph}`);
+      assert.ok(!/^(?:đánh giá|đánh dấu|đánh máy|chém gió|chết máy)$/.test(ph), `${d}: cụm vô hại “${ph}”`);
+    }
+  }
+  assert.ok(LAW_PHRASES['168'].some((x) => x[0] === 'cướp tài sản'));
+  assert.ok(LAW_PHRASES['330'].some((x) => x[0] === 'chống người thi hành công vụ'));
+  assert.ok(!LAW_PHRASES['118'].some((x) => x[0] === 'chống người thi hành công vụ'), 'cụm là tên Điều 330 không làm căn cứ cho Điều 118');
+  // Điều không có trong gói → dùng tên điều.
+  assert.ok(lawPhrasesOf('256a').length >= 1);
+  // Cụm định tội trùng một cụm trong danh sách vô hại của nghĩa khác ("đánh bạc" vs "đánh" người) vẫn khớp được.
+  assert.equal(phraseEvidence('321', [{ t: 'Nhóm này tổ chức đánh bạc bằng hình thức xóc đĩa.' }])?.hits.some((h) => h.khop === 'đánh bạc'), true);
+  assert.equal(findPhrase('lãnh đạo đánh giá nhân viên', groupRe(ASSAULT)), null);
+});
+
+test('nhận diện theo cụm định tội cho điều chưa có bộ yếu tố cấu thành: đúng điều, không lan sang điều có cụm chung', () => {
+  const pos = [
+    ['168', 'A dùng dao khống chế, đe dọa dùng vũ lực ngay tức khắc buộc chị B đưa túi xách rồi chiếm đoạt tài sản.'],
+    ['318', 'Nhóm thanh niên gây rối trật tự công cộng trước cổng chợ, đập phá hàng quán.'],
+    ['330', 'Khi tổ công tác yêu cầu dừng xe, H đã chống người thi hành công vụ, giật áo và xô ngã Thượng úy T.'],
+    ['155', 'B lột quần áo, quay phim và làm nhục chị C trước đám đông.'],
+    ['170', 'T nhắn tin đe dọa sẽ dùng vũ lực, uy hiếp tinh thần anh K để buộc anh K đưa 20 triệu đồng.'],
+  ];
+  for (const [d, t] of pos) {
+    const a = assessCrime(d, t);
+    assert.equal(a.show, true, `Điều ${d}: ${t} → ${a.why}`);
+    assert.equal(a.nguon, 'tu-khoa');
+    assert.match(a.why, /Khớp cụm định tội/);
+    assert.ok(a.yeuTo[0]?.khop, 'nêu cụm đã khớp');
+  }
+  const r330 = analyzeOffline(pos[2][1], {}).crimes.map((c) => c.dieu);
+  assert.ok(r330.includes('330') && !r330.includes('118'), r330.join());
+  for (const t of ['Hội đồng đánh giá hồ sơ dự thầu; các tài liệu của cơ quan được lưu trữ đúng quy định; tổ chức họp đánh giá.', 'Ông Hải lập hồ sơ giả mạo chữ ký của chủ đất cũ để sang tên.', 'Công ty mua bán hàng hóa thông thường, nộp thuế đầy đủ, an toàn xã hội được bảo đảm.', 'Bị cáo mua bán trái phép chất ma túy: bán 2 gói heroin cho T lấy 500.000 đồng.']) {
+    const got = analyzeOffline(t, {}).crimes.map((c) => c.dieu);
+    assert.ok(got.every((d) => d === '251'), `${t} → ${got.join()}`);
+  }
+  assert.equal(phraseEvidence('214', [{ t: 'Ông Hải lập hồ sơ giả mạo chữ ký.' }])?.strong, false, 'một cụm 4 âm tiết chưa tự đủ');
 });

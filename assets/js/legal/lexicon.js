@@ -35,7 +35,7 @@ export const EXCLUDE = {
   lua: ['con lừa', 'lừa ngựa', 'lừa hoang', 'thịt lừa'],
   trom: ['nhìn trộm', 'trộm nghĩ', 'nghe trộm', 'liếc trộm', 'ngó trộm', 'trộm vía', 'xem trộm', 'đọc trộm', 'chụp trộm', 'quay trộm'],
   cap: ['cắp sách', 'cắp nách', 'cắp cặp', 'cặp cắp', 'cắp ô'],
-  cuop: ['cướp lời', 'cướp cò', 'cướp diễn đàn', 'cướp sóng', 'cướp biển'],
+  cuop: ['cướp lời', 'cướp cò', 'cướp diễn đàn', 'cướp sóng'],
   chu_quan: ['ý chí chủ quan', 'mặt chủ quan', 'ý muốn chủ quan', 'ngoài ý muốn chủ quan', 'về mặt chủ quan', 'nhận thức chủ quan', 'cảm tính chủ quan', 'yếu tố chủ quan', 'nguyên nhân chủ quan', 'đánh giá chủ quan'],
   boc_co: ['bóp cổ chai', 'bóp cổ gà'],
 };
@@ -44,9 +44,13 @@ const EXCL_RE = Object.fromEntries(Object.entries(EXCLUDE).map(([k, list]) => [k
 export const EXCLUDE_ALL = rx(alt(Object.values(EXCLUDE).flat()), 'giu');
 
 /* ---------------- Kho cụm ---------------- */
-const CAPNAME = '[A-ZĐÀ-Ỹ][\\p{Ll}\\u0300-\\u036f]+';
-/** Người bị tác động: danh xưng / tư cách tố tụng / tên riêng. */
-export const NGUOI = `(?:anh|chị|ông|bà|em|cháu|cô|chú|bác|cậu|mợ|dì|thím|bị hại|nạn nhân|người bị hại|vợ|chồng|con|mẹ|bố|cha|bạn|đồng nghiệp|hàng xóm|nhân viên|bảo vệ|tài xế|lái xe|khách|người|${CAPNAME})`;
+// Tên riêng viết hoa phải khớp PHÂN BIỆT HOA THƯỜNG (cờ i sẽ biến "giá" thành tên → "đánh giá" thành đánh người), nên
+// để ở mẫu riêng ASSAULT_NAME (không cờ i) thay vì gộp vào NGUOI.
+const CAPNAME = '[A-ZĐÀ-Ỹ][\\p{Ll}\\u0300-\\u036f]*';
+/** Người bị tác động: danh xưng / tư cách tố tụng. */
+export const NGUOI = '(?:anh|chị|ông|bà|em|cháu|cô|chú|bác|cậu|mợ|dì|thím|bị hại|nạn nhân|người bị hại|vợ|chồng|con|mẹ|bố|cha|bạn|đồng nghiệp|hàng xóm|nhân viên|bảo vệ|tài xế|lái xe|khách|người)';
+/** Động từ tấn công + tên riêng viết hoa ("đánh B", "đâm Nguyễn Văn T") — mẫu phân biệt hoa thường. */
+export const ASSAULT_NAME = new RegExp(`(?:[Đđ]ánh|[Đđ]ấm|[Đđ]á|[Đđ]ạp|[Tt]át|[Đđ]ập|[Cc]hém|[Đđ]âm|[Cc]ắn|[Hh]úc|[Bb]óp cổ|[Ss]iết cổ|[Hh]ành hung)\\s+(?:chết\\s+|bị thương\\s+)?${CAPNAME}(?:\\s+${CAPNAME}){0,3}(?![\\p{Ll}])`, 'u');
 /** Công cụ, hung khí. */
 export const HUNG_KHI = '(?:dao|kéo|gậy|gạch|đá|tuýp sắt|tuýp|ống sắt|ống tuýp|thanh sắt|côn|kiếm|mã tấu|rựa|búa|rìu|cuốc|xẻng|ghế|mũ bảo hiểm|chai|cốc|ly|vỏ chai|súng|bình xịt|roi|dây|điếu cày|chày|cờ lê|mỏ lết|đoạn cây|khúc gỗ|cây gỗ|thanh gỗ|gậy gỗ|gậy sắt|dao bầu|dao phay|dao gọt|dao nhọn|dao Thái|lưỡi lê|đinh ba|xiên|bình ga|axit|a-xít|xăng|hung khí|vật cứng|vật nhọn|tay|chân|nắm đấm|cùi chỏ|đầu gối|đầu)';
 /** Động từ tấn công (chỉ dùng khi có bổ ngữ / công cụ / đối tượng — xem ASSAULT). */
@@ -64,6 +68,7 @@ export const ASSAULT = [
   `(?:đánh|đấm|đá|đạp|tát|đập|chém|đâm|cắn|húc|xô ngã|đẩy ngã|túm tóc|giật tóc|bóp cổ|siết cổ|hành hung|đánh đập|đâm chém|tạt axit|tạt a-xít)\\s+(?:chết\\s+|bị thương\\s+|trọng thương\\s+)?${NGUOI}`,
   `(?:xông|lao|nhảy)\\s+(?:vào|tới|đến)\\s+(?:đánh|đấm|đá|đạp|tát|đập|chém|đâm|hành hung)`,
   `bị\\s+(?:${NGUOI}\\s+)?(?:đánh|đấm|đá|đạp|tát|đập|chém|đâm|bắn|hành hung|đánh đập|cắn|húc|xô ngã|bóp cổ|siết cổ|tạt axit|tạt a-xít)`,
+  ASSAULT_NAME,
   // cụm cố định
   `đánh nhau|ẩu đả|xô xát|hành hung|đánh hội đồng|đánh đập|đâm chém|chém nhau|gây thương tích|gây tổn hại (?:cho )?sức khỏe|cố ý gây thương tích|tạt a-?xít|đổ xăng[^.;]{0,30}(?:đốt|châm lửa)|châm lửa đốt|lao xe (?:vào|thẳng vào) (?:người|đám đông|${NGUOI})|bóp cổ|siết cổ|thắt cổ|dí dao|kề dao|dùng vũ lực|đe dọa dùng vũ lực`,
 ];
@@ -84,18 +89,23 @@ export const KILL = [
 /** Cụm hậu quả chết người. */
 export const DEATH = ['tử vong', 'thiệt mạng', 'không qua khỏi', 'qua đời', 'chết tại chỗ', 'chết trên đường', 'chết sau', 'chết do', 'chết vì', 'bị chết', 'đã chết', 'dẫn đến chết', 'làm chết', 'gây chết', 'chết người', 'tắt thở', 'ngừng thở', 'ngừng tim', 'tử thi', 'khám nghiệm tử thi', 'nguyên nhân chết', 'nguyên nhân tử vong', 'cướp đi tính mạng', 'mất mạng', 'bỏ mạng', 'thi thể'];
 
-/** Mẫu regex cho một nhóm cụm (ghép bằng |). */
-export const groupRe = (list, flags = 'iu') => rx(list.join('|'), flags);
+/** Danh sách regex cho một nhóm cụm (chuỗi → regex cờ iu; RegExp giữ nguyên cờ riêng). */
+export const groupRe = (list, flags = 'iu') => list.map((x) => (x instanceof RegExp ? x : rx(x, flags)));
 
 /* ---------------- Khớp cụm có loại trừ ---------------- */
-/** Cụm loại trừ có chồng lên đoạn [a, b) của câu không? */
+/**
+ * Đoạn khớp [a, b) có nằm TRONG một cụm vô hại lớn hơn không? Chỉ loại khi cụm vô hại vươn ra ngoài đoạn khớp ít nhất một phía
+ * (“đánh” trong “đánh giá”); đoạn khớp trùng hoặc bao trọn cụm vô hại (cụm định tội “đánh bạc” của Điều 321) thì giữ.
+ */
 export function excluded(text, a, b, excl = EXCLUDE_ALL) {
   const res = Array.isArray(excl) ? excl : [excl];
   for (const re of res) {
     re.lastIndex = 0;
     let m;
     while ((m = re.exec(text))) {
-      if (m.index < b && m.index + m[0].length > a) return true;
+      const s0 = m.index;
+      const e0 = m.index + m[0].length;
+      if (s0 < b && e0 > a && (s0 < a || e0 > b)) return true;
       if (!m[0].length) re.lastIndex++;
     }
   }
@@ -106,6 +116,13 @@ export function excluded(text, a, b, excl = EXCLUDE_ALL) {
  * excl: regex / mảng regex loại trừ (mặc định toàn bộ EXCLUDE).
  */
 export function findPhrase(text, re, excl = EXCLUDE_ALL) {
+  if (Array.isArray(re)) {
+    for (const r of re) {
+      const m = findPhrase(text, r, excl);
+      if (m) return m;
+    }
+    return null;
+  }
   const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
   let m;
   while ((m = g.exec(text))) {

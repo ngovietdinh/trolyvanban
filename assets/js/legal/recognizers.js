@@ -20,7 +20,7 @@ const MATUY = 'ma\\s*túy|heroin|hê rô in|cần sa|thuốc phiện|methampheta
 
 const rx = (s) => new RegExp(s, 'iu');
 /** Yếu tố cấu thành. req: bắt buộc; w: trọng số; ctx: cho phép tìm ở toàn bộ nội dung; min: giá trị tối thiểu (đồng); pct: tỷ lệ % tối thiểu. */
-const E = (id, label, res, { req = false, w = 1, ctx = false, min = 0, pct = 0, job = false, hoi = '', not: notList = null } = {}) => ({ id, label, re: (Array.isArray(res) ? res : res ? [res] : []).map(rx), req, w, ctx, min, pct, job, hoi, not: notList ? (Array.isArray(notList) ? notList : [notList]).map((k) => (k instanceof RegExp ? k : rxl(EXCLUDE[k].map((x) => x.replace(/ /g, '\\s+')).join('|'), 'giu'))) : null });
+const E = (id, label, res, { req = false, w = 1, ctx = false, min = 0, pct = 0, job = false, hoi = '', not: notList = null } = {}) => ({ id, label, re: (Array.isArray(res) ? res : res ? [res] : []).map((r) => (r instanceof RegExp ? r : rx(r))), req, w, ctx, min, pct, job, hoi, not: notList ? (Array.isArray(notList) ? notList : [notList]).map((k) => (k instanceof RegExp ? k : rxl(EXCLUDE[k].map((x) => x.replace(/ /g, '\\s+')).join('|'), 'giu'))) : null });
 // Chủ thể phải là CHÍNH người thực hiện hành vi (đứng trước động từ trong câu): có chức danh trong câu, hoặc là người được nêu
 // chức vụ ở chỗ khác (“Ông Bình, Giám đốc …” … “Ông Bình nhận tiền”). Người khác trong cùng đoạn có chức vụ không tính.
 const CHUCVU = (hoi = 'Người thực hiện giữ chức vụ, quyền hạn gì, ở đơn vị nào, được giao nhiệm vụ gì liên quan?') => E('chu-the', 'Chủ thể là người có chức vụ, quyền hạn', null, { req: true, w: 2, ctx: true, job: 'anchor', hoi });
