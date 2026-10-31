@@ -55,6 +55,7 @@ export function render(ctx) {
   const legalOrg = s.legalOrg || {};
   const theme = document.documentElement.dataset.theme || 'system';
   const ocrModeNow = store.get('ocr-mode', 'may');
+  const ocrEngineNow = store.get('ocr-engine', 'auto');
 
   ctx.view.innerHTML = `
   <div class="page page-narrow">
@@ -133,6 +134,17 @@ export function render(ctx) {
             <button type="button" data-ocr-mode="ai" aria-pressed="${ocrModeNow === 'ai'}" ${ctx.hasAI() ? '' : 'disabled title="Cần kết nối AI"'}>${icon('sparkles', 'ic-sm')}AI đọc ảnh trang</button>
           </div></div>
         </div>
+        ${
+          window.tlvbDesktop?.ocr
+            ? `<div class="setting-row" data-ocr-engine-row>
+          <div><h3>Bộ nhận dạng trên máy (bản cài đặt)</h3><p>PaddleOCR phát hiện dòng chữ + VietOCR nhận dạng tiếng Việt chạy ngay trong máy, chính xác hơn Tesseract với ảnh chụp, chữ nghiêng, chữ hoa có dấu. Mô hình VietOCR tải một lần (khoảng 50 MB) về thư mục dữ liệu; chế độ bảo mật thì chép tệp mô hình vào thư mục đó.</p></div>
+          <div class="setting-ctl"><div class="seg" role="group" aria-label="Bộ nhận dạng">
+            <button type="button" data-ocr-engine="auto" aria-pressed="${ocrEngineNow === 'auto'}">${icon('sparkles', 'ic-sm')}PaddleOCR + VietOCR</button>
+            <button type="button" data-ocr-engine="tesseract" aria-pressed="${ocrEngineNow === 'tesseract'}">${icon('shield', 'ic-sm')}Tesseract (kèm sẵn)</button>
+          </div><p class="hint" data-ocr-engine-status>Đang kiểm tra mô hình…</p><div class="inline"><button class="btn btn-sm" type="button" data-ocr-download hidden>${icon('download', 'ic-sm')}Tải mô hình VietOCR</button><button class="btn btn-sm btn-ghost" type="button" data-ocr-remove hidden>${icon('x', 'ic-sm')}Xóa mô hình</button></div></div>
+        </div>`
+            : ''
+        }
       </section>
 
       <section class="panel">
@@ -618,6 +630,53 @@ export function render(ctx) {
       toast(b.dataset.ocrMode === 'may' ? 'Nhận dạng chữ trên máy, không gửi ra ngoài' : b.dataset.ocrMode === 'ai' ? 'Bản quét sẽ được AI đọc từng trang (gửi ảnh trang tới dịch vụ AI)' : 'Nhận dạng trên máy, AI soát lỗi chữ đã nhận dạng');
     }),
   );
+  $$('[data-ocr-engine]', root).forEach((b) =>
+    b.addEventListener('click', async () => {
+      store.set('ocr-engine', b.dataset.ocrEngine);
+      $$('[data-ocr-engine]', root).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      (await import('../lib/pdf-convert.js')).resetOcrEngine();
+      toast(b.dataset.ocrEngine === 'tesseract' ? 'Dùng Tesseract cho bản quét' : 'Dùng PaddleOCR + VietOCR khi có mô hình');
+    }),
+  );
+  if (window.tlvbDesktop?.ocr) {
+    const statusEl = $('[data-ocr-engine-status]', root);
+    const dl = $('[data-ocr-download]', root);
+    const rm = $('[data-ocr-remove]', root);
+    const refreshOcr = async () => {
+      const { desktopOcrStatus } = await import('../lib/ocr-desktop.js');
+      const st = await desktopOcrStatus();
+      if (!statusEl) return;
+      if (!st) statusEl.textContent = 'Không đọc được tình trạng mô hình.';
+      else if (st.available) statusEl.textContent = 'Mô hình đã sẵn sàng: phát hiện (PaddleOCR) và nhận dạng (VietOCR). Bản quét sẽ được đọc bằng bộ này.';
+      else if (st.det) statusEl.textContent = `Đã có bộ phát hiện dòng chữ; chưa có mô hình VietOCR — bấm Tải mô hình (hoặc chép vietocr-encoder.onnx, vietocr-decoder.onnx, vietocr.json vào ${st.dir}).`;
+      else statusEl.textContent = st.error ? `Bộ nhận dạng tại chỗ lỗi: ${st.error}` : 'Thiếu mô hình phát hiện dòng chữ (ppocr-det.onnx) trong bộ cài.';
+      if (dl) dl.hidden = !st || st.available || !st.det;
+      if (rm) rm.hidden = !st?.rec;
+    };
+    refreshOcr();
+    dl?.addEventListener('click', async () => {
+      const { desktopOcrDownload } = await import('../lib/ocr-desktop.js');
+      dl.disabled = true;
+      try {
+        const r = await desktopOcrDownload((p) => {
+          if (statusEl && p?.file) statusEl.textContent = `Đang tải ${p.file}… ${p.total ? Math.round((p.received / p.total) * 100) : 0}%`;
+        });
+        if (!r?.ok) toast(r?.error || 'Không tải được mô hình', { type: 'error', timeout: 8000 });
+        else toast('Đã tải mô hình VietOCR — bản quét sẽ được đọc bằng PaddleOCR + VietOCR');
+        (await import('../lib/pdf-convert.js')).resetOcrEngine();
+      } finally {
+        dl.disabled = false;
+        refreshOcr();
+      }
+    });
+    rm?.addEventListener('click', async () => {
+      if (!(await ctx.confirm('Xóa mô hình VietOCR đã tải? Bản quét sẽ đọc bằng Tesseract cho tới khi tải lại.', { title: 'Xóa mô hình', okText: 'Xóa', danger: true }))) return;
+      const { desktopOcrRemove } = await import('../lib/ocr-desktop.js');
+      await desktopOcrRemove();
+      (await import('../lib/pdf-convert.js')).resetOcrEngine();
+      refreshOcr();
+    });
+  }
   $$('[data-theme]', root).forEach((b) =>
     b.addEventListener('click', () => {
       setTheme(b.dataset.theme);

@@ -1,7 +1,7 @@
 // Bản cài đặt máy tính (Windows/macOS) của Trợ Lý Văn Bản AI.
 // Nạp nguyên mã web trong thư mục web/ qua giao thức riêng app://trolyvanban — một origin cố định, bảo mật
 // (crypto.subtle, Worker, localStorage hoạt động như trên HTTPS) và dữ liệu lưu bền trong thư mục người dùng.
-const { app, BrowserWindow, protocol, shell, Menu, dialog, session, ipcMain, net } = require('electron');
+const { app, BrowserWindow, protocol, shell, Menu, dialog, session, ipcMain, net, nativeImage } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
@@ -281,6 +281,97 @@ function bindUpdater() {
     } finally {
       clearTimeout(timer);
     }
+  });
+  /* ---------------- Nhận dạng chữ tại chỗ (PaddleOCR + VietOCR, desktop/ocr/engine.cjs) ---------------- */
+  // Mô hình phát hiện kèm bộ cài (resources/ocr-models); mô hình VietOCR tải lần đầu về thư mục dữ liệu, kiểm tra sha256
+  // theo vietocr.json. Tải mô hình tuân theo chế độ bảo mật (allowedRequest) như mọi yêu cầu mạng khác.
+  const OCR_BUNDLED = app.isPackaged ? path.join(process.resourcesPath, 'ocr-models') : path.join(__dirname, 'ocr', 'models');
+  const OCR_USER = path.join(app.getPath('userData'), 'ocr-models');
+  const OCR_MODEL_BASE = process.env.TLVB_OCR_MODEL_BASE || 'https://github.com/ngovietdinh/trolyvanban/releases/download/ocr-models-v1/';
+  let ocrEngine = null;
+  const getEngine = () => {
+    if (!ocrEngine) {
+      const { Engine } = require('./ocr/engine.cjs');
+      ocrEngine = new Engine({ modelDir: OCR_BUNDLED, userDir: OCR_USER });
+    }
+    return ocrEngine;
+  };
+  const fromOrigin = (e) => String(e.senderFrame?.url || '').startsWith(ORIGIN);
+  ipcMain.handle('tlvb:ocr-status', (e) => {
+    if (!fromOrigin(e)) return null;
+    try {
+      return { ...getEngine().status(), modelBase: OCR_MODEL_BASE };
+    } catch (err) {
+      return { available: false, det: false, cls: false, rec: false, error: err?.message || String(err) };
+    }
+  });
+  ipcMain.handle('tlvb:ocr-page', async (e, png, opts = {}) => {
+    if (!fromOrigin(e)) return { error: 'Không được phép' };
+    try {
+      const im = nativeImage.createFromBuffer(Buffer.from(png));
+      const { width, height } = im.getSize();
+      if (!width || !height) return { error: 'Ảnh trang không hợp lệ' };
+      const bgra = im.toBitmap();
+      const data = new Uint8ClampedArray(bgra.length);
+      for (let i = 0; i < bgra.length; i += 4) {
+        data[i] = bgra[i + 2];
+        data[i + 1] = bgra[i + 1];
+        data[i + 2] = bgra[i];
+        data[i + 3] = 255;
+      }
+      const wc = e.sender;
+      const r = await getEngine().page({ width, height, data }, { withText: opts?.withText !== false, onProgress: (done, total) => wc.send('tlvb:ocr-progress', { done, total }) });
+      return r;
+    } catch (err) {
+      return { error: err?.message || String(err) };
+    }
+  });
+  ipcMain.handle('tlvb:ocr-download', async (e) => {
+    if (!fromOrigin(e)) return { ok: false, error: 'Không được phép' };
+    const base = OCR_MODEL_BASE;
+    if (!allowedRequest(base)) return { ok: false, error: 'Chế độ bảo mật: không tải mô hình từ Internet — chép tệp mô hình vào thư mục ' + OCR_USER };
+    const crypto = require('node:crypto');
+    const wc = e.sender;
+    try {
+      await fs.mkdir(OCR_USER, { recursive: true });
+      const metaRes = await net.fetch(`${base}vietocr.json`, { redirect: 'follow' });
+      if (!metaRes.ok) return { ok: false, error: `Không tải được vietocr.json (${metaRes.status})` };
+      const metaBuf = Buffer.from(await metaRes.arrayBuffer());
+      const meta = JSON.parse(metaBuf.toString('utf8'));
+      for (const [name, info] of Object.entries(meta.files || {})) {
+        wc.send('tlvb:ocr-progress', { file: name, received: 0, total: info.bytes || 0 });
+        const res = await net.fetch(`${base}${name}`, { redirect: 'follow' });
+        if (!res.ok) return { ok: false, error: `Không tải được ${name} (${res.status})` };
+        const chunks = [];
+        let received = 0;
+        const reader = res.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(Buffer.from(value));
+          received += value.length;
+          wc.send('tlvb:ocr-progress', { file: name, received, total: info.bytes || 0 });
+        }
+        const buf = Buffer.concat(chunks);
+        const sha = crypto.createHash('sha256').update(buf).digest('hex');
+        if (info.sha256 && sha !== info.sha256) return { ok: false, error: `Tệp ${name} không đúng mã băm — tải lại` };
+        await fs.writeFile(path.join(OCR_USER, `${name}.part`), buf);
+        await fs.rename(path.join(OCR_USER, `${name}.part`), path.join(OCR_USER, name));
+      }
+      await fs.writeFile(path.join(OCR_USER, 'vietocr.json'), metaBuf);
+      ocrEngine?.dispose();
+      ocrEngine = null;
+      return { ok: true, ...getEngine().status() };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
+  ipcMain.handle('tlvb:ocr-remove', async (e) => {
+    if (!fromOrigin(e)) return { ok: false };
+    ocrEngine?.dispose();
+    ocrEngine = null;
+    for (const n of ['vietocr-encoder.onnx', 'vietocr-decoder.onnx', 'vietocr.json']) await fs.rm(path.join(OCR_USER, n), { force: true });
+    return { ok: true, ...getEngine().status() };
   });
   ipcMain.on('tlvb:ready', () => {
     clearTimeout(watchdog);

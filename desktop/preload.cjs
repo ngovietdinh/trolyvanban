@@ -18,6 +18,21 @@ contextBridge.exposeInMainWorld(
     }),
     /** Tải tệp / trang từ mạng qua vỏ ứng dụng (bản án, án lệ) — xem desktop/main.cjs 'tlvb:fetch'. */
     net: Object.freeze({ fetch: (url) => ipcRenderer.invoke('tlvb:fetch', String(url)) }),
+    /** Nhận dạng chữ tại chỗ (PaddleOCR + VietOCR) — xem desktop/ocr/engine.cjs. page(png: ArrayBuffer) → { width, height, lines }. */
+    ocr: Object.freeze({
+      status: () => ipcRenderer.invoke('tlvb:ocr-status'),
+      page: (png, { onProgress, withText = true } = {}) => {
+        const h = (_, p) => onProgress?.(p);
+        if (onProgress) ipcRenderer.on('tlvb:ocr-progress', h);
+        return ipcRenderer.invoke('tlvb:ocr-page', png instanceof ArrayBuffer ? new Uint8Array(png) : png, { withText }).finally(() => ipcRenderer.removeListener('tlvb:ocr-progress', h));
+      },
+      download: (onProgress) => {
+        const h = (_, p) => onProgress?.(p);
+        if (onProgress) ipcRenderer.on('tlvb:ocr-progress', h);
+        return ipcRenderer.invoke('tlvb:ocr-download').finally(() => ipcRenderer.removeListener('tlvb:ocr-progress', h));
+      },
+      remove: () => ipcRenderer.invoke('tlvb:ocr-remove'),
+    }),
     /** Cập nhật tại chỗ: chỉ tải các tệp mã web thay đổi. */
     update: Object.freeze({
       check: () => ipcRenderer.invoke('tlvb:update-check'),

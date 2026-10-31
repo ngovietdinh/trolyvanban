@@ -32,7 +32,13 @@
       "updater.cjs",
       "security-forced.json",
       "build/icon.png",
-      "web/**/*"
+      "web/**/*",
+      "ocr/engine.cjs",
+      "!node_modules/onnxruntime-node/bin/napi-v6/${/*}/**",
+      "node_modules/onnxruntime-node/bin/napi-v6/${os}/${arch}/**",
+      "!node_modules/onnxruntime-node/script/**",
+      "!node_modules/onnxruntime-node/**/*.d.ts",
+      "!node_modules/onnxruntime-node/**/*.map"
     ],
     "asar": true,
     "win": {
@@ -80,8 +86,24 @@
       "icon": "build/icon.png"
     },
     "publish": null,
-    "afterPack": "build/after-pack.cjs"
+    "afterPack": "build/after-pack.cjs",
+    "asarUnpack": [
+      "node_modules/onnxruntime-node/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "ocr/models",
+        "to": "ocr-models",
+        "filter": [
+          "*.onnx",
+          "*.json"
+        ]
+      }
+    ]
   },
   "repository": "github:ngovietdinh/trolyvanban",
-  "shellApi": 1
+  "shellApi": 1,
+  "dependencies": {
+    "onnxruntime-node": "^1.22.0"
+  }
 }

@@ -37,6 +37,8 @@ jobs:
         run: node scripts/desktop.mjs
       - name: Cài Electron
         working-directory: desktop
+        env:
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip # onnxruntime-node: không tải gói CUDA (chỉ dùng CPU)
         run: npm ci
       - name: Đóng gói
         working-directory: desktop
