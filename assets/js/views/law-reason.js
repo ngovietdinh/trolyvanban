@@ -21,7 +21,7 @@ export function lawElementsHtml(can) {
   const els = can?.yeuTo || [];
   if (!els.length) return '';
   return `<ul class="lr-el">${els
-    .map((y) => (y.ok ? `<li class="ok"><span class="lr-ic" aria-label="Đã có">✓</span><span><b>${escapeHtml(y.label)}</b>${y.quote ? `<q>${escapeHtml(y.quote.length > 230 ? `${y.quote.slice(0, 228)}…` : y.quote)}</q>` : ''}</span></li>` : `<li class="no"><span class="lr-ic" aria-label="Chưa có">✗</span><span><b>${escapeHtml(y.label)}</b><small>${y.req ? 'bắt buộc — ' : ''}chưa có trong lời khai${y.hoi ? ` · cần hỏi: ${escapeHtml(y.hoi)}` : ''}</small></span></li>`))
+    .map((y) => (y.ok ? `<li class="ok"><span class="lr-ic" aria-label="Đã có">✓</span><span><b>${escapeHtml(y.label)}</b>${y.khop ? ` <small>khớp cụm “${escapeHtml(y.khop)}”</small>` : ''}${y.quote ? `<q>${escapeHtml(y.quote.length > 230 ? `${y.quote.slice(0, 228)}…` : y.quote)}</q>` : ''}</span></li>` : `<li class="no"><span class="lr-ic" aria-label="Chưa có">✗</span><span><b>${escapeHtml(y.label)}</b><small>${y.req ? 'bắt buộc — ' : ''}chưa có trong lời khai${y.hoi ? ` · cần hỏi: ${escapeHtml(y.hoi)}` : ''}</small></span></li>`))
     .join('')}</ul>`;
 }
 

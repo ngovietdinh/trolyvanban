@@ -356,7 +356,7 @@ export function render(ctx, params = []) {
     const seenQ = new Set();
     const el = (y) => {
       const q = y.quote && !seenQ.has(y.quote) ? (seenQ.add(y.quote), y.quote) : '';
-      return `<li class="${y.ok ? 'ok' : 'no'}">${icon(y.ok ? 'check' : 'x', 'ic-sm')}<span>${escapeHtml(y.label)}${q ? `<blockquote class="ct-fact" data-no-law-link>“${escapeHtml(q)}”</blockquote>` : ''}</span></li>`;
+      return `<li class="${y.ok ? 'ok' : 'no'}">${icon(y.ok ? 'check' : 'x', 'ic-sm')}<span>${escapeHtml(y.label)}${y.ok && y.khop ? ` <small class="ct-khop">khớp cụm “${escapeHtml(y.khop)}”</small>` : ''}${q ? `<blockquote class="ct-fact" data-no-law-link>“${escapeHtml(q)}”</blockquote>` : ''}</span></li>`;
     };
     return `<div class="ct-cols">
       <section><h3>Hành vi và tội danh có căn cứ</h3>

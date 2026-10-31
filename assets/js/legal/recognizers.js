@@ -4,6 +4,9 @@
 // thiếu (kèm câu hỏi làm rõ) và vì sao không chọn điều gần nghĩa. Điều chưa có bộ nhận diện dùng cách khớp từ khóa
 // trong relevance.js (độ chắc chắn thấp hơn, ghi rõ).
 import { amountsIn } from './terms.js';
+import { ASSAULT, INJURY, KILL, DEATH, EXCLUDE, findPhrase, pctInjury, rx as rxl } from './lexicon.js';
+// Mô hình cụm từ có nghĩa (lexicon.js): yếu tố khớp theo CỤM (động từ + bổ ngữ / công cụ / đối tượng), có danh sách cụm
+// vô hại để loại (“đánh giá” ≠ đánh người, “10% cổ phần” ≠ tỷ lệ thương tích). Mỗi yếu tố khớp trả về đúng cụm đã khớp (khop).
 
 export const JOB_CUE = /(giám đốc|chủ tịch|trưởng (?:phòng|ban|đoàn|khoa|bộ phận|công an)|phó (?:giám đốc|chủ tịch|trưởng)|kế toán|thủ quỹ|thủ kho|cán bộ|công chức|viên chức|chuyên viên|bí thư|chỉ huy|chủ đầu tư|thanh tra|điều tra viên|kiểm sát viên|thẩm phán|chức vụ|quyền hạn)/iu;
 
@@ -17,7 +20,7 @@ const MATUY = 'ma\\s*túy|heroin|hê rô in|cần sa|thuốc phiện|methampheta
 
 const rx = (s) => new RegExp(s, 'iu');
 /** Yếu tố cấu thành. req: bắt buộc; w: trọng số; ctx: cho phép tìm ở toàn bộ nội dung; min: giá trị tối thiểu (đồng); pct: tỷ lệ % tối thiểu. */
-const E = (id, label, res, { req = false, w = 1, ctx = false, min = 0, pct = 0, job = false, hoi = '' } = {}) => ({ id, label, re: (Array.isArray(res) ? res : res ? [res] : []).map(rx), req, w, ctx, min, pct, job, hoi });
+const E = (id, label, res, { req = false, w = 1, ctx = false, min = 0, pct = 0, job = false, hoi = '', not: notList = null } = {}) => ({ id, label, re: (Array.isArray(res) ? res : res ? [res] : []).map(rx), req, w, ctx, min, pct, job, hoi, not: notList ? (Array.isArray(notList) ? notList : [notList]).map((k) => (k instanceof RegExp ? k : rxl(EXCLUDE[k].map((x) => x.replace(/ /g, '\\s+')).join('|'), 'giu'))) : null });
 // Chủ thể phải là CHÍNH người thực hiện hành vi (đứng trước động từ trong câu): có chức danh trong câu, hoặc là người được nêu
 // chức vụ ở chỗ khác (“Ông Bình, Giám đốc …” … “Ông Bình nhận tiền”). Người khác trong cùng đoạn có chức vụ không tính.
 const CHUCVU = (hoi = 'Người thực hiện giữ chức vụ, quyền hạn gì, ở đơn vị nào, được giao nhiệm vụ gì liên quan?') => E('chu-the', 'Chủ thể là người có chức vụ, quyền hạn', null, { req: true, w: 2, ctx: true, job: 'anchor', hoi });
@@ -70,7 +73,7 @@ export const RECOGNIZERS = [
     vs: 'Khác Điều 353: tài sản bị chiếm đoạt KHÔNG thuộc phạm vi mình có trách nhiệm quản lý, người phạm tội lợi dụng chức vụ, quyền hạn để chiếm đoạt.',
     el: [
       E('loi-dung', 'Lợi dụng chức vụ, quyền hạn', 'lợi dụng\\s+(?:chức vụ|quyền hạn|chức quyền)|dựa vào\\s+(?:chức vụ|quyền)|sử dụng\\s+(?:chức vụ|quyền hạn)\\s+để', { req: true, w: 3, hoi: 'Người đó đã lợi dụng chức vụ, quyền hạn cụ thể nào để chiếm đoạt?' }),
-      E('hanh-vi', 'Chiếm đoạt tài sản của người khác', 'chiếm đoạt|chiếm giữ|lừa|gian dối', { req: true, w: 3, hoi: 'Tài sản bị chiếm đoạt là gì, của ai, bằng cách nào?' }),
+      E('hanh-vi', 'Chiếm đoạt tài sản của người khác', 'chiếm đoạt|chiếm giữ|lừa\\s+(?:đảo|dối|gạt|lấy|bán|được)|gian dối', { req: true, w: 3, hoi: 'Tài sản bị chiếm đoạt là gì, của ai, bằng cách nào?' }),
       E('gia-tri', 'Tài sản từ 2 triệu đồng trở lên', null, { w: 1, min: 2e6, ctx: true, hoi: 'Giá trị tài sản bị chiếm đoạt?' }),
       CHUCVU(),
     ],
@@ -110,7 +113,7 @@ export const RECOGNIZERS = [
     d: '360',
     vs: 'Khác Điều 356 / 357: thiếu trách nhiệm (không làm, làm không đúng nhiệm vụ) dẫn đến hậu quả nghiêm trọng, thường không có mục đích vụ lợi.',
     el: [
-      E('thieu', 'Thiếu trách nhiệm: không thực hiện / thực hiện không đúng nhiệm vụ', 'thiếu trách nhiệm|buông lỏng|không\\s+(?:kiểm tra|giám sát|thực hiện|làm tròn)|lơ là|thực hiện không đúng|chủ quan', { req: true, w: 3, hoi: 'Nhiệm vụ được giao là gì, người đó đã không làm / làm không đúng ở điểm nào?' }),
+      E('thieu', 'Thiếu trách nhiệm: không thực hiện / thực hiện không đúng nhiệm vụ', 'thiếu trách nhiệm|buông lỏng|không\\s+(?:kiểm tra|giám sát|thực hiện|làm tròn)|lơ là|thực hiện không đúng|chủ quan', { req: true, w: 3, hoi: 'Nhiệm vụ được giao là gì, người đó đã không làm / làm không đúng ở điểm nào?', not: 'chu_quan' }),
       E('hau-qua', 'Gây hậu quả nghiêm trọng (thiệt hại tài sản, thất thoát…)', THIETHAI + '|tử vong|thiệt mạng|mất mát', { req: true, w: 3, hoi: 'Hậu quả cụ thể là gì (thiệt hại bao nhiêu, ai bị ảnh hưởng)?' }),
       CHUCVU(),
     ],
@@ -120,7 +123,7 @@ export const RECOGNIZERS = [
     win: 1,
     vs: 'Khác Điều 175 / 353 / 355: ý định chiếm đoạt có từ trước hoặc trong lúc dùng thủ đoạn gian dối để người khác TỰ GIAO tài sản.',
     el: [
-      E('thu-doan', 'Dùng thủ đoạn gian dối', 'gian dối|lừa(?:\\s+(?:dối|đảo))?|giả danh|giả mạo|vẽ ra|hứa hẹn|cam kết|mạo nhận|thông tin\\s+(?:giả|sai sự thật)', { req: true, w: 3, hoi: 'Người đó đã nói / làm gì để người bị hại tin?' }),
+      E('thu-doan', 'Dùng thủ đoạn gian dối', 'gian dối|lừa(?:\\s+(?:dối|đảo))?|giả danh|giả mạo|vẽ ra|hứa hẹn|cam kết|mạo nhận|thông tin\\s+(?:giả|sai sự thật)', { req: true, w: 3, hoi: 'Người đó đã nói / làm gì để người bị hại tin?', not: 'lua' }),
       E('chiem-doat', 'Chiếm đoạt tài sản của người bị hại', 'chiếm đoạt|chiếm giữ|không\\s+(?:trả|hoàn trả)|bỏ trốn|tiêu\\s+(?:xài\\s+)?hết|sử dụng\\s+hết', { req: true, w: 3, hoi: 'Người bị hại đã giao tài sản gì, bằng cách nào, bao nhiêu?' }),
       E('gia-tri', 'Tài sản từ 2 triệu đồng trở lên', null, { w: 1, min: 2e6, ctx: true, hoi: 'Giá trị tài sản bị chiếm đoạt?' }),
     ],
@@ -139,7 +142,7 @@ export const RECOGNIZERS = [
     win: 1,
     vs: 'Lén lút lấy tài sản (khác Điều 171 cướp giật, 172 công nhiên chiếm đoạt, 174 lừa đảo).',
     el: [
-      E('hanh-vi', 'Lén lút lấy tài sản của người khác', 'trộm|cắp|lén lút|đột nhập|móc túi|bẻ khóa|lấy\\s+trộm', { req: true, w: 3, hoi: 'Người đó đã lấy tài sản bằng cách nào, ở đâu, vào lúc nào?' }),
+      E('hanh-vi', 'Lén lút lấy tài sản của người khác', 'trộm cắp|ăn trộm|lấy trộm|trộm(?![\\p{L}])|cắp(?![\\p{L}])|lén lút|đột nhập|móc túi|bẻ khóa|cạy (?:cửa|khóa|cốp)', { req: true, w: 3, hoi: 'Người đó đã lấy tài sản bằng cách nào, ở đâu, vào lúc nào?', not: ['trom', 'cap'] }),
       E('tai-san', 'Tài sản bị lấy', 'tài sản|xe(?![\\p{L}])|điện thoại|máy(?![\\p{L}])|vàng|tiền|đồ(?![\\p{L}])|chiếc|con(?![\\p{L}])', { req: true, w: 1, hoi: 'Tài sản bị lấy là gì?' }),
       E('gia-tri', 'Tài sản từ 2 triệu đồng trở lên', null, { w: 1, min: 2e6, ctx: true, hoi: 'Giá trị tài sản bị lấy?' }),
     ],
@@ -213,8 +216,10 @@ export const RECOGNIZERS = [
     d: '134',
     vs: 'Khác Điều 123 (giết người: có ý định tước đoạt tính mạng); khác Điều 135 / 136 / 137 (tình tiết kích động, phòng vệ, bắt giữ).',
     el: [
-      E('hanh-vi', 'Hành vi tấn công cơ thể người khác', 'đánh|đấm|đá(?![\\p{L}])|đâm|chém|đập|tát|dùng\\s+(?:dao|gậy|hung khí|vật)|gây\\s+thương\\s+tích|bắn', { req: true, w: 3, hoi: 'Hành vi cụ thể (dùng gì, đánh vào đâu), nguyên nhân, thời gian, địa điểm?' }),
-      E('thuong-tich', 'Gây thương tích hoặc tổn hại sức khỏe', 'thương tích|tổn hại|tổn thương|nhập viện|vết thương|chấn thương|\\d+\\s*%', { req: true, w: 3, hoi: 'Thương tích cụ thể, kết quả giám định?' }),
+      // Cụm có nghĩa: “dùng dao đâm”, “đánh vào mặt”, “đâm hai nhát”, “đánh anh A”, “bị đánh”, “hành hung”… — không nhận từ đơn
+      // (“đánh giá”, “đâm đơn”, “bóng đá”, “chém gió” bị loại nhờ danh sách cụm vô hại).
+      E('hanh-vi', 'Hành vi tấn công cơ thể người khác (cụm: dùng hung khí / đánh vào…, đánh người)', ASSAULT, { req: true, w: 3, hoi: 'Hành vi cụ thể (dùng gì, đánh vào đâu), nguyên nhân, thời gian, địa điểm?' }),
+      E('thuong-tich', 'Gây thương tích hoặc tổn hại sức khỏe (vết thương, gãy xương, nhập viện, giám định…)', INJURY, { req: true, w: 3, hoi: 'Thương tích cụ thể, kết quả giám định?' }),
       E('ty-le', 'Tỷ lệ tổn thương cơ thể từ 11% trở lên (hoặc dùng hung khí nguy hiểm)', null, { w: 2, pct: 11, ctx: true, hoi: 'Tỷ lệ tổn thương cơ thể theo kết luận giám định pháp y?' }),
     ],
   },
@@ -222,8 +227,9 @@ export const RECOGNIZERS = [
     d: '123',
     vs: 'Khác Điều 134: có ý định tước đoạt tính mạng người khác (hoặc hậu quả chết người).',
     el: [
-      E('hanh-vi', 'Hành vi tước đoạt tính mạng', 'giết|đâm(?![\\p{L}])|chém|bóp cổ|bắn|siết cổ|đầu độc|dìm|đánh(?![\\p{L}])', { req: true, w: 3, hoi: 'Hành vi cụ thể, công cụ, vào bộ phận nào?' }),
-      E('hau-qua', 'Hậu quả chết người hoặc ý định giết', 'chết|tử vong|thiệt mạng|giết\\s+người|cướp đi tính mạng|cố ý giết', { req: true, w: 3, hoi: 'Nạn nhân chết như thế nào, nguyên nhân tử vong theo giám định?' }),
+      // Cụm có nghĩa: “đâm vào ngực”, “dùng dao chém”, “giết người”, “bóp cổ”… (loại “giết thời gian”, “chém gió”).
+      E('hanh-vi', 'Hành vi tước đoạt tính mạng (đâm, chém, bắn vào vùng trọng yếu; dùng hung khí; bóp cổ…)', [...KILL, ...ASSAULT.slice(0, 4)], { req: true, w: 3, hoi: 'Hành vi cụ thể, công cụ, vào bộ phận nào?' }),
+      E('hau-qua', 'Hậu quả chết người hoặc ý định tước đoạt tính mạng', [...DEATH.map((x) => x.replace(/ /g, '\\s+')), 'giết\\s+người|cướp đi tính mạng|cố ý giết|ý định giết|định giết|muốn giết|nhằm (?:giết|tước đoạt)|tước đoạt (?:tính mạng|mạng sống)|sát hại|vùng trọng yếu|nơi hiểm yếu'], { req: true, w: 3, hoi: 'Nạn nhân chết như thế nào, nguyên nhân tử vong theo giám định?', not: ['chet', 'giet'] }),
     ],
   },
   {
@@ -259,7 +265,7 @@ export const RECOGNIZER_OF = new Map(RECOGNIZERS.map((r) => [r.d, r]));
 
 // Lời phủ nhận của người khai (“tôi không nhận…”, “chưa bao giờ…”) không phải căn cứ chứng minh hành vi.
 const DENY = /(?:^|\s)(?:không hề|chưa\s+(?:bao giờ|từng|hề)|không bao giờ)(?![\p{L}])|phủ nhận|không thừa nhận|không có\s+(?:việc|chuyện)|không đúng sự thật|^\s*tôi\s+không\s+(?:nhận|đưa|biết|lấy|làm|liên quan)/iu;
-const pctOf = (t) => [...String(t).matchAll(/(\d{1,3}(?:[.,]\d+)?)\s*%/g)].map((m) => parseFloat(String(m[1]).replace(',', '.')));
+const pctOf = (t) => pctInjury(t);
 
 /** Câu tạo nên “cảnh”: tối đa 3 câu liền nhau cùng nguồn. sents: [{ t, src? }]. */
 function scenes(sents, size = 3) {
@@ -328,14 +334,15 @@ function matchElement(e, win, all) {
       if (DENY.test(t)) continue;
       if (e.job === true) {
         const m = JOB_CUE.exec(t);
-        if (m) return { quote: t, idx: m.index };
+        if (m) return { quote: t, idx: m.index, khop: m[0] };
       }
       for (const r of e.re) {
-        const m = r.exec(t);
-        if (m) return { quote: t, idx: m.index };
+        // Khớp theo cụm, bỏ khớp nằm trong cụm vô hại (toàn bộ danh sách, hoặc danh sách riêng của yếu tố).
+        const m = findPhrase(t, r, e.not || undefined);
+        if (m) return { quote: t, idx: m.index, khop: m.khop };
       }
-      if (e.min && amountsIn(t).some((a) => a.v >= e.min)) return { quote: t, idx: 0 };
-      if (e.pct && pctOf(t).some((p) => p >= e.pct)) return { quote: t, idx: 0 };
+      if (e.min && amountsIn(t).some((a) => a.v >= e.min)) return { quote: t, idx: 0, khop: amountsIn(t).find((a) => a.v >= e.min)?.raw || '' };
+      if (e.pct && pctOf(t).some((p) => p >= e.pct)) return { quote: t, idx: 0, khop: `${pctOf(t).find((p) => p >= e.pct)}%` };
     }
   }
   return null;
@@ -361,7 +368,7 @@ export function recognize(rec, sents, ctxSents = sents, extraNames = []) {
         m = anchor && subjectBefore(anchor.quote, anchor.idx, win, names) ? { quote: anchor.quote } : null;
         // Chủ thể nêu ở câu khác của người đó (“Ông Bình, Giám đốc …”): câu hành vi có tên người đó trước động từ → đã xét ở subjectBefore.
       }
-      return { id: e.id, label: e.label, ok: !!m, quote: m?.quote || '', req: e.req, hoi: e.hoi, w: e.w };
+      return { id: e.id, label: e.label, ok: !!m, quote: m?.quote || '', khop: m?.khop || '', req: e.req, hoi: e.hoi, w: e.w };
     });
     const ok = yeuTo.every((y) => !y.req || y.ok);
     const diem = yeuTo.reduce((n, y) => n + (y.ok ? y.w : 0), 0);

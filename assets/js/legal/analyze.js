@@ -8,6 +8,7 @@ import { focusText, splitText, runChunks, CHUNK } from '../lib/ai-chunk.js';
 import { withCache } from '../lib/cache-mark.js';
 
 import { termsOf, syl, norm } from './terms.js';
+import { isActionSentence } from './lexicon.js';
 import { assessCrime, pickShown, lawCandidates, lawGate, citedArticles, confusableHints } from './relevance.js';
 import { rules } from './ai-rules.js';
 import { RECOGNIZER_OF } from './recognizers.js';
@@ -29,7 +30,8 @@ export function matchScore(actTerms, sentTerms, phrase = '', sentence = '') {
   return Math.min(1, (b / Math.max(2, actTerms.bi.size)) * 0.75 + (u / Math.max(3, actTerms.uni.size)) * 0.35);
 }
 
-// Dấu hiệu một câu mô tả hành vi (động từ thường gặp trong hồ sơ hình sự).
+// Dấu hiệu một câu mô tả hành vi: CỤM có nghĩa trong lexicon.js (không dùng từ đơn: “đánh giá”, “tổ chức”, “tham gia”… không
+// còn bị coi là hành vi). ACTION giữ lại cho nơi khác tham chiếu; analyzeOffline dùng isActionSentence.
 export const ACTION = /(chiếm đoạt|chiếm giữ|lừa|gian dối|giả mạo|làm giả|giả danh|nhận tiền|nhận hối lộ|đưa hối lộ|đưa tiền|môi giới|chi khống|lập khống|kê khai|khai khống|nâng khống|nâng giá|rút tiền|chuyển tiền|chuyển khoản|thông đồng|câu kết|móc nối|chỉ định thầu|nâng|hợp thức|ký duyệt|phê duyệt|tham ô|lạm quyền|lợi dụng|vượt quá|thiếu trách nhiệm|cố ý|vi phạm|trộm|cắp|cướp|cưỡng đoạt|đe dọa|uy hiếp|đánh|đâm|chém|gây thương tích|giết|hiếp|dâm|mua bán|tàng trữ|vận chuyển|sản xuất|buôn lậu|trốn thuế|xuất hóa đơn|mua hóa đơn|cho vay|đánh bạc|tổ chức|chứa chấp|tiêu thụ|rửa tiền|hủy hoại|phá hoại|xả thải|khai thác|tham gia)/iu;
 
 const short = (s, n = 140) => {
@@ -130,7 +132,7 @@ export function analyzeOffline(text, { primary, jobNames = [] } = {}) {
   };
   const fresh = sentences
     .map((s, i) => ({ s, st: sentT[i] }))
-    .filter(({ s }) => ACTION.test(s) && !used.has(short(s, 260)) && !/^(căn cứ|xét|theo|thực hiện|qua|ngày|hồi|vào lúc)\b/iu.test(s) && !/có dấu hiệu (của )?tội|theo (quy định tại )?Điều \d/iu.test(s))
+    .filter(({ s }) => isActionSentence(s) && !used.has(short(s, 260)) && !/^(căn cứ|xét|theo|thực hiện|qua|ngày|hồi|vào lúc)\b/iu.test(s) && !/có dấu hiệu (của )?tội|theo (quy định tại )?Điều \d/iu.test(s))
     .slice(0, 8)
     .map(({ s, st }) => ({ ten: short(s), dieu: bestDieu(st), hanhViId: null, trich: short(s, 260), score: 0, checked: false, nguon: 'tai-lieu' }))
     .map((x) => ({ ...x, canCu: top.find((c) => c.dieu === x.dieu)?.reasons?.[0] || '', can: top.find((c) => c.dieu === x.dieu)?.can || null }));

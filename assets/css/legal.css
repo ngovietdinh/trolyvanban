@@ -5431,3 +5431,6 @@ body.dg-lock { overflow: hidden; }
 @media (max-width: 640px) {
   .ct-title-act { margin-left: 0; width: 100%; }
 }
+
+/* Cụm từ đã khớp (mô hình cụm có nghĩa, v2.50) */
+.ct-khop, .lr-el small { color: var(--text-3); font-size: 12px; font-weight: 400; }
