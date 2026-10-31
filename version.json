@@ -1,8 +1,9 @@
 {
-  "version": "2.49.0",
-  "date": "2026-10-28",
+  "version": "2.50.0",
+  "date": "2026-10-31",
   "notes": [
-    "Tòa án: tạo vụ án mở bản nháp, chỉ vào sổ khi bấm Lưu hồ sơ; Hủy có hỏi lại; lỡ rời trang thì giữ tạm — Sổ vụ án hiện Bản nháp chưa lưu để tiếp tục hoặc bỏ",
-    "Hồ sơ đã lưu: hiện Đã lưu hh:mm, nút Lưu và Xóa hồ sơ (hỏi lại)"
+    "Nhận diện tội danh theo cụm có nghĩa: không luận tội từ chữ đơn lẻ (“10%”, “đánh giá” không còn bị gán vào cố ý gây thương tích); 1.866 cụm hành vi quét tự động từ nguyên văn Bộ luật cho 320 điều, hiện “khớp cụm” ở Tòa án và Cơ quan điều tra",
+    "Đọc PDF quét, ảnh chụp tiếng Việt: mô hình ngôn ngữ pháp lý tự sửa dấu sau OCR (“TOI CAO” → “TỐI CAO”, “Quyét định so” → “Quyết định số”); Cài đặt có ba cách: Trên máy, Trên máy + AI soát lỗi, AI đọc ảnh trang",
+    "Bản cài đặt máy tính: thêm bộ nhận dạng PaddleOCR + VietOCR chạy ngay trong máy, đóng gói sẵn trong bộ cài (bộ cài nặng thêm khoảng 120 MB), tự khử nghiêng trang; chọn ở Cài đặt → Nhận dạng chữ bản quét khi Tesseract đọc kém"
   ]
 }
