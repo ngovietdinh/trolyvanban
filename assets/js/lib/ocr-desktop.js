@@ -40,6 +40,8 @@ export async function ocrImageDesktop(canvas, { onProgress } = {}) {
   if (!a) throw new Error('Bộ nhận dạng tại chỗ chưa sẵn sàng');
   const png = await canvasPng(canvas);
   const r = await a.page(png, { onProgress: onProgress ? (p) => onProgress({ status: 'recognizing text', progress: p.total ? p.done / p.total : 0 }) : null });
+  if (!r || r.error) throw new Error(r?.error || 'Bộ nhận dạng tại chỗ không trả lời');
+  if (!Array.isArray(r.lines)) throw new Error('Kết quả nhận dạng không hợp lệ');
   const lines = [];
   for (const l of r.lines || []) {
     const text = String(l.text || '').replace(/\s+$/, '');

@@ -191,6 +191,7 @@ export function render(ctx) {
         </div>
       </div>
       ${stats.warnings?.length ? `<p class="note warn">${icon('alert', 'ic-sm')}<span>${stats.warnings.map(escapeHtml).join('<br>')}</span></p>` : ''}
+      ${stats.vietocrError ? `<p class="note">${icon('alert', 'ic-sm')}<span>Bộ PaddleOCR + VietOCR lỗi (${escapeHtml(stats.vietocrError)}) — các trang đã được đọc bằng Tesseract. Xem Cài đặt → Nhận dạng chữ bản quét.</span></p>` : ''}
       ${stats.ocr && !stats.aiFixed ? `<p class="note">${icon('info', 'ic-sm')}<span>Trang nhận dạng chữ (OCR) có thể còn lỗi nhỏ ở chữ in hoa, chữ mờ — nên rà soát hoặc dùng “Kiểm tra chính tả”${ctx.hasAI() ? ', bật “AI soát lỗi” hoặc chế độ “AI đọc ảnh”' : ''}.</span></p>` : ''}
       <div class="pw-preview" data-preview>${flowToHtml(doc)}</div>`;
     fitPreview();

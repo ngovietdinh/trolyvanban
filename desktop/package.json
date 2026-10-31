@@ -34,8 +34,8 @@
       "build/icon.png",
       "web/**/*",
       "ocr/engine.cjs",
-      "!node_modules/onnxruntime-node/bin/napi-v6/${/*}/**",
-      "node_modules/onnxruntime-node/bin/napi-v6/${os}/${arch}/**",
+      "!node_modules/onnxruntime-node/bin/napi-v6/**",
+      "node_modules/onnxruntime-node/bin/napi-v6/${platform}/${arch}/**",
       "!node_modules/onnxruntime-node/script/**",
       "!node_modules/onnxruntime-node/**/*.d.ts",
       "!node_modules/onnxruntime-node/**/*.map"

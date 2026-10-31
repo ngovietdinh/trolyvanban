@@ -30,7 +30,7 @@ async function pagePng() {
 }
 
 test('bộ máy Node: phát hiện dòng chữ bằng PaddleOCR trên ảnh trang; trạng thái báo thiếu VietOCR khi chưa tải', async () => {
-  const { Engine } = require(join(root, 'desktop/ocr/engine.cjs'));
+  const { Engine, cropRgba } = require(join(root, 'desktop/ocr/engine.cjs'));
   const { PNG } = require(join(root, 'node_modules/pngjs'));
   const png = PNG.sync.read(await pagePng());
   const img = { width: png.width, height: png.height, data: new Uint8ClampedArray(png.data.buffer, png.data.byteOffset, png.data.length) };
@@ -50,13 +50,17 @@ test('bộ máy Node: phát hiện dòng chữ bằng PaddleOCR trên ảnh tran
     assert.ok(b.score >= 0.5);
   }
   for (let i = 1; i < boxes.length; i++) assert.ok(boxes[i].y0 >= boxes[i - 1].y0 - (boxes[i - 1].y1 - boxes[i - 1].y0), 'thứ tự đọc');
-  // Chưa có VietOCR → page() không chữ vẫn trả về hộp; nhận dạng báo lỗi rõ.
+  // page() không chữ vẫn trả về hộp. Chưa có VietOCR → nhận dạng báo lỗi rõ; có (thư mục mô hình đã chép sẵn) → đọc được chữ.
   const r = await eng.page(img, { withText: false });
   assert.equal(r.lines.length, boxes.length);
-  await assert.rejects(() => eng.recognize({ width: 10, height: 10, data: new Uint8ClampedArray(400) }), /VietOCR/);
+  if (!st.rec) await assert.rejects(() => eng.recognize({ width: 10, height: 10, data: new Uint8ClampedArray(400) }), /VietOCR/);
+  else {
+    const line = await eng.recognizeLine(cropRgba(img, boxes[1].x0, boxes[1].y0 - (boxes[1].y1 - boxes[1].y0) * 0.4, boxes[1].x1, boxes[1].y1 + (boxes[1].y1 - boxes[1].y0) * 0.4));
+    assert.ok(line.text.length >= 5 && line.conf > 0.5, JSON.stringify(line));
+  }
   eng.dispose();
   // Tiền xử lý: khử nghiêng, tách dòng dài tại khoảng trắng, ký tự ngoài bộ chữ, ngoặc kép cong.
-  const { rotateRgba, estimateSkew, splitLine, cropRgba, fixUnknownChars, curlyQuotes } = require(join(root, 'desktop/ocr/engine.cjs'));
+  const { rotateRgba, estimateSkew, splitLine, fixUnknownChars, curlyQuotes } = require(join(root, 'desktop/ocr/engine.cjs'));
   assert.equal(Math.abs(estimateSkew(img)) < 0.2, true, 'trang thẳng → góc ≈ 0');
   const tilted = rotateRgba(img, 1.5);
   const est = estimateSkew(tilted);
@@ -128,13 +132,17 @@ test('giao diện: tlvbDesktop.ocr.status() và page() qua IPC; Cài đặt hi�
 
 // Có bộ mô hình VietOCR thật (TLVB_OCR_TEST_MODELS=<thư mục chứa vietocr-*.onnx + vietocr.json>): nhận dạng cả trang qua IPC
 // và chọn được bộ VietOCR trong Cài đặt. CI không có mô hình → bỏ qua.
-test('có mô hình VietOCR: nhận dạng trang qua IPC ra đúng chữ, Cài đặt chọn được PaddleOCR + VietOCR', { skip: !process.env.TLVB_OCR_TEST_MODELS && 'cần TLVB_OCR_TEST_MODELS' }, async () => {
+// Bộ cài đóng gói sẵn mô hình (TLVB_EXE trỏ tới bản đã đóng gói) → chạy luôn; không có mô hình và không có env → bỏ qua.
+test('có mô hình VietOCR: nhận dạng trang qua IPC ra đúng chữ, Cài đặt chọn được PaddleOCR + VietOCR', async (t) => {
   const src = process.env.TLVB_OCR_TEST_MODELS;
-  const dest = join(tmp, 'profile', 'ocr-models');
-  mkdirSync(dest, { recursive: true });
-  for (const f of ['vietocr-encoder.onnx', 'vietocr-decoder.onnx', 'vietocr.json']) copyFileSync(join(src, f), join(dest, f));
+  if (src) {
+    const dest = join(tmp, 'profile', 'ocr-models');
+    mkdirSync(dest, { recursive: true });
+    for (const f of ['vietocr-encoder.onnx', 'vietocr-decoder.onnx', 'vietocr.json']) copyFileSync(join(src, f), join(dest, f));
+  }
   const st = await page.evaluate(() => window.tlvbDesktop.ocr.status());
-  assert.equal(st.available, true, JSON.stringify(st));
+  if (!st.rec && !src) return t.skip('bộ cài không kèm mô hình VietOCR và không có TLVB_OCR_TEST_MODELS');
+  assert.equal(st.available, true, `bộ nhận dạng phải sẵn sàng: ${JSON.stringify(st)}`);
   const png = readFileSync(join(tmp, 'page.png'));
   const r = await page.evaluate(async (b64) => {
     const bin = atob(b64);

@@ -647,6 +647,7 @@ export function render(ctx) {
       const st = await desktopOcrStatus();
       if (!statusEl) return;
       if (!st) statusEl.textContent = 'Không đọc được tình trạng mô hình.';
+      else if (st.error) statusEl.textContent = `${st.error} — bản quét sẽ đọc bằng Tesseract. Cài lại bộ cài mới nhất; nếu vẫn lỗi, gửi dòng này cho người hỗ trợ.`;
       else if (st.available) statusEl.textContent = `Mô hình đã sẵn sàng: phát hiện (PaddleOCR) và nhận dạng (VietOCR).${store.get('ocr-engine', 'tesseract') === 'vietocr' ? ' Bản quét sẽ được đọc bằng bộ này.' : ' Chọn “PaddleOCR + VietOCR” ở trên để dùng.'}`;
       else if (st.det) statusEl.textContent = `Bộ cài này thiếu mô hình VietOCR — bấm Tải mô hình, hoặc chép vietocr-encoder.onnx, vietocr-decoder.onnx, vietocr.json vào ${st.dir}.`;
       else statusEl.textContent = st.error ? `Bộ nhận dạng tại chỗ lỗi: ${st.error}` : 'Thiếu mô hình phát hiện dòng chữ (ppocr-det.onnx) trong bộ cài.';

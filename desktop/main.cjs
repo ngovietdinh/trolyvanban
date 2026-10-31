@@ -297,10 +297,23 @@ function bindUpdater() {
     return ocrEngine;
   };
   const fromOrigin = (e) => String(e.senderFrame?.url || '').startsWith(ORIGIN);
-  ipcMain.handle('tlvb:ocr-status', (e) => {
+  let ocrSelfTest = null; // lần đầu: thử nạp onnxruntime + mô hình phát hiện để báo lỗi thật (thiếu thư viện theo hệ máy, tệp hỏng…)
+  ipcMain.handle('tlvb:ocr-status', async (e) => {
     if (!fromOrigin(e)) return null;
     try {
-      return { ...getEngine().status(), modelBase: OCR_MODEL_BASE };
+      const st = getEngine().status();
+      if (st.det) {
+        ocrSelfTest ??= getEngine()
+          .session('ppocr-det.onnx')
+          .then(() => '')
+          .catch((err) => {
+            ocrSelfTest = null;
+            return err?.message || String(err);
+          });
+        const err = await ocrSelfTest;
+        if (err) return { ...st, available: false, error: `Không nạp được bộ nhận dạng: ${err}`, modelBase: OCR_MODEL_BASE };
+      }
+      return { ...st, modelBase: OCR_MODEL_BASE };
     } catch (err) {
       return { available: false, det: false, cls: false, rec: false, error: err?.message || String(err) };
     }

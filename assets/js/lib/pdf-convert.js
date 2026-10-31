@@ -17,13 +17,17 @@ export function pickOcrEngine() {
   return enginePromise;
 }
 export const resetOcrEngine = () => (enginePromise = null);
+/** Lỗi gần nhất của bộ PaddleOCR + VietOCR (để giao diện báo rõ thay vì ra trang trắng). */
+export let lastDesktopOcrError = '';
 const recognize = async (canvas, onProgress) => {
   const eng = await pickOcrEngine();
   if (eng === 'vietocr') {
     try {
       return await ocrImageDesktop(canvas, { onProgress });
-    } catch {
-      // Bộ tại chỗ lỗi → quay về Tesseract cho trang này.
+    } catch (e) {
+      // Bộ tại chỗ lỗi → quay về Tesseract cho trang này, ghi lại lỗi.
+      lastDesktopOcrError = e?.message || String(e);
+      console.warn('PaddleOCR + VietOCR lỗi, dùng Tesseract:', lastDesktopOcrError);
     }
   }
   return ocrImage(canvas, { onProgress });
@@ -142,6 +146,7 @@ export async function convertFile(file, opts = {}) {
     onProgress?.({ page: pageNo, total, stage: 'Nhận dạng chữ (OCR)', pct: 0 });
     const ocr = await recognize(canvas, (m) => m.status === 'recognizing text' && onProgress?.({ page: pageNo, total, stage: 'Nhận dạng chữ (OCR)', pct: m.progress }));
     if (ocr.engine === 'vietocr') stats.vietocr = (stats.vietocr || 0) + 1;
+    else if (lastDesktopOcrError) stats.vietocrError = lastDesktopOcrError;
     // Sửa dấu / chữ sai theo mô hình ngôn ngữ pháp lý (chạy trên máy, không đổi vị trí chữ).
     stats.fixed = (stats.fixed || 0) + (await correctOcr(ocr).catch(() => 0));
     check();

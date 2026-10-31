@@ -145,6 +145,18 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           node --test tests/desktop/update.mjs
+      # Bộ nhận dạng PaddleOCR + VietOCR phải chạy được trong đúng bản đã đóng gói của hệ máy này (thư viện onnxruntime
+      # theo nền tảng, mô hình kèm bộ cài): trạng thái sẵn sàng, đọc một trang ra đúng chữ.
+      - name: Kiểm thử OCR trên bản đã đóng gói
+        shell: bash
+        run: |
+          if [ "${{ matrix.target }}" = mac ]; then
+            APP="$(ls -d desktop/dist/mac-arm64/*.app)"; EXE="$APP/Contents/MacOS/$(basename "$APP" .app)"
+          else
+            EXE="$(ls desktop/dist/win-unpacked/*.exe | head -1)"
+          fi
+          echo "EXE=$EXE"
+          TLVB_EXE="$EXE" node --test --test-concurrency=1 tests/desktop/ocr.mjs
       # Bản cài "bảo mật" cho máy trạm trong cơ quan (Windows): chế độ bảo mật luôn bật, chặn kết nối ra Internet ở
       # tầng ứng dụng, không tự cập nhật qua Internet, không mở công cụ nhà phát triển. Kiểm thử trước khi đóng gói.
       - name: Kiểm thử bản bảo mật
