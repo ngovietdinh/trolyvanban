@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { assessCrime } from '../../assets/js/legal/relevance.js';
 import { analyzeOffline } from '../../assets/js/legal/analyze.js';
 import { findPhrase, pctInjury, isActionSentence, EXCLUDE, ASSAULT, groupRe } from '../../assets/js/legal/lexicon.js';
-import { chunksOf, namePhrases, conductText, extractLawPhrases, PROCEDURAL } from '../../assets/js/legal/law-phrases.js';
+import { chunksOf, namePhrases, conductText, extractLawPhrases, PROCEDURAL, commentaryPhrasesOf } from '../../assets/js/legal/law-phrases.js';
 import { LAW_PHRASES } from '../../assets/js/legal/law-phrases-generated.js';
 import { phraseEvidence, lawPhrasesOf } from '../../assets/js/legal/relevance.js';
 
@@ -174,4 +174,22 @@ test('không kết tội từ ngôn ngữ thủ tục lời khai (“khai báo�
   // Tội của quân nhân: cùng câu “đào ngũ”, có bối cảnh quân đội thì xét, nội dung dân sự không.
   assert.equal(assessCrime('402', 'Binh nhất T rời đơn vị, đào ngũ 2 tháng dù đã bị kỷ luật.').show, true);
   assert.equal(assessCrime('409', 'Ông H bỏ ca trực đêm ở công ty, không bàn giao.').show, false);
+});
+
+test('cụm hành vi từ Bình luận BLHS: chỉ cụm động từ + đối tượng 2–7 âm tiết, trọng số 2, không tự đủ, không câu chữ của sách', () => {
+  const ph = commentaryPhrasesOf('Giả mạo trong công tác là hành vi của một người vì vụ lợi, lợi dụng chức vụ, quyền hạn sửa chữa, làm sai lệch nội dung giấy tờ, tài liệu; làm, cấp giấy tờ giả; giả mạo chữ ký của người có chức vụ, quyền hạn{{fn12}}.');
+  assert.ok(ph.includes('làm sai lệch nội dung giấy tờ') && ph.includes('giả mạo chữ ký'), ph.join(' | '));
+  assert.ok(ph.every((x) => /^[\p{L}\s]+$/u.test(x) && x.split(' ').length <= 7));
+  let nBl = 0;
+  for (const [d, list] of Object.entries(LAW_PHRASES)) {
+    for (const [p, w, solo, src] of list) {
+      if (src !== 'bl') continue;
+      nBl++;
+      assert.ok(w === 2 && solo === 0, `Điều ${d}: cụm bình luận “${p}” phải w 2, không tự đủ`);
+      assert.ok(p.split(' ').length <= 7 && !/\sl[àa]\s|\{|\}/.test(p), `Điều ${d}: “${p}”`);
+    }
+  }
+  assert.ok(nBl >= 300, `có cụm bình luận trong gói: ${nBl}`);
+  // Cụm bình luận một mình không đủ: một câu chỉ khớp cụm bình luận không làm hiện điều.
+  assert.equal(assessCrime('353', 'Kế toán sửa chữa sổ sách cho khớp số liệu cuối năm.').show, false);
 });

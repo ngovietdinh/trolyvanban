@@ -218,3 +218,77 @@ export function extractLawPhrases(articles = [], { max = 24, corpus = [], corpus
   }
   return out;
 }
+
+/* ---------------- Cụm hành vi từ Bình luận khoa học BLHS (chỉ rút cụm từ, không lưu nội dung sách) ---------------- */
+const BL_VERB =
+  '(?:làm giả|làm sai lệch|làm ra|sửa chữa|chỉnh sửa|tẩy xóa|thay đổi|thêm bớt|giả mạo|sử dụng|lợi dụng|chiếm đoạt|chiếm giữ|chiếm hữu|mua bán|vận chuyển|tàng trữ|sản xuất|chế tạo|đe dọa|ép buộc|cưỡng ép|cản trở|phá hủy|hủy hoại|lừa dối|gian dối|xâm nhập|xâm phạm|xúc phạm|vu khống|lan truyền|phát tán|đăng tải|cung cấp|môi giới|chứa chấp|rủ rê|lôi kéo|dụ dỗ|khai thác|săn bắt|chặt phá|cho vay|hạch toán|kê khai|không nộp|không thực hiện|từ chối|che giấu|can thiệp|truy cập|phát hành|chuyển nhượng|tiêu thụ|đánh tráo|đưa vào|biển thủ|tham ô|bỏ trốn|bắt giữ|giam giữ|nhốt|đánh đập|hành hạ|ngược đãi|bỏ mặc|đốt|giết|đánh|đưa|nhận|mua|bán|lấy|cấp|ký|khắc|in|bắt|giữ|trốn|bỏ|rút|thu|chi|cưỡng|hiếp|dùng|gây)';
+const BL_START = new RegExp(`(?:^|[\\s,;:(])(${BL_VERB})\\s+`, 'giu');
+const BL_STOP = /\s+(?:của|cho|với|thì|là|nhằm|để|mà|hoặc|và|hay|như|so với|cũng|đều|đã|sẽ|đang|bị|được|theo|trong|tại|từ|đến|khi|nếu|vì|do|rồi|thuộc|nhưng|này|đó|kia|khác|phải|có thể|ở|về|lên|xuống|ra|vào)\s+|[,.;:()“”"'\d]/u;
+const BL_BAD = /(?:^|\s)(?:hành vi|tội|điều|khoản|quy định|trường hợp|người phạm|bị cáo|tức là|nghĩa là|được hiểu|cần chú ý|tương tự|chỉ định|đáng kể|nghiêm trọng|cấu thành|là|việc|một|các|những|rất|hơn)(?:\s|$)|\s(?:được|phải|đều|cũng|có|không|nữa|ngay|đây|thế|vậy|khác|đó|này|\p{L})$/u;
+/** Các đoạn mô tả hành vi trong bình luận một điều: từ "Mặt khách quan" tới chủ thể/chủ quan/hình phạt, cộng câu định nghĩa "… là hành vi …" và gạch đầu dòng. */
+export function commentaryActParagraphs(paragraphs = []) {
+  const out = [];
+  let on = false;
+  for (const p of paragraphs) {
+    const t = String(p || '').trim();
+    if (!t) continue;
+    if (/^\d+\.\s*(?:về )?hình phạt|mặt chủ quan|^[a-dđ][.)]\s*(?:chủ thể|khách thể|mặt chủ quan)|^chủ thể|^khách thể|^hậu quả|phương tiện phạm tội|^\(?iii\)?/iu.test(t)) on = false;
+    if (/mặt khách quan|hành vi khách quan|các hành vi|thủ đoạn|hành vi phạm tội/iu.test(t)) on = true;
+    if (on || /\blà hành vi\b/iu.test(t) || /^[-+•]\s/.test(t)) out.push(t);
+  }
+  return out;
+}
+/** Cụm động từ + đối tượng (2–7 âm tiết) trong một đoạn văn bình luận. */
+export function commentaryPhrasesOf(text) {
+  const out = [];
+  const t = clean(String(text).replace(/\{\{[^}]*\}\}?/g, ' ').replace(/[\[\]{}*_^]+/g, ' ')).toLocaleLowerCase('vi-VN'); // bỏ dấu chú thích {{fn…}}
+  for (const m of t.matchAll(BL_START)) {
+    const rest = t.slice(m.index + m[0].length);
+    const end = rest.search(BL_STOP);
+    const obj = (end < 0 ? rest : rest.slice(0, end)).trim();
+    const ph = `${m[1]} ${obj}`.trim();
+    const n = ph.split(' ').length;
+    if (obj && n >= 2 && n <= 7 && /^[\p{L}\s]+$/u.test(ph) && !BL_BAD.test(ph) && !PROCEDURAL.test(ph) && !JUNK.test(ph)) out.push(ph);
+  }
+  return out;
+}
+/**
+ * Cụm hành vi bổ sung từ bình luận cho từng điều: [{ so, bl: [đoạn] }] → { so: [[cụm, 2, 0, 'bl']] }. Chỉ giữ cụm có ở ≤ 2 điều,
+ * chưa có trong gói từ Bộ luật, không phải ngôn ngữ chung của hồ sơ (kho án lệ) hay cặp từ thông dụng (vi-lm). Luôn w 2 / solo 0:
+ * một mình không đủ, phải đi cùng cụm khác của cùng điều.
+ */
+export function commentaryPhrases(articles = [], { existing = {}, corpus = [], corpusRatio = 0.2, bigrams = null, commonBigram = 30, max = 16, wordRatio = 0.08 } = {}) {
+  const corpusNorm = corpus.map((t) => ` ${String(t || '').toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ')} `);
+  const generic = (ph) => {
+    if (!corpusNorm.length) return false;
+    const needle = ` ${ph} `;
+    let n = 0;
+    for (const t of corpusNorm) if (t.includes(needle)) n++;
+    return n / corpusNorm.length >= corpusRatio;
+  };
+  const df = new Map();
+  const wordDf = new Map(); // từ xuất hiện ở bao nhiêu điều (toàn bộ phần bình luận) — cụm chỉ gồm từ phổ biến (“mua bán hàng hóa”) không đặc trưng
+  const per = new Map();
+  for (const a of articles) {
+    const set = new Set();
+    const paras = commentaryActParagraphs(a.bl || []);
+    for (const p of paras) for (const c of commentaryPhrasesOf(p)) set.add(c);
+    per.set(String(a.so), set);
+    for (const c of set) df.set(c, (df.get(c) || 0) + 1);
+    const words = new Set(clean((a.bl || []).join(' ')).toLocaleLowerCase('vi-VN').match(/[\p{L}]+/gu) || []);
+    for (const w of words) wordDf.set(w, (wordDf.get(w) || 0) + 1);
+  }
+  const rareLimit = Math.max(3, Math.round(articles.length * wordRatio));
+  const specific = (ph) => ph.split(' ').some((w) => (wordDf.get(w) || 0) <= rareLimit);
+  const out = {};
+  for (const [so, set] of per) {
+    const have = new Set((existing[so] || []).map((x) => x[0]));
+    const list = [...set]
+      .filter((c) => (df.get(c) || 0) <= 2 && !have.has(c) && specific(c) && !generic(c) && (bigrams?.[c] || 0) < commonBigram)
+      .sort((a, b) => b.split(' ').length - a.split(' ').length)
+      .slice(0, max)
+      .map((c) => [c, 2, 0, 'bl']);
+    if (list.length) out[so] = list;
+  }
+  return out;
+}

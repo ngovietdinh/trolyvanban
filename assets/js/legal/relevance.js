@@ -25,7 +25,7 @@ export function lawPhrasesOf(d) {
   if (PH.has(k)) return PH.get(k);
   // Điều chưa có trong gói sinh sẵn (điều mới bổ sung): dùng tên điều làm cụm định danh — tên phải xuất hiện nguyên cụm.
   const src = LAW_PHRASES[k] || namePhrases(findCrime(k)?.ten || '').map((n) => [n, 3, 1]);
-  const list = src.map(([ph, w, solo]) => ({ ph, w, solo: !!solo, re: rxl(`(?<![\\p{L}\\p{M}])${ph.replace(/ /g, '\\s+')}(?![\\p{L}\\p{M}])`, 'iu') }));
+  const list = src.map(([ph, w, solo, nguon]) => ({ ph, w, solo: !!solo, bl: nguon === 'bl', re: rxl(`(?<![\\p{L}\\p{M}])${ph.replace(/ /g, '\\s+')}(?![\\p{L}\\p{M}])`, 'iu') }));
   PH.set(k, list);
   return list;
 }
@@ -40,7 +40,7 @@ export function phraseEvidence(d, sents) {
     const hits = [];
     for (const p of P) {
       const m = findPhrase(text, p.re);
-      if (m) hits.push({ ph: p.ph, w: p.w, solo: p.solo, khop: m.khop });
+      if (m) hits.push({ ph: p.ph, w: p.w, solo: p.solo, bl: p.bl, khop: p.bl ? `${m.khop} (theo bình luận)` : m.khop });
     }
     if (!hits.length) continue;
     const spec = hits.filter((h) => h.w >= 2);
