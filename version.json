@@ -1,5 +1,5 @@
 {
-  "version": "2.50.1",
+  "version": "2.50.2",
   "date": "2026-10-31",
   "notes": [
     "Bản cài đặt Windows, macOS: sửa lỗi bộ PaddleOCR + VietOCR đọc ra trang trắng (bộ cài thiếu thư viện onnxruntime theo hệ máy); khi bộ này lỗi thì tự đọc bằng Tesseract và báo rõ lý do ở trang PDF sang Word và Cài đặt",
