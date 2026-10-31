@@ -195,13 +195,16 @@ jobs:
           sleep 25
           if kill -0 $PID 2>/dev/null; then echo "Bản Intel chạy được sau 25 giây"; kill $PID; else echo "Bản Intel thoát sớm:"; cat run.log; ls ~/Library/Logs/DiagnosticReports/; exit 1; fi
 
+  # Chỉ phát hành từ main: chạy tay trên nhánh khác chỉ để kiểm tra đóng gói (tệp ở Artifacts), không ghi đè Releases.
   release:
+    if: github.ref == 'refs/heads/main'
     needs: [build, test-mac-intel]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
+          pattern: tlvb-*
           path: out
           merge-multiple: true
       - name: Danh sách tệp cho cập nhật tại chỗ
