@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { assessCrime } from '../../assets/js/legal/relevance.js';
 import { analyzeOffline } from '../../assets/js/legal/analyze.js';
 import { findPhrase, pctInjury, isActionSentence, EXCLUDE, ASSAULT, groupRe } from '../../assets/js/legal/lexicon.js';
-import { chunksOf, namePhrases, conductText, extractLawPhrases } from '../../assets/js/legal/law-phrases.js';
+import { chunksOf, namePhrases, conductText, extractLawPhrases, PROCEDURAL } from '../../assets/js/legal/law-phrases.js';
 import { LAW_PHRASES } from '../../assets/js/legal/law-phrases-generated.js';
 import { phraseEvidence, lawPhrasesOf } from '../../assets/js/legal/relevance.js';
 
@@ -152,4 +152,26 @@ test('nhận diện theo cụm định tội cho điều chưa có bộ yếu t�
     assert.ok(got.every((d) => d === '251'), `${t} → ${got.join()}`);
   }
   assert.equal(phraseEvidence('214', [{ t: 'Ông Hải lập hồ sơ giả mạo chữ ký.' }])?.strong, false, 'một cụm 4 âm tiết chưa tự đủ');
+});
+
+test('không kết tội từ ngôn ngữ thủ tục lời khai (“khai báo”, “tự nguyện”) hay cụm 2 âm tiết thông dụng; tội của quân nhân cần bối cảnh quân đội', () => {
+  // Gói cụm: không chứa từ thủ tục; vế 2 âm tiết tự đủ chỉ là thuật ngữ tội danh riêng.
+  for (const [d, list] of Object.entries(LAW_PHRASES)) {
+    for (const [ph, , solo] of list) {
+      assert.ok(!PROCEDURAL.test(ph), `Điều ${d}: cụm thủ tục “${ph}” không được là cụm định tội`);
+      if (solo && ph.split(' ').length < 3) assert.ok(!/^(khai báo|cấp bậc|doanh nghiệp|hỗ trợ|phiên họp|làm mất|điều động|ứng phó|thăm dò|chữa cháy|tiền chất|một chồng|biết|làm việc)$/.test(ph), `Điều ${d}: “${ph}” không được tự đủ`);
+    }
+  }
+  assert.ok(!LAW_PHRASES['400'].some((x) => x[0] === 'khai báo'));
+  // Lời khai thủ tục: không ra điều nào; đặc biệt không ra Điều 400 (khai báo … cho địch).
+  const khai = 'Tôi tự nguyện khai báo, lời khai khách quan, đúng sự thật. Tôi đã đọc lại biên bản và ký tên.';
+  assert.equal(assessCrime('400', khai).show, false);
+  assert.ok(!analyzeOffline(khai, {}).crimes.some((c) => c.dieu === '400'));
+  // Vụ sửa dữ liệu quan trắc: không được gợi ý Điều 400 chỉ vì chữ “khai báo”.
+  const quanTrac = 'Trong lúc chờ duyệt, tôi chỉ đạo anh Lân liên hệ Công ty Việt An hỏi cách chỉnh sửa dữ liệu luôn dưới ngưỡng cho phép. Tôi biết chỉnh sửa dữ liệu quan trắc là trái pháp luật nhưng không ngăn chặn. Tôi tự nguyện khai báo, lời khai khách quan, đúng sự thật.';
+  const r = analyzeOffline(quanTrac, {}).crimes.map((c) => c.dieu);
+  assert.ok(!r.includes('400'), r.join());
+  // Tội của quân nhân: cùng câu “đào ngũ”, có bối cảnh quân đội thì xét, nội dung dân sự không.
+  assert.equal(assessCrime('402', 'Binh nhất T rời đơn vị, đào ngũ 2 tháng dù đã bị kỷ luật.').show, true);
+  assert.equal(assessCrime('409', 'Ông H bỏ ca trực đêm ở công ty, không bàn giao.').show, false);
 });

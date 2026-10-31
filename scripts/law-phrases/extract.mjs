@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Sinh assets/js/legal/law-phrases-generated.js từ nguyên văn Bộ luật Hình sự.
-// Cách chạy: node scripts/law-phrases/extract.mjs <articles.json>
+// Cách chạy: node scripts/law-phrases/extract.mjs <articles.json> [an-le.json]
+//   an-le.json (mặc định assets/data/an-le.json): kho án lệ để đo cụm nào là ngôn ngữ chung của hồ sơ (có ở ≥ 20% án lệ) → không tự đủ làm căn cứ.
 //   articles.json: [{ so, ten, vb: [dòng nguyên văn điều luật] }] hoặc [{ so, ten, text }] (vd. xuất từ Cài đặt Bộ luật).
 // Chỉ dùng phần nguyên văn điều luật (văn bản pháp luật công khai); không dùng và không ghi nội dung bình luận.
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -13,7 +14,18 @@ if (!src) {
 }
 const raw = JSON.parse(readFileSync(src, 'utf8'));
 const articles = (Array.isArray(raw) ? raw : raw.articles || []).map((a) => ({ so: String(a.so ?? a.dieu), ten: a.ten || '', vb: a.vb, text: a.text })).filter((a) => /^\d+[a-z]?$/.test(a.so) && parseInt(a.so, 10) >= 108); // chỉ Phần thứ hai "Các tội phạm" (Điều 108 trở đi)
-const P = extractLawPhrases(articles);
+const corpusPath = process.argv[3] || new URL('../../assets/data/an-le.json', import.meta.url);
+let corpus = [];
+try {
+  const al = JSON.parse(readFileSync(corpusPath, 'utf8'));
+  corpus = (Array.isArray(al) ? al : Object.values(al)).map((x) => x.text || '').filter((t) => t.length > 500);
+} catch {}
+let bigrams = null;
+try {
+  bigrams = JSON.parse(readFileSync(new URL('../../assets/data/vi-lm.json', import.meta.url), 'utf8')).b; // tần suất cặp âm tiết trong văn bản pháp lý
+} catch {}
+const P = extractLawPhrases(articles, { corpus, bigrams });
+console.log(`Kho đối chiếu: ${corpus.length} văn bản.`);
 const n = Object.keys(P).length;
 const total = Object.values(P).reduce((s, l) => s + l.length, 0);
 const body = Object.entries(P)

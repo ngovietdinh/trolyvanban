@@ -20,6 +20,9 @@ const TAIL = /\s+(?:của người khác|của mình|cho người khác|với ng
 // Động từ hay đứng một mình trong tên điều ("Tội sản xuất, buôn bán hàng cấm") — ghép với đối tượng ở vế sau.
 const VERBS = /^(?:sản xuất|tàng trữ|vận chuyển|sử dụng|mua bán|chế tạo|chiếm đoạt|chiếm giữ|buôn bán|tiêu thụ|trồng|cất giữ|hủy hoại|cố ý làm hư hỏng|làm hư hỏng|phá hủy|làm giả|lưu hành|cung cấp|phát tán|thu thập|cưỡng đoạt|cướp|cướp giật|trộm cắp|lừa đảo|đưa|nhận|môi giới|chứa chấp|lôi kéo|cưỡng bức|dụ dỗ|bắt|giữ|giam|xâm phạm|cản trở|làm sai lệch|tiết lộ|in|phát hành|mang|đánh tráo|tẩy xóa|sửa chữa|làm|cấp|sử dụng trái phép|mua bán trái phép|tàng trữ trái phép|vận chuyển trái phép|sản xuất trái phép|chiếm đoạt trái phép)(?:\s+trái phép)?$/u;
 /** Cụm tên ghép với đối tượng chung chung ("làm tài liệu", "tàng trữ thông tin") không tự đủ làm căn cứ. */
+// Từ ngữ thủ tục tố tụng / lời khai: có trong mọi biên bản (“tôi tự nguyện khai báo”, “lời khai khách quan”) nên không bao giờ
+// là căn cứ định tội, dù trùng chữ với tên điều (Điều 400 “khai báo … cho địch”).
+export const PROCEDURAL = /^(?:khai báo|khai nhận|khai|lời khai|trình bày|thành khẩn|tự nguyện|thừa nhận|phủ nhận|hợp tác|biết|không biết|đồng ý|xác nhận|cam đoan|cam kết|làm việc|chỉ đạo|báo cáo|giải thích|trả lời|hỏi|đáp|đọc lại|ký tên|điểm chỉ|lời khai khách quan|đúng sự thật|khách quan)$/u;
 const GENERIC_OBJ = /\s(?:tài liệu|thông tin|giấy tờ|hàng hóa|tài sản|tiền|vật phẩm|phương tiện|người|dữ liệu|văn bản|hồ sơ|tiền tệ|hóa đơn|chứng từ)$/u;
 /** Tách "động từ + đối tượng" ở đầu một vế tên điều: "mua bán trái phép chất ma túy" → ["mua bán trái phép", "chất ma túy"]. */
 const splitVerb = (x) => {
@@ -134,7 +137,7 @@ export function namePhrasesDetailed(ten) {
   const push = (ph, combo) => {
     if (seen.has(ph) || ph.split(' ').length < 2 || JUNK.test(ph)) return;
     seen.add(ph);
-    out.push({ ph, combo });
+    out.push({ ph, combo, head: !out.length && !combo && ph === pieces[0] });
   };
   for (const x of pieces) {
     if (VERBS.test(x)) {
@@ -151,9 +154,23 @@ export function namePhrasesDetailed(ten) {
  * Rút cụm định tội cho nhiều điều. articles: [{ so, ten, vb: [dòng] }] hoặc [{ so, ten, text }].
  * Trả về { so: [[cụm, w, solo]] } — w: 3 đặc trưng / 2 ít điều dùng / 1 nhiều điều dùng; solo 1 = tự nó đủ làm căn cứ.
  */
-export function extractLawPhrases(articles = [], { max = 24 } = {}) {
+export function extractLawPhrases(articles = [], { max = 24, corpus = [], corpusRatio = 0.2, bigrams = null, commonBigram = 10 } = {}) {
   const per = new Map();
   const df = new Map();
+  // Tần suất cụm trong kho văn bản tố tụng thật (án lệ): cụm có mặt ở ≥ corpusRatio số văn bản dù tội gì (“khai báo”, “cơ quan điều
+  // tra”, “gây thiệt hại”) là ngôn ngữ chung của hồ sơ → không được tự đủ làm căn cứ; cụm 2 âm tiết chung như vậy bị bỏ hẳn.
+  const corpusNorm = corpus.map((t) => ` ${String(t || '').toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ')} `);
+  const corpusDf = new Map();
+  const generic = (ph) => {
+    if (!corpusNorm.length) return false;
+    if (!corpusDf.has(ph)) {
+      const needle = ` ${ph} `;
+      let n = 0;
+      for (const t of corpusNorm) if (t.includes(needle)) n++;
+      corpusDf.set(ph, n / corpusNorm.length);
+    }
+    return corpusDf.get(ph) >= corpusRatio;
+  };
   const nameOwner = new Map(); // cụm tên điều → điều sở hữu (cụm trùng tên điều khác không được dùng làm căn cứ cho điều này)
   for (const a of articles) {
     const lines = Array.isArray(a.vb) ? a.vb : String(a.text || '').split('\n');
@@ -171,18 +188,29 @@ export function extractLawPhrases(articles = [], { max = 24 } = {}) {
   const out = {};
   for (const [so, { chunks, names }] of per) {
     const list = [];
-    // Tên điều nguyên vế: tự đủ. Cụm ghép với đối tượng chung chung ("làm tài liệu"): chỉ là cụm phụ.
-    for (const { ph: n, combo } of names) if (!list.some((x) => x[0] === n)) list.push(combo && GENERIC_OBJ.test(n) ? [n, 2, 0] : [n, 3, 1]);
+    // Tên điều nguyên vế: tự đủ khi ≥ 3 âm tiết và không phải ngôn ngữ chung của hồ sơ; vế 2 âm tiết (“khai báo”, “cấp bậc”) là cụm
+    // đặc trưng nhưng phải đi cùng cụm khác. Cụm ghép với đối tượng chung chung ("làm tài liệu"): chỉ là cụm phụ.
+    for (const { ph: n, combo, head } of names) {
+      if (list.some((x) => x[0] === n) || PROCEDURAL.test(n)) continue;
+      const syls = n.split(' ').length;
+      if (combo && GENERIC_OBJ.test(n)) list.push([n, 2, 0]);
+      else if (generic(n)) list.push([n, syls >= 3 ? 2 : 1, 0]);
+      // Vế 2 âm tiết chỉ tự đủ khi là vế đầu của tên tội, riêng của đúng một điều và không phải từ thông dụng trong hồ sơ
+      // (“làm nhục”, “hiếp dâm”, “vu khống”); vế như “cấp bậc”, “doanh nghiệp”, “ứng phó” phải đi cùng cụm khác.
+      else list.push([n, 3, syls >= 3 || (head && (df.get(n) || 0) <= 1 && (bigrams?.[n] || 0) < commonBigram) ? 1 : 0]);
+    }
     const ranked = chunks
       .map((c) => ({ c, d: df.get(c) || 1, n: c.split(' ').length }))
-      .filter((x) => x.d <= 10 && !(x.n <= 2 && x.d >= 2) && (!nameOwner.has(x.c) || nameOwner.get(x.c) === so))
+      .filter((x) => x.d <= 10 && !(x.n <= 2 && x.d >= 2) && !PROCEDURAL.test(x.c) && (!nameOwner.has(x.c) || nameOwner.get(x.c) === so))
       .sort((a, b) => a.d - b.d || b.n - a.n);
     for (const x of ranked) {
       if (list.some((y) => y[0] === x.c)) continue;
       // Cụm 2 âm tiết (“phụ nữ”, “già yếu”) chỉ là cụm phụ trợ (w 1): không tự ghép thành căn cứ.
-      const w = x.n <= 2 ? 1 : x.d === 1 ? 3 : x.d <= 3 ? 2 : 1;
-      // Tự đủ làm căn cứ: cụm dài (≥ 5 âm tiết) chỉ một điều dùng — cụm 3–4 âm tiết (“lập hồ sơ giả”) vẫn cần thêm cụm khác.
-      const solo = x.d === 1 && x.n >= 5 ? 1 : 0;
+      const gen = generic(x.c);
+      if (gen && x.n <= 2) continue;
+      const w = x.n <= 2 || gen ? 1 : x.d === 1 ? 3 : x.d <= 3 ? 2 : 1;
+      // Tự đủ làm căn cứ: cụm dài (≥ 5 âm tiết) chỉ một điều dùng và không phải ngôn ngữ chung — cụm 3–4 âm tiết vẫn cần thêm cụm khác.
+      const solo = x.d === 1 && x.n >= 5 && !gen ? 1 : 0;
       list.push([x.c, w, solo]);
       if (list.length >= max) break;
     }

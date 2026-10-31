@@ -9,6 +9,8 @@ import { ALL_CRIMES, findCrime } from './engine.js';
 import { termsOf, norm } from './terms.js';
 import { splitSentences } from '../lib/summarize.js';
 import { RECOGNIZER_OF, recognize, explain, JOB_CUE } from './recognizers.js';
+// Tội của quân nhân (Chương XXV, Điều 392–414, chủ thể “Quân nhân tại ngũ…”): chỉ xét khi nội dung có bối cảnh quân đội.
+const MIL_CUE = /quân nhân|quân đội|bộ đội|sĩ quan|hạ sĩ quan|binh sĩ|chiến sĩ|đơn vị quân|tiểu đội|trung đội|đại đội|tiểu đoàn|trung đoàn|sư đoàn|quân khu|quân chủng|binh chủng|doanh trại|chiến đấu|tù binh|cho địch|quân kỳ|vũ khí quân dụng|tại ngũ|nhập ngũ|xuất ngũ|đào ngũ/iu;
 import { LAW_PHRASES } from './law-phrases-generated.js';
 import { namePhrases } from './law-phrases.js';
 import { findPhrase, rx as rxl } from './lexicon.js';
@@ -95,7 +97,7 @@ function index() {
     nameBi.forEach((t) => dfName.set(t, (dfName.get(t) || 0) + 1));
     // Vế đầu của tên (trước “hoặc” / “và” / dấu phẩy) là phần định danh tội: “cố ý gây thương tích” trong “… hoặc gây tổn hại sức khỏe…”.
     const head = c.ten.replace(/^Tội\s+/i, '').split(/\s+(?:hoặc|và)\s+|[,;]/)[0];
-    prof.set(c.dieu, { ten: c.ten, nameBi, headBi: termsOf(head).bi, nameCore: null, all, thin: c.hanhVi.length <= 1, needJob: /^Người có chức vụ/i.test(c.chuThe || '') });
+    prof.set(c.dieu, { ten: c.ten, nameBi, headBi: termsOf(head).bi, nameCore: null, all, thin: c.hanhVi.length <= 1, needJob: /^Người có chức vụ/i.test(c.chuThe || ''), needMil: /^Quân nhân/i.test(c.chuThe || '') });
   }
   // Cụm đặc trưng của tên tội danh: bỏ cụm chung chung xuất hiện ở nhiều tên (“quy định”, “sử dụng”, “tài sản”…).
   prof.forEach((p) => (p.nameCore = new Set([...p.headBi].filter((t) => (dfName.get(t) || 0) < 15))));
@@ -126,7 +128,7 @@ export function keywordEvidence(dieu, text, { sentences = null, primary = null, 
   // Có cụm định tội rút từ Bộ luật → xét theo cụm (chính xác hơn cụm 2 âm tiết thống kê).
   const pe = phraseEvidence(d, sents);
   if (lawPhrasesOf(d).length) {
-    const subjectOk = !p.needJob || JOB_CUE.test(text || '');
+    const subjectOk = (!p.needJob || JOB_CUE.test(text || '')) && (!p.needMil || MIL_CUE.test(text || ''));
     const seed = seedHit(d, text || '');
     const qualOk = !missingQualifier(p.ten, norm(text || ''));
     const strong = !!pe?.strong;
