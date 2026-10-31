@@ -1,8 +1,8 @@
 {
-  "version": "2.50.3",
+  "version": "2.51.0",
   "date": "2026-10-31",
   "notes": [
-    "Bản cài đặt Windows, macOS: sửa lỗi bộ PaddleOCR + VietOCR đọc ra trang trắng (bộ cài thiếu thư viện onnxruntime theo hệ máy); khi bộ này lỗi thì tự đọc bằng Tesseract và báo rõ lý do ở trang PDF sang Word và Cài đặt",
-    "Gợi ý tội danh: không kết tội từ ngôn ngữ thủ tục lời khai (“khai báo”, “tự nguyện”, “lời khai”) hay cụm 2 âm tiết thông dụng; cụm có mặt ở hầu hết hồ sơ không còn tự đủ làm căn cứ; tội của quân nhân (Chương XXV) chỉ gợi ý khi nội dung có bối cảnh quân đội"
+    "PDF sang Word nhiều tệp: chọn hoặc kéo thả nhiều PDF/ảnh, chuyển lần lượt, thanh tiến độ từng tệp, xong tệp nào tự tải tệp Word đó về (hoặc Tải tất cả .zip); tệp hỏng chỉ báo lỗi ở hàng của nó",
+    "Gợi ý tội danh chính xác hơn: không kết tội từ ngôn ngữ thủ tục lời khai (“khai báo”, “tự nguyện”), cụm 2 âm tiết thông dụng hay cụm chung của hồ sơ; tội của quân nhân chỉ gợi ý khi có bối cảnh quân đội; thêm 708 cụm hành vi rút từ Bình luận khoa học BLHS làm căn cứ phụ (ghi “theo bình luận” khi khớp)"
   ]
 }
